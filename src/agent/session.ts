@@ -16,62 +16,66 @@ const GY = '\x1b[90m'
 const RS = '\x1b[0m'
 const BLD = '\x1b[1m'
 
-function writeOut(text: string): void {
-  process.stdout.write(text)
+export interface SessionOutput {
+  write: (text: string) => void
 }
 
-function writeErr(...args: any[]): void {
-  console.error(...args)
+function writeOut(text: string, output?: SessionOutput): void {
+  if (output) {
+    output.write(text)
+  } else {
+    process.stdout.write(text)
+  }
 }
 
-function printUserMessage(prompt: string): void {
+function printUserMessage(prompt: string, output?: SessionOutput): void {
   const line = `  ${GY}┃${RS} ${BLD}${CY}You${RS}`
-  writeOut(`\n${line}  ${prompt}\n\n`)
+  writeOut(`\n${line}  ${prompt}\n\n`, output)
 }
 
-function printToolInvocation(tc: ToolCall): void {
+function printToolInvocation(tc: ToolCall, output?: SessionOutput): void {
   const detail = formatToolInput(tc)
   const isWrite = tc.name === 'write_plan' || tc.name === 'edit'
   const icon = isWrite ? `${YE}◆${RS}` : `${GR}◇${RS}`
   const label = isWrite ? `${YE}${tc.name}${RS}` : `${GR}${tc.name}${RS}`
-  writeOut(`  ${GY}│${RS}  ${icon} ${label}${detail ? ` ${GY}${detail}${RS}` : ''}\n`)
+  writeOut(`  ${GY}│${RS}  ${icon} ${label}${detail ? ` ${GY}${detail}${RS}` : ''}\n`, output)
 }
 
-function printToolResult(tc: ToolCall, result: ToolResult): void {
+function printToolResult(tc: ToolCall, result: ToolResult, output?: SessionOutput): void {
   if (!result.success) {
-    writeOut(`  ${GY}│${RS}  ${RE}✖${RS} ${RE}${result.error}${RS}\n`)
+    writeOut(`  ${GY}│${RS}  ${RE}✖${RS} ${RE}${result.error}${RS}\n`, output)
     return
   }
   if (tc.name === 'read') {
     const fileCount = (result.output.match(/^=== /gm) || []).length
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} read ${fileCount} file(s)\n`)
+    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} read ${fileCount} file(s)\n`, output)
     for (const line of result.output.split('\n')) {
       if (line.startsWith('=== ')) {
         const fp = line.slice(4, line.includes(' ===') ? line.indexOf(' ===') + 4 : undefined)
-        writeOut(`  ${GY}│${RS}    ${GY}${fp}${RS}\n`)
+        writeOut(`  ${GY}│${RS}    ${GY}${fp}${RS}\n`, output)
       }
     }
   } else if (tc.name === 'glob') {
     const count = result.output.split('\n').filter(l => l && !l.startsWith('No')).length
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} glob ${count} match(es)\n`)
+    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} glob ${count} match(es)\n`, output)
   } else if (tc.name === 'grep') {
     const count = result.output.split('\n').filter(l => l && !l.startsWith('No')).length
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} grep ${count} match(es)\n`)
+    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} grep ${count} match(es)\n`, output)
   } else if (tc.name === 'bash') {
     const outLines = result.output.split('\n')
     const summary = outLines.length > 1 ? `(${outLines.length} lines)` : ''
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} bash ${summary}\n`)
+    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} bash ${summary}\n`, output)
   } else if (tc.name === 'edit') {
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} edit\n`)
+    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} edit\n`, output)
     if (result.output) {
       for (const l of result.output.split('\n')) {
-        if (l.trim()) writeOut(`  ${GY}│${RS}    ${GY}${l.trim()}${RS}\n`)
+        if (l.trim()) writeOut(`  ${GY}│${RS}    ${GY}${l.trim()}${RS}\n`, output)
       }
     }
   } else if (tc.name === 'write_plan') {
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} ${result.output || tc.name}\n`)
+    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} ${result.output || tc.name}\n`, output)
   } else {
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} ${tc.name}\n`)
+    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} ${tc.name}\n`, output)
   }
 }
 
@@ -88,7 +92,7 @@ function formatToolInput(tc: ToolCall): string {
     parts.push(typeof tc.input.path === 'string' ? tc.input.path : '.')
   } else if (tc.name === 'bash') {
     const cmd = typeof tc.input.command === 'string' ? tc.input.command : ''
-    parts.push(cmd.length > 80 ? cmd.slice(0, 80) + '…' : cmd)
+    parts.push(cmd.length > 80 ? cmd.slice(0, 80) + '\u2026' : cmd)
   } else if (tc.name === 'write_plan') {
     if (typeof tc.input.filename === 'string') parts.push(tc.input.filename)
   } else if (tc.name === 'edit') {
@@ -99,7 +103,7 @@ function formatToolInput(tc: ToolCall): string {
       parts.push(tc.input.file_path)
     }
   }
-  return parts.join(' │ ')
+  return parts.join(' \u2502 ')
 }
 
 function buildSystemPrompt(config: Config): string {
@@ -186,9 +190,11 @@ export class Session {
   registry: ToolRegistry
   applier: PatchApplier
   config: Config
+  output?: SessionOutput
 
-  constructor(config: Config) {
+  constructor(config: Config, output?: SessionOutput) {
     this.config = config
+    this.output = output
     this.applier = new PatchApplier()
     this.registry = new ToolRegistry({
       cwd: config.cwd,
@@ -215,7 +221,8 @@ export class Session {
   }
 
   async chat(userPrompt: string): Promise<void> {
-    printUserMessage(userPrompt)
+    const out = this.output
+    printUserMessage(userPrompt, out)
     this.messages.push({ role: 'user', content: userPrompt })
 
     let iterations = 0
@@ -235,13 +242,13 @@ export class Session {
         }
         if (chunk.type === 'text' && chunk.text) {
           fullResponse += chunk.text
-          writeOut(chunk.text)
+          writeOut(chunk.text, out)
         } else if (chunk.type === 'tool_use' && chunk.tool_call) {
           toolCalls.push(chunk.tool_call)
         } else if (chunk.type === 'complete') {
           if (chunk.finish_reason === 'stop' || chunk.finish_reason === 'end_turn') {
             if (toolCalls.length === 0) {
-              writeOut('\n\n')
+              writeOut('\n\n', out)
               return
             }
           }
@@ -250,7 +257,7 @@ export class Session {
 
       if (toolCalls.length === 0) {
         if (fullResponse) {
-          writeOut('\n\n')
+          writeOut('\n\n', out)
         }
         return
       }
@@ -264,9 +271,9 @@ export class Session {
       this.messages.push(assistantMsg)
 
       for (const tc of toolCalls) {
-        printToolInvocation(tc)
+        printToolInvocation(tc, out)
         const result: ToolResult = await this.registry.dispatch(tc)
-        printToolResult(tc, result)
+        printToolResult(tc, result, out)
 
         const resultMsg: LLMMessage = {
           role: 'tool',
@@ -279,7 +286,7 @@ export class Session {
     }
 
     if (iterations >= maxIterations) {
-      writeOut('\nAgent reached maximum iterations. Stopping.\n')
+      writeOut('\nAgent reached maximum iterations. Stopping.\n', out)
     }
   }
 }

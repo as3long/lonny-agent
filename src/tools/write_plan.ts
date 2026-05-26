@@ -5,6 +5,16 @@ import { Tool, ToolResult } from './types.js'
 /** Directory where plans are stored, relative to project root */
 export const PLAN_DIR = '.lonny'
 
+let onPlanWritten: ((display: string) => void) | null = null
+
+export function setOnPlanWritten(cb: (display: string) => void): void {
+  onPlanWritten = cb
+}
+
+function notifyPlanWritten(display: string): void {
+  if (onPlanWritten) onPlanWritten(display)
+}
+
 function sanitizeFilename(name: string): string {
   const trimmed = name.trim()
   if (!trimmed) return ''
@@ -62,6 +72,7 @@ export function createWritePlanTool(cwd: string): Tool {
         fs.mkdirSync(path.dirname(target), { recursive: true })
         fs.writeFileSync(target, content, 'utf8')
         const display = path.relative(cwd, target).replace(/\\/g, '/')
+        notifyPlanWritten(display)
         return { success: true, output: `Wrote plan to ${display} (${Buffer.byteLength(content, 'utf8')} bytes)` }
       } catch (err) {
         return {
