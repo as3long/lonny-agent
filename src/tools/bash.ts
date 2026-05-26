@@ -6,7 +6,7 @@ import { Tool, ToolResult } from './types.js'
 const WRITE_PATTERNS = [
   />\s+(?!&)\S/,                            // cmd ... > file  (redirect, not 2>&1)
   />>\s*\S/,                                 // cmd >> file (append)
-  /(?:^|[|;&]\s*)(?:touch|cp|mv|rm|mkdir|rmdir|tee|dd|install|ln)\b/,
+  /(?:^|[|;&]\s*)(?:touch|cp|mv|rm|rmdir|tee|dd|install|ln)\b/,
   /<<\s*['"]?\w+['"]?/,                      // heredoc redirection
   /\|\s*tee\b/,                              // pipe to tee
 ]

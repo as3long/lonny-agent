@@ -61,4 +61,9 @@ describe('bash tool', () => {
     const result = await bashTool.execute({ command: 'echo install-test' })
     expect(result.success).toBe(true)
   })
+
+  it('allows mkdir (directory creation is not source file editing)', async () => {
+    const result = await bashTool.execute({ command: 'echo mkdir-test' })
+    expect(result.success).toBe(true)
+  })
 })
