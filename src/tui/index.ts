@@ -4,8 +4,8 @@ import { Session, SessionOutput } from '../agent/session.js'
 import { Config } from '../config/index.js'
 import { loadTokenUsage } from '../config/tokens.js'
 import { setOnPlanWritten, PLAN_DIR } from '../tools/write_plan.js'
-import type { Component, OverlayHandle } from '@earendil-works/pi-tui'
-import { ProcessTerminal, TUI, Box, Text, Input, Markdown, SelectList, Container, Loader, Spacer }
+import type { Component, Focusable, OverlayHandle } from '@earendil-works/pi-tui'
+import { ProcessTerminal, TUI, Box, Text, Input, Markdown, SelectList, Container, Loader, Spacer, CURSOR_MARKER, visibleWidth }
   from '@earendil-works/pi-tui'
 import type { SelectItem, SelectListTheme, MarkdownTheme } from '@earendil-works/pi-tui'
 
@@ -37,6 +37,63 @@ const colors = {
   warn: (text: string) => `\x1b[38;2;255;200;50m${text}\x1b[0m`,
 }
 
+// ── App Version (read from package.json) ─────────────────────────────────
+
+const APP_VERSION: string = (() => {
+  try {
+    const pkgPath = new URL('../../package.json', import.meta.url)
+    const raw = fs.readFileSync(pkgPath, 'utf-8')
+    return JSON.parse(raw).version || '0.1.0'
+  } catch {
+    return '0.1.0'
+  }
+})()
+
+// ── Pixel font for "lonnycode" logo (5 rows × 5 cols per char) ──────────
+
+const PIXEL_FONT: Record<string, string[]> = {
+  L: ['█    ', '█    ', '█    ', '█    ', '█████'],
+  O: [' ███ ', '█   █', '█   █', '█   █', ' ███ '],
+  N: ['█   █', '██  █', '█ █ █', '█  ██', '█   █'],
+  Y: ['█   █', ' █ █ ', '  █  ', '  █  ', '  █  '],
+  C: [' ███ ', '█    ', '█    ', '█    ', ' ███ '],
+  D: ['███  ', '█  █ ', '█   █', '█  █ ', '███  '],
+  E: ['█████', '█    ', '███  ', '█    ', '█████'],
+}
+
+const LONNY_CHARS = ['L', 'O', 'N', 'N', 'Y']
+const CODE_CHARS = ['C', 'O', 'D', 'E']
+
+const PIXEL_LOGO_WIDTH = 54 // 5 cols × 9 chars + 8 gaps + 2 gap between words
+
+function renderPixelLogo(): string[] {
+  const midGray = '\x1b[38;2;160;160;160m'
+  const brightWhite = '\x1b[38;2;255;255;255m'
+  const reset = '\x1b[0m'
+  const lines: string[] = []
+  for (let row = 0; row < 5; row++) {
+    const lonnyPart = LONNY_CHARS.map(ch => PIXEL_FONT[ch][row]).join(' ')
+    const codePart = CODE_CHARS.map(ch => PIXEL_FONT[ch][row]).join(' ')
+    lines.push(midGray + lonnyPart + '  ' + brightWhite + codePart + reset)
+  }
+  return lines
+}
+
+// ── Landing input colors ────────────────────────────────────────────────
+
+const landingColors = {
+  inputBg: '\x1b[48;2;35;35;35m',
+  inputBorder: '\x1b[38;2;60;60;60m',
+  cyanBar: '\x1b[38;2;0;200;255m',
+  placeholderDim: '\x1b[38;2;130;130;130m',
+  placeholderQuote: '\x1b[38;2;160;160;160m',
+  inputText: '\x1b[38;2;220;220;220m',
+  statusBg: '\x1b[48;2;18;18;18m',
+  statusText: '\x1b[38;2;110;110;110m',
+  statusAccent: '\x1b[38;2;0;170;255m',
+  reset: '\x1b[0m',
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 interface PlanEntry {
@@ -63,7 +120,7 @@ function listPlans(cwd: string): PlanEntry[] {
           mtime,
         }
       })
-      .sort((a, b) => (b as any).mtime - (a as any).mtime)
+      .sort((a, b) => b.mtime - a.mtime)
   } catch {
     return []
   }
@@ -190,6 +247,297 @@ class FooterBar implements Component {
   }
 }
 
+// ── Word-wrapping helpers for multi-line input ─────────────────────────
+
+/** Split text into lines that fit within `maxWidth` visible columns. */
+function wordWrap(text: string, maxWidth: number): string[] {
+  if (!text) return ['']
+  const lines: string[] = []
+  let currentLine = ''
+  for (const char of text) {
+    if (char === '\n') {
+      lines.push(currentLine)
+      currentLine = ''
+      continue
+    }
+    if (visibleWidth(currentLine + char) > maxWidth) {
+      lines.push(currentLine)
+      currentLine = char
+    } else {
+      currentLine += char
+    }
+  }
+  lines.push(currentLine)
+  return lines
+}
+
+/** Compute the (lineIndex, column) of `cursor` after word-wrapping. */
+function cursorWrapPosition(
+  text: string,
+  cursor: number,
+  maxWidth: number,
+): { line: number; col: number } {
+  const before = text.slice(0, cursor)
+  const wrapped = wordWrap(before, maxWidth)
+  return { line: wrapped.length - 1, col: visibleWidth(wrapped[wrapped.length - 1]) }
+}
+
+// ── LandingInput (custom styled input for landing screen) ──────────────
+
+class LandingInput implements Component, Focusable {
+  value = ''
+  cursor = 0
+  focused = false
+  private readonly inputHeight = 3 // number of visible text rows
+  onSubmit?: (value: string) => void
+
+  getValue(): string {
+    return this.value
+  }
+
+  setValue(val: string): void {
+    this.value = val
+    this.cursor = val.length
+  }
+
+  /** Compute the visual width of the input box (used by arrow navigation). */
+  private getInnerWidth(): number {
+    // This approximates the value computed in render() — we derive it here
+    // without access to the terminal width by using a reasonable default.
+    return 56 // boxWidth=60 minus 4 padding
+  }
+
+  /** Move cursor to the visual line above/below using word-wrapping. */
+  private moveCursorVisualLine(direction: -1 | 1): void {
+    if (!this.value) return
+    const maxWidth = this.getInnerWidth()
+    const beforeCursor = this.value.slice(0, this.cursor)
+    const wrappedBefore = wordWrap(beforeCursor, maxWidth)
+    const currentLine = wrappedBefore.length - 1
+    const currentCol = visibleWidth(wrappedBefore[currentLine])
+
+    // Word-wrap the entire value
+    const wrappedAll = wordWrap(this.value, maxWidth)
+
+    if (direction === -1 && currentLine > 0) {
+      // Move up: go to previous visual line, keep same column
+      const targetLine = currentLine - 1
+      const targetLineText = wrappedAll[targetLine]
+      // Calculate cursor position: end of previous line's characters up to currentCol
+      let newCursor = 0
+      for (let i = 0; i < targetLine; i++) {
+        newCursor += wrappedAll[i].length
+      }
+      // Add the column position (trimmed to line length)
+      const targetCol = Math.min(currentCol, visibleWidth(targetLineText))
+      // Need to find the actual character index for this visual column
+      let visualPos = 0
+      let charIdx = 0
+      while (charIdx < targetLineText.length && visualPos < targetCol) {
+        visualPos += visibleWidth(targetLineText[charIdx])
+        charIdx++
+      }
+      newCursor += charIdx
+      this.cursor = newCursor
+    } else if (direction === 1 && currentLine < wrappedAll.length - 1) {
+      // Move down: go to next visual line
+      const targetLine = currentLine + 1
+      const targetLineText = wrappedAll[targetLine]
+      let newCursor = 0
+      for (let i = 0; i < targetLine; i++) {
+        newCursor += wrappedAll[i].length
+      }
+      const targetCol = Math.min(currentCol, visibleWidth(targetLineText))
+      let visualPos = 0
+      let charIdx = 0
+      while (charIdx < targetLineText.length && visualPos < targetCol) {
+        visualPos += visibleWidth(targetLineText[charIdx])
+        charIdx++
+      }
+      newCursor += charIdx
+      this.cursor = newCursor
+    }
+  }
+
+  handleInput(data: string): void {
+    // Submit
+    if (data === '\r' || data === '\n') {
+      if (this.onSubmit) this.onSubmit(this.value)
+      return
+    }
+    // Backspace
+    if (data === '\x7f' || data === '\b') {
+      if (this.cursor > 0) {
+        this.value = this.value.slice(0, this.cursor - 1) + this.value.slice(this.cursor)
+        this.cursor--
+      }
+      return
+    }
+    // Up arrow — move cursor up one visual line
+    if (data === '\x1b[A') {
+      this.moveCursorVisualLine(-1)
+      return
+    }
+    // Down arrow — move cursor down one visual line
+    if (data === '\x1b[B') {
+      this.moveCursorVisualLine(1)
+      return
+    }
+    // Left arrow
+    if (data === '\x1b[D') { if (this.cursor > 0) this.cursor--; return }
+    // Right arrow
+    if (data === '\x1b[C') { if (this.cursor < this.value.length) this.cursor++; return }
+    // Home
+    if (data === '\x1b[H' || data === '\x1b[1~') { this.cursor = 0; return }
+    // End
+    if (data === '\x1b[F' || data === '\x1b[4~') { this.cursor = this.value.length; return }
+    // Delete
+    if (data === '\x1b[3~') {
+      if (this.cursor < this.value.length) {
+        this.value = this.value.slice(0, this.cursor) + this.value.slice(this.cursor + 1)
+      }
+      return
+    }
+    // Regular printable character
+    const hasControl = [...data].some(ch => {
+      const code = ch.charCodeAt(0)
+      return code < 32 || code === 0x7f || (code >= 0x80 && code <= 0x9f)
+    })
+    if (!hasControl) {
+      this.value = this.value.slice(0, this.cursor) + data + this.value.slice(this.cursor)
+      this.cursor += data.length
+    }
+  }
+
+  invalidate(): void {}
+
+  render(width: number): string[] {
+    const boxWidth = Math.min(60, width - 4)
+    const leftPad = Math.max(0, Math.floor((width - boxWidth) / 2))
+    const innerWidth = boxWidth - 4 // 2 padding on each side
+
+    const {
+      inputBg, cyanBar, placeholderDim, placeholderQuote,
+      inputText, reset,
+    } = landingColors
+
+    // ── Build top border ─────────────────────────────────────────────────
+    const topBorder = ' '.repeat(leftPad) + inputBg + cyanBar + '\u2501' + reset +
+      inputBg + '\u2501'.repeat(innerWidth) + reset
+    const bottomBorder = ' '.repeat(leftPad) + inputBg + cyanBar + '\u2501' + reset +
+      inputBg + '\u2501'.repeat(innerWidth) + reset
+
+    // ── Word-wrap the value and determine which slice to show ────────────
+    const wrappedAll = wordWrap(this.value, innerWidth)
+    const cursorPos = this.value
+      ? cursorWrapPosition(this.value, this.cursor, innerWidth)
+      : { line: 0, col: 0 }
+
+    // Scroll the visible window so the cursor line is visible.
+    // Show `inputHeight` lines at a time, keeping the cursor line in view.
+    const totalWrapped = wrappedAll.length
+    let scrollOffset = 0
+    if (totalWrapped > this.inputHeight) {
+      // Try to center the cursor line in the window
+      scrollOffset = Math.max(0, Math.min(
+        cursorPos.line - Math.floor(this.inputHeight / 2),
+        totalWrapped - this.inputHeight,
+      ))
+    }
+
+    // Build each visible content line
+    const contentLines: string[] = []
+    for (let i = 0; i < this.inputHeight; i++) {
+      const wrappedIdx = scrollOffset + i
+      const lineText = wrappedIdx < totalWrapped ? wrappedAll[wrappedIdx] : ''
+      const isEmpty = this.value === ''
+
+      let lineContent: string
+
+      if (isEmpty && i === 0 && wrappedIdx === 0) {
+        // Placeholder on the first line when value is empty
+        const placeholder =
+          placeholderDim + 'Ask anything... ' +
+          placeholderQuote + '"Fix a TODO in the codebase"' + reset
+        const cursorMarker = this.focused ? CURSOR_MARKER : ''
+        lineContent = cursorMarker + placeholder
+      } else if (isEmpty) {
+        // Empty additional lines — just background
+        lineContent = ''
+      } else if (this.focused && cursorPos.line === wrappedIdx) {
+        // Cursor is on this visual line
+        const beforeCursor = lineText.slice(0, cursorPos.col)
+        const atCursor = lineText[cursorPos.col] || ' '
+        const afterCursor = lineText.slice(cursorPos.col + 1)
+        const cursorDisplay = `\x1b[7m${atCursor}\x1b[27m`
+        lineContent = inputText + beforeCursor + CURSOR_MARKER + cursorDisplay + afterCursor + reset
+      } else {
+        // Regular line (no cursor)
+        lineContent = lineText ? inputText + lineText + reset : ''
+      }
+
+      // Pad to innerWidth
+      const lineWidth = visibleWidth(lineText || '')
+      const padding = ' '.repeat(Math.max(0, innerWidth - lineWidth))
+
+      const renderedLine = ' '.repeat(leftPad) + inputBg + cyanBar + '\u2502' + reset +
+        inputBg + lineContent + inputBg + padding + reset
+
+      contentLines.push(renderedLine)
+    }
+
+    return [topBorder, ...contentLines, bottomBorder]
+  }
+}
+
+// ── LandingScreen (pixel logo + styled input) ──────────────────────────
+
+class LandingScreen implements Component {
+  private input: LandingInput
+  onSubmit?: (value: string) => void
+
+  constructor(input: LandingInput) {
+    this.input = input
+    this.input.onSubmit = (value: string) => {
+      if (this.onSubmit) this.onSubmit(value)
+    }
+  }
+
+  getInput(): LandingInput {
+    return this.input
+  }
+
+  invalidate(): void {
+    this.input.invalidate()
+  }
+
+  handleInput(data: string): void {
+    this.input.handleInput(data)
+  }
+
+  render(width: number): string[] {
+    const lines: string[] = []
+
+    // ── Pixel logo ─────────────────────────────────────────────────────
+    const logoLines = renderPixelLogo()
+    const logoPad = Math.max(0, Math.floor((width - PIXEL_LOGO_WIDTH) / 2))
+    const padStr = ' '.repeat(logoPad)
+
+    for (const line of logoLines) {
+      lines.push(padStr + line)
+    }
+
+    // ── Blank line ─────────────────────────────────────────────────────
+    lines.push('')
+
+    // ── Input box ──────────────────────────────────────────────────────
+    const inputLines = this.input.render(width)
+    lines.push(...inputLines)
+
+    return lines
+  }
+}
+
 // ── PlansList wrapper (SelectList has no setItems) ───────────────────────
 
 class PlansList implements Component {
@@ -245,6 +593,49 @@ class PlansList implements Component {
   }
 }
 
+// ── StatusBar (bottom bar: cwd | status | version) ─────────────────────
+
+class StatusBar implements Component {
+  private cwd: string
+  private status: string = ''
+  private visible = true
+
+  constructor(cwd: string) {
+    this.cwd = cwd
+  }
+
+  setStatus(s: string): void { this.status = s }
+  setVisible(v: boolean): void { this.visible = v }
+
+  invalidate(): void {}
+  handleInput?(data: string): void {}
+
+  render(width: number): string[] {
+    if (!this.visible || width < 40) return []
+
+    const { statusBg, statusText, statusAccent, reset } = landingColors
+
+    // Left: working directory
+    const dir = this.cwd.length > 30 ? '...' + this.cwd.slice(-27) : this.cwd
+    const leftPart = statusAccent + '\u25A0' + reset + statusBg + statusText + ' ' + dir + reset
+
+    // Center: status message
+    const centerPart = this.status
+      ? statusBg + statusText + '  ' + this.status + '  ' + reset
+      : statusBg + statusText + '  ready  ' + reset
+
+    // Right: version
+    const rightPart = statusBg + statusText + 'v' + APP_VERSION + ' ' + reset
+
+    const line = leftPart + centerPart + rightPart
+    const padded = line.length < width
+      ? line + statusBg + ' '.repeat(width - line.length) + reset
+      : line
+
+    return [padded]
+  }
+}
+
 // ── startTui ─────────────────────────────────────────────────────────────
 
 export async function startTui(config: Config): Promise<void> {
@@ -290,15 +681,16 @@ export async function startTui(config: Config): Promise<void> {
 
   // Top header bar
   const header = new HeaderBar(config.model, config.provider)
+  tui.showOverlay(header, { anchor: 'top-left', row: 0, col: 0, nonCapturing: true })
 
-  // Chat area (full width, no side panel)
+  // Chat area (full width, no side panel) — created upfront but only added
+  // to the TUI after the landing screen transitions to chat mode.
   const chatMarkdown = new Markdown('', 1, 0, markdownTheme)
   const chatBox = new Box(1, 0)
   chatBox.addChild(chatMarkdown)
 
-  // Input with OpenCode-style prompt
+  // Chat input — created upfront, added to TUI after landing transition
   const input = new Input()
-  // Set the input prompt symbol (the Input component may support this)
 
   // Loader (thinking indicator)
   const loader = new Loader(tui, colors.running, colors.idle, 'thinking...', { intervalMs: 80 })
@@ -306,15 +698,31 @@ export async function startTui(config: Config): Promise<void> {
   // Bottom footer bar
   const footer = new FooterBar()
 
-  // ── Build layout ───────────────────────────────────────────────────────
-  // Header is shown as a fixed overlay at the top so it stays visible
-  // even when chat content is long.
+  // ── Build layout (landing phase) ───────────────────────────────────────
+  // In the landing phase, only the Spacer (for header overlay offset) and
+  // the header bar are shown. The chatBox, input, loader, and footer are
+  // added after the first message (see landingScreen.onSubmit).
   tui.addChild(new Spacer(1)) // offset for fixed header overlay
-  tui.addChild(chatBox)
-  tui.addChild(input)
-  tui.addChild(loader)
-  tui.addChild(footer)
-  tui.showOverlay(header, { anchor: 'top-left', row: 0, col: 0, nonCapturing: true })
+
+  // ── Status bar (bottom bar: cwd | status | version) ──────────────────
+  const statusBar = new StatusBar(config.cwd)
+  const statusBarHandle = tui.showOverlay(statusBar, {
+    anchor: 'bottom-left',
+    row: 0,
+    col: 0,
+    nonCapturing: true,
+  })
+
+  // ── Landing screen (centered overlay with pixel logo + styled input) ──
+  const landingInput = new LandingInput()
+  const landingScreen = new LandingScreen(landingInput)
+  const landingOverlayHandle = tui.showOverlay(landingScreen, {
+    anchor: 'center',
+    width: 70,
+    maxHeight: 14,
+  })
+  // Focus the landing input so it receives keyboard input and shows the cursor
+  tui.setFocus(landingInput)
 
   // ── Plans overlay components ───────────────────────────────────────────
   const plansList = new PlansList([], 15, selectTheme)
@@ -479,8 +887,33 @@ export async function startTui(config: Config): Promise<void> {
     })
   }
 
-  // Wire up Enter on input
+  // Wire up Enter on chat input (after landing transition)
   input.onSubmit = (value: string) => {
+    sendMessage(value)
+  }
+
+  // ── Landing screen transition ────────────────────────────────────────────
+  // When the user submits from the landing screen, hide the overlay, add
+  // the chat components to the main TUI, and process the message.
+  landingScreen.onSubmit = (value: string) => {
+    if (!value.trim() || isRunning) return
+
+    // Hide the landing overlay — this also restores focus to the previous
+    // target (the Spacer), but we immediately set focus to the chat input.
+    landingOverlayHandle.hide()
+    statusBarHandle.hide()
+
+    // Add chat components to the main TUI
+    tui.addChild(chatBox)
+    tui.addChild(input)
+    tui.addChild(loader)
+    tui.addChild(footer)
+
+    // Focus the chat input
+    tui.setFocus(input)
+    tui.requestRender(true)
+
+    // Process the message through the normal flow
     sendMessage(value)
   }
 
@@ -568,13 +1001,12 @@ export async function startTui(config: Config): Promise<void> {
   loader.setMessage('')
   refreshPlans()
 
-  // Show welcome message
-  chatContent = `${colors.dim('Welcome to')} ${colors.accent('lonny')} ${colors.dim('- a coding agent optimized for per-call pricing')}\n`
-  chatContent += `${colors.dim('Type')} ${colors.inputPrompt('/help')} ${colors.dim('for available commands or')} ${colors.inputPrompt('?')} ${colors.dim('for keyboard shortcuts')}\n`
-  chatMarkdown.setText(chatContent)
+  // No welcome message in chatContent — the landing screen (centered overlay
+  // with logo + input) replaces it. chatContent stays empty until the first
+  // message is sent.
+  chatMarkdown.setText('')
 
   tui.start()
-  tui.setFocus(input)
 
   // Keep alive
   await new Promise<void>(() => {})
