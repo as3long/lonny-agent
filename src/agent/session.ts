@@ -23,8 +23,9 @@ function printUserMessage(prompt: string): void {
 
 function printToolInvocation(tc: ToolCall): void {
   const detail = formatToolInput(tc)
-  const icon = tc.name === 'batch_edit' ? `${YE}◆${RS}` : `${GR}◇${RS}`
-  const label = tc.name === 'batch_edit' ? `${YE}batch_edit${RS}` : `${GR}${tc.name}${RS}`
+  const isWrite = tc.name === 'batch_edit' || tc.name === 'write_plan'
+  const icon = isWrite ? `${YE}◆${RS}` : `${GR}◇${RS}`
+  const label = isWrite ? `${YE}${tc.name}${RS}` : `${GR}${tc.name}${RS}`
   console.error(`  ${GY}│${RS}  ${icon} ${label}${detail ? ` ${GY}${detail}${RS}` : ''}`)
 }
 
@@ -59,6 +60,8 @@ function printToolResult(tc: ToolCall, result: ToolResult): void {
         if (l.trim()) console.error(`  ${GY}│${RS}    ${GY}${l.trim()}${RS}`)
       }
     }
+  } else if (tc.name === 'write_plan') {
+    console.error(`  ${GY}│${RS}  ${GR}✔${RS} ${result.output || 'write_plan'}`)
   } else {
     console.error(`  ${GY}│${RS}  ${GR}✔${RS} ${tc.name}`)
   }
@@ -82,6 +85,8 @@ function formatToolInput(tc: ToolCall): string {
     const text = typeof tc.input.patch_text === 'string' ? tc.input.patch_text : ''
     const lines = text.split('\n').filter(l => l.startsWith('@'))
     parts.push(lines.join(', '))
+  } else if (tc.name === 'write_plan') {
+    if (typeof tc.input.filename === 'string') parts.push(tc.input.filename)
   }
   return parts.join(' │ ')
 }
@@ -95,7 +100,7 @@ function buildSystemPrompt(config: Config): string {
   const isWindows = platform === 'win32'
 
   if (config.mode === 'plan') {
-    return `You are a planning agent. Your role is to analyze codebases, answer questions, and produce detailed plans — you never make edits yourself.
+    return `You are a planning agent. Your sole job is to investigate the codebase and produce an actionable implementation plan plus a todo list. You NEVER edit source files.
 
 Environment:
 - Platform: ${platform} ${release} (${arch})
@@ -104,18 +109,37 @@ Environment:
   ${isWindows ? 'Use \`type\` instead of \`cat\`, \`dir\` instead of \`ls\`.' : ''}
 
 RULES:
-1. Read first: Use read/grep/glob tools to gather all context you need.
-2. Be thorough: Explore the full codebase before answering.
-3. You CANNOT edit files — you have no edit tools. Only read and analyze.
-4. If the user asks you to make changes, produce a clear step-by-step plan.
-5. Use \`bash\` for read-only commands only (e.g. listing files, checking git status).
+1. Read first: Use read/grep/glob tools to gather all context you need before planning.
+2. Be thorough: Explore the relevant parts of the codebase so the plan is concrete and grounded in real file paths and symbols.
+3. You CANNOT edit source files — you have no code edit tools. Only read and analyze.
+4. Use \`bash\` for read-only commands only (e.g. listing files, checking git status).
+5. ALWAYS persist the final plan to the \`.lonny/\` folder using the \`write_plan\` tool. Pass only a filename (e.g. \`plan.md\` or \`add-auth/plan.md\`); the tool stores it under \`.lonny/\` automatically.
+
+OUTPUT FORMAT (always respond in this structure once you have enough context):
+
+## Plan
+A short, ordered description of the approach. Reference concrete files using \`path:line\` where helpful. Call out risks, edge cases, and assumptions.
+
+## Todo List
+- [ ] Step 1 — concrete action (file or area affected)
+- [ ] Step 2 — concrete action
+- [ ] ...
+
+After producing the Plan + Todo List, call \`write_plan\` to save the exact same markdown into \`.lonny/<name>.md\`. Choose a short, descriptive filename based on the task.
+
+## Next
+End your response by telling the user where the plan was saved and asking whether they want to switch to \`code\` mode to execute it. Use exactly this prompt on its own line:
+"Switch to code mode to implement this plan? (run \`/mode code\`)"
+
+If the user's request is a question rather than a change request, answer it directly and skip the write_plan call, Todo List, and Next sections.
 
 Available tools:
 - \`read\`: Read file contents (paths: string[])
 - \`glob\`: Find files by glob pattern (pattern: string)
 - \`grep\`: Search file content by regex (pattern: string, include?: string, path?: string)
 - \`ls\`: List directory (path?: string)
-- \`bash\`: Execute a read-only shell command (command: string, description?: string, timeout?: number)`
+- \`bash\`: Execute a read-only shell command (command: string, description?: string, timeout?: number)
+- \`write_plan\`: Save the plan markdown into the \`.lonny/\` folder (filename: string, content: string)`
   }
 
   return `You are a coding agent optimized for per-call pricing.
