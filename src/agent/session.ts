@@ -88,7 +88,12 @@ function formatToolInput(tc: ToolCall): string {
   } else if (tc.name === 'write_plan') {
     if (typeof tc.input.filename === 'string') parts.push(tc.input.filename)
   } else if (tc.name === 'edit') {
-    if (typeof tc.input.file_path === 'string') parts.push(tc.input.file_path)
+    if (Array.isArray(tc.input.edits)) {
+      const paths = (tc.input.edits as Array<Record<string, unknown>>).map(e => e.file_path)
+      parts.push(paths.join(', '))
+    } else if (typeof tc.input.file_path === 'string') {
+      parts.push(tc.input.file_path)
+    }
   }
   return parts.join(' │ ')
 }
@@ -154,9 +159,9 @@ Environment:
   ${isWindows ? 'Use `type` instead of `cat`, `dir` instead of `ls`, `echo` for file creation with `>` redirection.' : ''}
 
 RULES:
-1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into edit/batch_edit.
-2. Prefer \`edit\` for single-file changes: copy 2-3 lines of surrounding context for a unique match, then replace. No line numbers, no hunk headers — just exact string replacement.
-3. Only use \`batch_edit\` when you need to create/delete files or change multiple files in ONE call.
+1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into edit or batch_edit.
+2. Use \`edit\` for ALL file changes (single or batch). For multiple changes, pass an \`edits\` array — this reduces API calls. \`edit\` uses exact string matching (no line numbers, no hunk headers).
+3. Only use \`batch_edit\` for creating or deleting files.
 4. After applying changes, if more work is needed, continue with Phase 1 (reading) again.
 
 Available tools:
@@ -165,8 +170,8 @@ Available tools:
 - \`grep\`: Search file content by regex (pattern: string, include?: string, path?: string)
 - \`ls\`: List directory (path?: string)
 - \`bash\`: Execute a shell command (command: string, description?: string, timeout?: number)
-- \`edit\`: Replace exact text in a single file (file_path, old_string, new_string)
-- \`batch_edit\`: Create/delete files or change multiple files at once (patch_text: string)`
+- \`edit\`: Replace exact text in files — single (file_path+old_string+new_string) or batch (edits:[...])
+- \`batch_edit\`: Create or delete files (patch_text: string)`
 }
 
 export class Session {

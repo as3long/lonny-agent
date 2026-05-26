@@ -11,8 +11,8 @@ describe('edit tool', () => {
 
   beforeAll(() => {
     tmpDir = makeTempDir()
-    fs.writeFileSync(path.join(tmpDir, 'target.txt'), 'line one\nline two\nline three\nline four\nline five\n')
-    fs.writeFileSync(path.join(tmpDir, 'single.txt'), 'only line\n')
+    fs.writeFileSync(path.join(tmpDir, 'a.txt'), 'line one\nline two\nline three\n')
+    fs.writeFileSync(path.join(tmpDir, 'b.txt'), 'foo\nbar\nbaz\n')
     applier = new PatchApplier()
   })
 
@@ -22,72 +22,124 @@ describe('edit tool', () => {
 
   const tool = () => createEditTool(applier, tmpDir)
 
-  it('replaces an exact string in a file', async () => {
-    const result = await tool().execute({
-      file_path: 'target.txt',
-      old_string: 'line two',
-      new_string: 'line TWO',
+  describe('single edit mode', () => {
+    beforeAll(() => {
+      // Reset a.txt to known state
+      fs.writeFileSync(path.join(tmpDir, 'a.txt'), 'line one\nline two\nline three\n')
+      fs.writeFileSync(path.join(tmpDir, 'dup.txt'), 'abc\ndef\nabc\n')
     })
-    expect(result.success).toBe(true)
-    const content = fs.readFileSync(path.join(tmpDir, 'target.txt'), 'utf8')
-    expect(content).toContain('line TWO')
-    expect(content).toContain('line one')
-    expect(content).toContain('line three')
-  })
 
-  it('replaces a multi-line string', async () => {
-    const result = await tool().execute({
-      file_path: 'target.txt',
-      old_string: 'line one\nline TWO',
-      new_string: 'line 1\nline 2',
+    it('replaces an exact string', async () => {
+      const r = await tool().execute({ file_path: 'a.txt', old_string: 'line two', new_string: 'line TWO' })
+      expect(r.success).toBe(true)
+      expect(fs.readFileSync(path.join(tmpDir, 'a.txt'), 'utf8')).toContain('line TWO')
     })
-    expect(result.success).toBe(true)
-    const content = fs.readFileSync(path.join(tmpDir, 'target.txt'), 'utf8')
-    expect(content).toContain('line 1')
-    expect(content).toContain('line 2')
-    expect(content).toContain('line three')
-  })
 
-  it('reports when old_string is not found', async () => {
-    const result = await tool().execute({
-      file_path: 'target.txt',
-      old_string: 'this does not exist',
-      new_string: 'anything',
+    it('replaces multi-line string', async () => {
+      const r = await tool().execute({ file_path: 'a.txt', old_string: 'line one\nline TWO', new_string: 'line 1\nline 2' })
+      expect(r.success).toBe(true)
+      const content = fs.readFileSync(path.join(tmpDir, 'a.txt'), 'utf8')
+      expect(content).toContain('line 1')
+      expect(content).toContain('line 2')
     })
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('not found')
-  })
 
-  it('reports when old_string appears multiple times', async () => {
-    fs.writeFileSync(path.join(tmpDir, 'dup.txt'), 'abc\ndef\nabc\n')
-    const result = await tool().execute({
-      file_path: 'dup.txt',
-      old_string: 'abc',
-      new_string: 'xyz',
+    it('reports old_string not found', async () => {
+      const r = await tool().execute({ file_path: 'a.txt', old_string: 'nonexistent', new_string: 'x' })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('not found')
     })
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('MULTIPLE times')
-  })
 
-  it('rejects missing file_path', async () => {
-    const result = await tool().execute({ old_string: 'x', new_string: 'y' })
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('file_path is required')
-  })
-
-  it('rejects missing old_string', async () => {
-    const result = await tool().execute({ file_path: 'x', new_string: 'y' })
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('old_string is required')
-  })
-
-  it('reports file not found', async () => {
-    const result = await tool().execute({
-      file_path: 'nonexistent.txt',
-      old_string: 'x',
-      new_string: 'y',
+    it('reports duplicate old_string', async () => {
+      const r = await tool().execute({ file_path: 'dup.txt', old_string: 'abc', new_string: 'xyz' })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('MULTIPLE times')
     })
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('not found')
+
+    it('rejects missing file_path', async () => {
+      const r = await tool().execute({ old_string: 'x', new_string: 'y' })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('file_path is required')
+    })
+
+    it('rejects missing old_string', async () => {
+      const r = await tool().execute({ file_path: 'x', new_string: 'y' })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('old_string is required')
+    })
+
+    it('reports file not found', async () => {
+      const r = await tool().execute({ file_path: 'nonexistent.txt', old_string: 'x', new_string: 'y' })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('not found')
+    })
+  })
+
+  describe('batch mode', () => {
+    beforeAll(() => {
+      fs.writeFileSync(path.join(tmpDir, 'a.txt'), 'one\ntwo\nthree\nfour\n')
+      fs.writeFileSync(path.join(tmpDir, 'b.txt'), 'foo\nbar\nbaz\n')
+    })
+
+    it('applies multiple edits to one file', async () => {
+      const r = await tool().execute({
+        edits: [
+          { file_path: 'a.txt', old_string: 'one', new_string: 'ONE' },
+          { file_path: 'a.txt', old_string: 'three', new_string: 'THREE' },
+        ],
+      })
+      expect(r.success).toBe(true)
+      const content = fs.readFileSync(path.join(tmpDir, 'a.txt'), 'utf8')
+      expect(content).toContain('ONE')
+      expect(content).toContain('THREE')
+      expect(content).toContain('two')
+    })
+
+    it('applies edits across multiple files', async () => {
+      const r = await tool().execute({
+        edits: [
+          { file_path: 'a.txt', old_string: 'ONE', new_string: 'one' },
+          { file_path: 'b.txt', old_string: 'foo\nbar', new_string: 'FOO\nBAR' },
+        ],
+      })
+      expect(r.success).toBe(true)
+      expect(fs.readFileSync(path.join(tmpDir, 'a.txt'), 'utf8')).toContain('one')
+      expect(fs.readFileSync(path.join(tmpDir, 'b.txt'), 'utf8')).toContain('FOO')
+      expect(fs.readFileSync(path.join(tmpDir, 'b.txt'), 'utf8')).toContain('BAR')
+    })
+
+    it('rolls back all changes on failure', async () => {
+      const original = fs.readFileSync(path.join(tmpDir, 'a.txt'), 'utf8')
+
+      const r = await tool().execute({
+        edits: [
+          { file_path: 'a.txt', old_string: 'THREE', new_string: 'three' },
+          { file_path: 'a.txt', old_string: 'zzz_nonexistent_zzz', new_string: 'FAIL' },
+        ],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('rolled back')
+      expect(fs.readFileSync(path.join(tmpDir, 'a.txt'), 'utf8')).toBe(original)
+    })
+
+    it('rolls back multi-file on any failure', async () => {
+      const origA = fs.readFileSync(path.join(tmpDir, 'a.txt'), 'utf8')
+      const origB = fs.readFileSync(path.join(tmpDir, 'b.txt'), 'utf8')
+
+      const r = await tool().execute({
+        edits: [
+          { file_path: 'a.txt', old_string: 'four', new_string: 'FOUR' },
+          { file_path: 'missing.txt', old_string: 'x', new_string: 'y' },
+        ],
+      })
+      expect(r.success).toBe(false)
+      expect(fs.readFileSync(path.join(tmpDir, 'a.txt'), 'utf8')).toBe(origA)
+      expect(fs.readFileSync(path.join(tmpDir, 'b.txt'), 'utf8')).toBe(origB)
+    })
+
+    it('rejects empty edits array', async () => {
+      const r = await tool().execute({ edits: [] })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('empty')
+    })
   })
 })
