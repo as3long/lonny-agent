@@ -9,12 +9,19 @@ import { ProcessTerminal, TUI, Box, Text, Input, Markdown, SelectList, Container
 import type { SelectItem, SelectListTheme, MarkdownTheme } from '@earendil-works/pi-tui'
 
 // ── ANSI Color Helpers ───────────────────────────────────────────────────────
+
+// Re-applies background after every full reset (\x1b[0m) so that foreground
+// color resets don't "punch through" the background.
+function safeBg(text: string, bg: string): string {
+  return `\x1b[${bg}m${text.replace(/\x1b\[0m/g, `\x1b[0m\x1b[${bg}m`)}\x1b[0m`
+}
+
 const colors = {
-  bgDark: (text: string) => `\x1b[48;2;30;30;30m${text}\x1b[0m`,
-  bgDim: (text: string) => `\x1b[48;2;25;25;25m${text}\x1b[0m`,
-  headerBg: (text: string) => `\x1b[48;2;18;18;18m${text}\x1b[0m`,
+  bgDark: (text: string) => safeBg(text, '48;2;30;30;30'),
+  bgDim: (text: string) => safeBg(text, '48;2;25;25;25'),
+  headerBg: (text: string) => safeBg(text, '48;2;18;18;18'),
   separator: (text: string) => `\x1b[38;2;60;60;60m${text}\x1b[0m`,
-  statusBg: (text: string) => `\x1b[48;2;18;18;18m${text}\x1b[0m`,
+  statusBg: (text: string) => safeBg(text, '48;2;18;18;18'),
   running: (text: string) => `\x1b[38;2;0;255;100m${text}\x1b[0m`,
   idle: (text: string) => `\x1b[38;2;150;150;150m${text}\x1b[0m`,
   doneTodo: (text: string) => `\x1b[38;2;100;200;100m${text}\x1b[0m`,
