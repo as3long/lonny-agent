@@ -92,6 +92,31 @@ export function saveTokenUsage(cwd: string, inputTokens: number, outputTokens: n
   }
 }
 
+/** Reset token stats to zero for the given project. */
+export function resetTokenUsage(cwd: string): TokenUsage {
+  const dir = getTokenDir()
+  ensureDir(dir)
+  const absPath = path.resolve(cwd)
+  const filePath = getTokenFilePath(cwd)
+  const data: TokenStatsData = {
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    totalApiCalls: 0,
+    updatedAt: new Date().toISOString(),
+    projectPath: absPath,
+    projectName: path.basename(absPath),
+  }
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
+  return {
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    totalApiCalls: 0,
+    projectPath: absPath,
+    projectName: path.basename(absPath),
+    updatedAt: data.updatedAt,
+  }
+}
+
 /**
  * List all per-project token stats in ~/.lonny/tokens/
  */

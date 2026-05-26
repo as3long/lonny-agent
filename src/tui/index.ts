@@ -2,7 +2,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { Session, SessionOutput } from '../agent/session.js'
 import { Config } from '../config/index.js'
-import { loadTokenUsage } from '../config/tokens.js'
+import { loadTokenUsage, resetTokenUsage } from '../config/tokens.js'
 import { setOnPlanWritten, PLAN_DIR } from '../tools/write_plan.js'
 import type { Component, Focusable, OverlayHandle } from '@earendil-works/pi-tui'
 import { ProcessTerminal, TUI, Box, Text, Input, Markdown, SelectList, Container, Loader, Spacer, CURSOR_MARKER, visibleWidth }
@@ -885,6 +885,7 @@ export async function startTui(config: Config): Promise<void> {
 
       if (cmd === 'new') {
         Session.clearSavedSession(config.cwd)
+        resetTokenUsage(config.cwd)
         session = new Session(config, output)
         chatContent = ''
         chatMarkdown.setText('')
