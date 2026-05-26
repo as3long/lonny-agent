@@ -98,6 +98,7 @@ export async function startTui(config: Config): Promise<void> {
     label: ' Input ',
     border: { type: 'line' },
     style: { fg: 'white', bg: 'black' },
+    inputOnFocus: true,
   })
 
   // --- Initialize panels ---
