@@ -3,4 +3,6 @@ dist/
 .env
 *.log
 temp/
-out.txtnul
+out.txt
+nul
+$null
