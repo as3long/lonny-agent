@@ -12,6 +12,22 @@ interface SingleEdit {
 function performEdit(filePath: string, oldString: string, newString: string, applier: PatchApplier, cwd: string): { ok: true; removed: number; added: number } | { ok: false; error: string } {
   const resolved = path.resolve(cwd, filePath)
 
+  // Create mode: old_string is empty, write new_string to a new file.
+  if (oldString === '') {
+    if (fs.existsSync(resolved)) {
+      return { ok: false, error: `File already exists: ${filePath}. Use a non-empty old_string to edit it.` }
+    }
+    try {
+      fs.mkdirSync(path.dirname(resolved), { recursive: true })
+      fs.writeFileSync(resolved, newString, 'utf-8')
+    } catch (err) {
+      return { ok: false, error: `Failed to create ${filePath}: ${err instanceof Error ? err.message : String(err)}` }
+    }
+    applier.markRead(resolved)
+    const added = newString.split('\n').length
+    return { ok: true, removed: 0, added }
+  }
+
   let stat: fs.Stats
   try {
     stat = fs.statSync(resolved)
@@ -85,7 +101,10 @@ EXAMPLES:
       { file_path: "src/cli/index.ts", old_string: "let mode: string", new_string: "let mode: 'code' | 'plan'" }
     ]
 
-For creating or deleting files, use \`batch_edit\`.`,
+  Create a new file (empty old_string):
+    file_path: "src/new.ts"
+    old_string: ""
+    new_string: "const x = 1\\nexport { x }"`,
       parameters: {
         file_path: {
           type: 'string',
@@ -126,7 +145,8 @@ For creating or deleting files, use \`batch_edit\`.`,
         const os = typeof input.old_string === 'string' ? input.old_string : ''
         const ns = typeof input.new_string === 'string' ? input.new_string : ''
         if (!fp) return { success: false, output: '', error: 'file_path is required (or use edits: [...])' }
-        if (!os) return { success: false, output: '', error: 'old_string is required' }
+        // old_string omitted → edit mode; old_string = '' → create mode
+        if (!('old_string' in input)) return { success: false, output: '', error: 'old_string is required (pass empty string to create a new file)' }
         edits = [{ file_path: fp, old_string: os, new_string: ns }]
       }
 
@@ -150,7 +170,8 @@ For creating or deleting files, use \`batch_edit\`.`,
       for (const e of edits) {
         const r = performEdit(e.file_path, e.old_string, e.new_string, applier, cwd)
         if (r.ok) {
-          results.push(`  OK ${e.file_path} (${r.removed}→${r.added} lines)`)
+          const label = r.removed === 0 ? `Created` : `Edited`
+          results.push(`  ${label} ${e.file_path} (${r.removed}→${r.added} lines)`)
         } else {
           results.push(`  FAIL ${e.file_path}: ${r.error}`)
           if (!anyFailed) {

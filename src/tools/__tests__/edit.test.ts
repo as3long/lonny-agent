@@ -142,4 +142,48 @@ describe('edit tool', () => {
       expect(r.error).toContain('empty')
     })
   })
+
+  describe('create mode', () => {
+    const createdDir = () => path.join(tmpDir, 'created-test')
+
+    afterAll(() => {
+      fs.rmSync(createdDir(), { recursive: true, force: true })
+    })
+
+    it('creates a new file with empty old_string', async () => {
+      const r = await tool().execute({ file_path: 'created-test/new.ts', old_string: '', new_string: 'const x = 1\nexport { x }' })
+      expect(r.success).toBe(true)
+      const content = fs.readFileSync(path.join(createdDir(), 'new.ts'), 'utf8')
+      expect(content).toBe('const x = 1\nexport { x }')
+    })
+
+    it('creates a file in batch mode', async () => {
+      const r = await tool().execute({
+        edits: [
+          { file_path: 'created-test/a.ts', old_string: '', new_string: '// a' },
+          { file_path: 'created-test/b.ts', old_string: '', new_string: '// b' },
+        ],
+      })
+      expect(r.success).toBe(true)
+      expect(fs.readFileSync(path.join(createdDir(), 'a.ts'), 'utf8')).toBe('// a')
+      expect(fs.readFileSync(path.join(createdDir(), 'b.ts'), 'utf8')).toBe('// b')
+    })
+
+    it('rejects create when file already exists', async () => {
+      const r = await tool().execute({ file_path: 'created-test/new.ts', old_string: '', new_string: 'x' })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('already exists')
+    })
+
+    it('rolls back on create failure in batch', async () => {
+      const r = await tool().execute({
+        edits: [
+          { file_path: 'created-test/rollback-1.ts', old_string: '', new_string: 'keep me' },
+          { file_path: 'created-test/rollback-1.ts', old_string: '', new_string: 'duplicate' },
+        ],
+      })
+      expect(r.success).toBe(false)
+      expect(fs.existsSync(path.join(createdDir(), 'rollback-1.ts'))).toBe(false)
+    })
+  })
 })
