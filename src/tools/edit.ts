@@ -255,7 +255,7 @@ EXAMPLES:
 
       return {
         success: true,
-        output: results.length === 1 ? results[0].slice(3) : `Applied ${results.length} edits:\n${results.join('\n')}`,
+        output: results.join('\n').replace(/^ {2}/gm, ''),
       }
     },
   }
