@@ -9,12 +9,14 @@ export class OpenAIProvider implements LLMProvider {
   private model: string
   private thinking?: boolean
   private reasoningEffort?: string
+  private enableCache: boolean
 
-  constructor(apiKey: string, baseURL?: string, model?: string, thinking?: boolean, reasoningEffort?: string) {
+  constructor(apiKey: string, baseURL?: string, model?: string, thinking?: boolean, reasoningEffort?: string, enableCache?: boolean) {
     this.client = new OpenAI({ apiKey, baseURL })
     this.model = model || 'gpt-4o'
     this.thinking = thinking
     this.reasoningEffort = reasoningEffort
+    this.enableCache = enableCache ?? false
   }
 
   async *chat(
@@ -86,6 +88,7 @@ export class OpenAIProvider implements LLMProvider {
       stream: true,
       stream_options: { include_usage: true },
       ...(this.thinking ? { thinking: { type: 'enabled' }, reasoning_effort: this.reasoningEffort || 'high' } : {}),
+      ...(this.enableCache ? { enable_cache: true } : {}),
     })
 
     let currentToolCall: {

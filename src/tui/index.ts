@@ -645,7 +645,6 @@ export async function startTui(config: Config): Promise<void> {
   let chatContent = ''
   let isRunning = false
   let session: Session
-  let filterMode = false
 
   // ── Create markdown theme (OpenCode-style, clean colors) ───────────────
   const markdownTheme: MarkdownTheme = {
@@ -900,6 +899,7 @@ export async function startTui(config: Config): Promise<void> {
         session.onPlanWritten = planCb
         chatContent = ''
         chatMarkdown.setText('')
+        plansList.clearFilter()
         updateHeader()
         return
       }
@@ -1031,17 +1031,6 @@ export async function startTui(config: Config): Promise<void> {
 
     if (data === '?') {
       showHelpOverlay()
-      return { consume: true }
-    }
-
-    if (data === '/') {
-      if (filterMode) {
-        filterMode = false
-        plansList.clearFilter()
-        return undefined
-      }
-      filterMode = true
-      plansList.setFilter('')
       return { consume: true }
     }
 
