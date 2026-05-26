@@ -20,6 +20,7 @@ export async function startTui(config: Config): Promise<void> {
 
   // Chat panel (left 70%)
   const chatBox = neoBlessed.box({
+    parent: screen,
     top: 0,
     left: 0,
     width: '70%',
@@ -36,6 +37,7 @@ export async function startTui(config: Config): Promise<void> {
 
   // Right panel container (30%)
   const rightBox = neoBlessed.box({
+    parent: screen,
     top: 0,
     left: '70%',
     width: '30%',
@@ -88,6 +90,7 @@ export async function startTui(config: Config): Promise<void> {
 
   // Input bar (bottom 3 lines)
   const inputBox = neoBlessed.textbox({
+    parent: screen,
     bottom: 0,
     left: 0,
     width: '100%',
@@ -233,8 +236,9 @@ export async function startTui(config: Config): Promise<void> {
   // Initial render
   screen.render()
 
-  // Delay input focus until the screen is fully laid out
+  // Delay input focus and initial data load until the screen is fully laid out
   setImmediate(() => {
+    refreshAll()
     inputBox.focus()
     screen.render()
   })
