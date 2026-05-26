@@ -23,7 +23,7 @@ function printUserMessage(prompt: string): void {
 
 function printToolInvocation(tc: ToolCall): void {
   const detail = formatToolInput(tc)
-  const isWrite = tc.name === 'batch_edit' || tc.name === 'write_plan'
+  const isWrite = tc.name === 'batch_edit' || tc.name === 'write_plan' || tc.name === 'edit'
   const icon = isWrite ? `${YE}◆${RS}` : `${GR}◇${RS}`
   const label = isWrite ? `${YE}${tc.name}${RS}` : `${GR}${tc.name}${RS}`
   console.error(`  ${GY}│${RS}  ${icon} ${label}${detail ? ` ${GY}${detail}${RS}` : ''}`)
@@ -60,8 +60,8 @@ function printToolResult(tc: ToolCall, result: ToolResult): void {
         if (l.trim()) console.error(`  ${GY}│${RS}    ${GY}${l.trim()}${RS}`)
       }
     }
-  } else if (tc.name === 'write_plan') {
-    console.error(`  ${GY}│${RS}  ${GR}✔${RS} ${result.output || 'write_plan'}`)
+  } else if (tc.name === 'write_plan' || tc.name === 'edit') {
+    console.error(`  ${GY}│${RS}  ${GR}✔${RS} ${result.output || tc.name}`)
   } else {
     console.error(`  ${GY}│${RS}  ${GR}✔${RS} ${tc.name}`)
   }
@@ -87,6 +87,8 @@ function formatToolInput(tc: ToolCall): string {
     parts.push(lines.join(', '))
   } else if (tc.name === 'write_plan') {
     if (typeof tc.input.filename === 'string') parts.push(tc.input.filename)
+  } else if (tc.name === 'edit') {
+    if (typeof tc.input.file_path === 'string') parts.push(tc.input.file_path)
   }
   return parts.join(' │ ')
 }
@@ -152,13 +154,10 @@ Environment:
   ${isWindows ? 'Use `type` instead of `cat`, `dir` instead of `ls`, `echo` for file creation with `>` redirection.' : ''}
 
 RULES:
-1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. The \`read\` output prefixes each line with "<lineNumber>: " — use those numbers to pick correct \`@@ -<oldStart>,<oldCount> @@\` values, but do NOT include the "N: " prefix in patch content.
-2. Batch all edits: When you are ready to make changes, produce ONE single \`batch_edit\` tool call containing ALL file modifications. Do NOT make multiple small edit calls.
-3. The \`batch_edit\` tool accepts a compact diff format that can describe changes to multiple files in one operation. Use it.
-4. Each \`batch_edit\` call costs the same as a single edit call, so always prefer ONE batch over many individual edits.
-5. After applying the batch, if more work is needed, continue with Phase 1 (reading) again.
-6. In \`patch_text\`, emit REAL newlines between hunk lines. NEVER write the literal characters \`\\n\` or \`\\r\\n\` — they will be inserted verbatim into the file and corrupt it.
-7. Use paths RELATIVE to the working directory in the "@ <path>" header. Do NOT use absolute paths like "C:\\Users\\..." or "/home/...".
+1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into edit/batch_edit.
+2. Prefer \`edit\` for single-file changes: copy 2-3 lines of surrounding context for a unique match, then replace. No line numbers, no hunk headers — just exact string replacement.
+3. Only use \`batch_edit\` when you need to create/delete files or change multiple files in ONE call.
+4. After applying changes, if more work is needed, continue with Phase 1 (reading) again.
 
 Available tools:
 - \`read\`: Read file contents (paths: string[])
@@ -166,7 +165,8 @@ Available tools:
 - \`grep\`: Search file content by regex (pattern: string, include?: string, path?: string)
 - \`ls\`: List directory (path?: string)
 - \`bash\`: Execute a shell command (command: string, description?: string, timeout?: number)
-- \`batch_edit\`: Apply ALL file edits at once (patch_text: string)`
+- \`edit\`: Replace exact text in a single file (file_path, old_string, new_string)
+- \`batch_edit\`: Create/delete files or change multiple files at once (patch_text: string)`
 }
 
 export class Session {

@@ -26,32 +26,35 @@ describe('ToolRegistry', () => {
     expect(names).toContain('grep')
     expect(names).toContain('ls')
     expect(names).toContain('bash')
+    expect(names).toContain('edit')
     expect(names).toContain('batch_edit')
     expect(names).not.toContain('write_plan')
   })
 
-  it('excludes batch_edit in plan mode and includes write_plan', () => {
+  it('excludes batch_edit and edit in plan mode and includes write_plan', () => {
     const reg = new ToolRegistry({ cwd: tmpDir, autoApprove: true, applier: new PatchApplier(), mode: 'plan' })
     const defs = reg.getDefinitions()
     const names = defs.map(d => d.name)
     expect(names).toContain('read')
-    expect(names).toContain('glob')
+    expect(names).not.toContain('edit')
     expect(names).not.toContain('batch_edit')
     expect(names).toContain('write_plan')
   })
 
-  it('setMode swaps tools when switching to code', () => {
+  it('setMode adds edit and batch_edit when switching to code', () => {
     const reg = new ToolRegistry({ cwd: tmpDir, autoApprove: true, applier: new PatchApplier(), mode: 'plan' })
     reg.setMode('code')
     const names = reg.getDefinitions().map(d => d.name)
+    expect(names).toContain('edit')
     expect(names).toContain('batch_edit')
     expect(names).not.toContain('write_plan')
   })
 
-  it('setMode swaps tools when switching to plan', () => {
+  it('setMode removes edit and batch_edit when switching to plan', () => {
     const reg = new ToolRegistry({ cwd: tmpDir, autoApprove: true, applier: new PatchApplier(), mode: 'code' })
     reg.setMode('plan')
     const names = reg.getDefinitions().map(d => d.name)
+    expect(names).not.toContain('edit')
     expect(names).not.toContain('batch_edit')
     expect(names).toContain('write_plan')
   })

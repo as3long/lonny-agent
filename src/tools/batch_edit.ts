@@ -23,7 +23,7 @@ export function createBatchEditTool(applier: PatchApplier, cwd: string, autoAppr
   return {
     definition: {
       name: 'batch_edit',
-      description: `Apply ALL file edits at once using a compact diff format. This is the ONLY tool for making file changes.
+      description: `Apply changes to MULTIPLE files in one call, or create/delete files. For editing a single file, use the \`edit\` tool instead (simpler, no line numbers needed).
 
 The "@@ -<oldStart>,<oldCount> +<newStart>,<newCount> @@" hunk header line numbers MUST be exact and match the file as last shown by \`read\` (whose output prefixes every line with "<lineNumber>: "). There is NO fuzzy search — wrong line numbers will fail the patch.
 
