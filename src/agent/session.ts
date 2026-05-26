@@ -364,14 +364,24 @@ export class Session {
       const toolCalls: ToolCall[] = []
       let fullResponse = ''
       let reasoningContent: string | undefined
+      let reasoningOutput = false
 
       const stream = this.provider.chat(this.messages, this.registry.getDefinitions())
 
       for await (const chunk of stream) {
         if (chunk.reasoning_content) {
           reasoningContent = chunk.reasoning_content
+          if (!reasoningOutput) {
+            writeOut(`\n  ${GY}┃${RS} ${GY}${BLD}...${RS}${GY} `, out)
+            reasoningOutput = true
+          }
+          writeOut(chunk.reasoning_content, out)
         }
         if (chunk.type === 'text' && chunk.text) {
+          if (reasoningOutput) {
+            writeOut(`${RS}\n\n`, out)
+            reasoningOutput = false
+          }
           fullResponse += chunk.text
           writeOut(chunk.text, out)
         } else if (chunk.type === 'tool_use' && chunk.tool_call) {
@@ -393,6 +403,12 @@ export class Session {
             }
           }
         }
+      }
+
+      // Close reasoning display if still open (model ended with tool calls, no text)
+      if (reasoningOutput) {
+        writeOut(`${RS}\n\n`, out)
+        reasoningOutput = false
       }
 
       if (toolCalls.length === 0) {
