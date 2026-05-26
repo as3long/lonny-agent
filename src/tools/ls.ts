@@ -13,6 +13,9 @@ export function createLsTool(cwd: string): Tool {
     },
     async execute(input): Promise<ToolResult> {
       const rawPath = input.path as string | undefined
+      if (rawPath && typeof rawPath !== 'string') {
+        return { success: false, output: '', error: 'path must be a string' }
+      }
       const dirPath = rawPath ? path.resolve(cwd, rawPath) : cwd
 
       try {

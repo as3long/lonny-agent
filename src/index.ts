@@ -18,9 +18,10 @@ const CLR = '\x1b[2J\x1b[H'
 
 function printHeader(config: Config): void {
   const cwd = config.cwd.replace(os.homedir(), '~')
+  const modeLabel = config.mode === 'plan' ? `${MG}plan${RS} ` : ''
   process.stdout.write(
     `${CLR}${GY}╭────────────────────────────────────────────────╮${RS}\n` +
-    `  ${BLD}lonny${RS} ${GY}${config.model}${RS}  ${GY}${config.provider}${RS}  ${GY}${cwd}${RS}\n` +
+    `  ${BLD}lonny${RS} ${GY}${config.model}${RS}  ${GY}${config.provider}${RS}  ${modeLabel}${GY}${cwd}${RS}\n` +
     `${GY}╰────────────────────────────────────────────────╯${RS}\n`
   )
 }
@@ -50,6 +51,26 @@ async function tuiLoop(config: Config): Promise<void> {
 
     const trimmed = input.trim()
     if (!trimmed) continue
+
+    if (trimmed.startsWith('/')) {
+      const parts = trimmed.slice(1).split(/\s+/)
+      const cmd = parts[0]
+      const arg = parts.slice(1).join(' ')
+
+      if (cmd === 'mode') {
+        if (arg === 'code' || arg === 'plan') {
+          session.setMode(arg)
+          printHeader(session.config)
+          process.stdout.write(`  ${GR}●${RS} Switched to ${arg} mode\n`)
+        } else {
+          process.stdout.write(`  ${YE}●${RS} Usage: /mode code|plan  (current: ${session.config.mode})\n`)
+        }
+        continue
+      }
+
+      process.stdout.write(`  ${RE}●${RS} Unknown command: /${cmd}\n`)
+      continue
+    }
 
     try {
       await session.chat(trimmed)

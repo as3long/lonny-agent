@@ -75,8 +75,6 @@ export function parsePatch(text: string): ParseResult {
               hunkLines.push({ kind: 'delete', text: hl.slice(1) })
             } else if (hl.startsWith(' ')) {
               hunkLines.push({ kind: 'context', text: hl.slice(1) })
-            } else if (hl === '') {
-              hunkLines.push({ kind: 'context', text: '' })
             }
             j++
           }

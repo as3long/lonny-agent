@@ -10,6 +10,7 @@ export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
   let autoApprove = false
   let thinking: boolean | undefined
   let reasoningEffort: string | undefined
+  let mode: 'code' | 'plan' | undefined
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
@@ -29,6 +30,8 @@ export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
       thinking = true
     } else if (arg === '--reasoning-effort') {
       reasoningEffort = args[++i]
+    } else if (arg === '--mode') {
+      mode = args[++i] as 'code' | 'plan'
     }
   }
 
@@ -36,7 +39,7 @@ export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
     prompt = args[0]
   }
 
-  const config = loadConfig({ apiKey, baseUrl, provider: provider as 'openai' | 'anthropic' | undefined, model, autoApprove, thinking, reasoningEffort })
+  const config = loadConfig({ apiKey, baseUrl, provider: provider as 'openai' | 'anthropic' | undefined, model, autoApprove, thinking, reasoningEffort, mode })
 
   return { config, prompt }
 }

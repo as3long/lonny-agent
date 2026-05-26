@@ -11,18 +11,34 @@ export interface ToolContext {
   cwd: string
   autoApprove: boolean
   applier: PatchApplier
+  mode: 'code' | 'plan'
 }
 
 export class ToolRegistry {
   private tools: Map<string, Tool> = new Map()
+  private context: ToolContext
 
   constructor(context: ToolContext) {
+    this.context = context
     this.register(createReadTool(context.applier, context.cwd))
     this.register(globTool)
     this.register(createGrepTool(context.cwd))
     this.register(createLsTool(context.cwd))
     this.register(bashTool)
-    this.register(createBatchEditTool(context.applier, context.cwd, context.autoApprove))
+    if (context.mode === 'code') {
+      this.register(createBatchEditTool(context.applier, context.cwd, context.autoApprove))
+    }
+  }
+
+  setMode(mode: 'code' | 'plan'): void {
+    if (mode === 'code') {
+      if (!this.tools.has('batch_edit')) {
+        this.register(createBatchEditTool(this.context.applier, this.context.cwd, this.context.autoApprove))
+      }
+    } else {
+      this.tools.delete('batch_edit')
+    }
+    this.context.mode = mode
   }
 
   private register(tool: Tool): void {

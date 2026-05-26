@@ -36,19 +36,18 @@ export class PatchApplier {
     }
   }
 
-  private checkModified(filePath: string): string | null {
-    const resolved = path.resolve(filePath)
-    const state = this.readFiles.get(resolved)
+  private checkModified(resolvedPath: string): string | null {
+    const state = this.readFiles.get(resolvedPath)
     if (!state) {
-      return `File "${filePath}" was not read in this session. Read it first before editing.`
+      return `File "${resolvedPath}" was not read in this session. Read it first before editing.`
     }
     try {
-      const stat = fs.statSync(resolved)
+      const stat = fs.statSync(resolvedPath)
       if (stat.mtimeMs > state.modTime) {
-        return `File "${filePath}" was modified externally since last read. Re-read it before editing.`
+        return `File "${resolvedPath}" was modified externally since last read. Re-read it before editing.`
       }
     } catch {
-      return `File "${filePath}" no longer exists.`
+      return `File "${resolvedPath}" no longer exists.`
     }
     return null
   }
@@ -66,7 +65,7 @@ export class PatchApplier {
         const resolvedPath = path.resolve(cwd, change.path)
 
         if (change.operation === 'delete') {
-          const err = this.checkModified(change.path)
+          const err = this.checkModified(resolvedPath)
           if (err) {
             failedChange = change
             failureError = err
@@ -75,7 +74,7 @@ export class PatchApplier {
           snapshots.set(resolvedPath, fs.readFileSync(resolvedPath, 'utf-8'))
           rollback.set(resolvedPath, null)
         } else if (change.operation === 'update') {
-          const err = this.checkModified(change.path)
+          const err = this.checkModified(resolvedPath)
           if (err) {
             failedChange = change
             failureError = err
@@ -206,7 +205,10 @@ function findContext(lines: string[], hunk: Hunk): number {
     }
   }
 
-  if (bestIdx >= 0) return bestIdx
+  if (bestScore >= ctxLines.length) return bestIdx
+
+  bestScore = 0
+  bestIdx = -1
 
   for (let i = 0; i < start; i++) {
     const score = scoreContext(lines, i, ctxLines)
@@ -220,7 +222,8 @@ function findContext(lines: string[], hunk: Hunk): number {
     if (score > bestScore) { bestScore = score; bestIdx = i }
   }
 
-  return bestIdx
+  if (bestScore >= ctxLines.length) return bestIdx
+  return -1
 }
 
 function scoreContext(lines: string[], startIdx: number, ctxLines: string[]): number {

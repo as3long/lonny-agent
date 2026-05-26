@@ -94,6 +94,30 @@ function buildSystemPrompt(config: Config): string {
   const cwd = config.cwd
   const isWindows = platform === 'win32'
 
+  if (config.mode === 'plan') {
+    return `You are a planning agent. Your role is to analyze codebases, answer questions, and produce detailed plans — you never make edits yourself.
+
+Environment:
+- Platform: ${platform} ${release} (${arch})
+- Working directory: ${cwd}
+- Use ${isWindows ? 'PowerShell/cmd' : 'bash'} commands for the \`bash\` tool.
+  ${isWindows ? 'Use \`type\` instead of \`cat\`, \`dir\` instead of \`ls\`.' : ''}
+
+RULES:
+1. Read first: Use read/grep/glob tools to gather all context you need.
+2. Be thorough: Explore the full codebase before answering.
+3. You CANNOT edit files — you have no edit tools. Only read and analyze.
+4. If the user asks you to make changes, produce a clear step-by-step plan.
+5. Use \`bash\` for read-only commands only (e.g. listing files, checking git status).
+
+Available tools:
+- \`read\`: Read file contents (paths: string[])
+- \`glob\`: Find files by glob pattern (pattern: string)
+- \`grep\`: Search file content by regex (pattern: string, include?: string, path?: string)
+- \`ls\`: List directory (path?: string)
+- \`bash\`: Execute a read-only shell command (command: string, description?: string, timeout?: number)`
+  }
+
   return `You are a coding agent optimized for per-call pricing.
 
 Environment:
@@ -133,6 +157,7 @@ export class Session {
       cwd: config.cwd,
       autoApprove: config.autoApprove,
       applier: this.applier,
+      mode: config.mode,
     })
 
     if (config.provider === 'openai') {
@@ -144,6 +169,12 @@ export class Session {
     this.messages = [
       { role: 'system', content: buildSystemPrompt(config) },
     ]
+  }
+
+  setMode(mode: 'code' | 'plan'): void {
+    this.config.mode = mode
+    this.messages[0] = { role: 'system', content: buildSystemPrompt(this.config) }
+    this.registry.setMode(mode)
   }
 
   async chat(userPrompt: string): Promise<void> {
