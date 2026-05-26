@@ -63,7 +63,8 @@ function termWidth(): number {
 
 /** Build padding spaces with TH background to fill the rest of the line. */
 function thinkPad(contentLen: number): string {
-  const pad = Math.max(0, termWidth() - 4 - contentLen)
+  // Subtract 2 as safety margin for TUI padding vs terminal width
+  const pad = Math.max(0, termWidth() - 6 - contentLen)
   return pad > 0 ? `${TH}${' '.repeat(pad)}` : ''
 }
 
