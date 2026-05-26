@@ -1,6 +1,11 @@
 import { Patch, FileChange, FileOperationType, Hunk, HunkLine } from './types.js'
 
-const FILE_HEADER_RE = /^@\s+([^\s:]+)(?::(create|delete))?$/
+// File header: "@ path" or "@ path:create" / "@ path:delete".
+// Path may be a Windows absolute path (e.g. "C:\foo\bar"), so we anchor
+// the optional ":create" / ":delete" suffix at end of line and let the
+// path consume everything before it. Path must not start with "@" to
+// avoid matching "@ @@ ...".
+const FILE_HEADER_RE = /^@\s+(?!@)(.+?)(:create|:delete)?$/
 const HUNK_HEADER_RE = /^@@\s+-(\d+),?(\d*)\s+\+(\d+),?(\d*)\s*@@/
 
 interface ParseResult {
@@ -20,8 +25,11 @@ export function parsePatch(text: string): ParseResult {
 
     const fileMatch = line.match(FILE_HEADER_RE)
     if (fileMatch) {
-      const path = fileMatch[1]
-      const operation = (fileMatch[2] || 'update') as FileOperationType
+      const path = fileMatch[1].trim()
+      const opMarker = fileMatch[2] // ":create" | ":delete" | undefined
+      const operation: FileOperationType = opMarker === ':create'
+        ? 'create'
+        : opMarker === ':delete' ? 'delete' : 'update'
 
       const startLines: string[] = []
       i++
@@ -91,7 +99,11 @@ export function parsePatch(text: string): ParseResult {
         }
       }
 
-      changes.push({ path, operation, hunks })
+      // Only push update changes that contain at least one hunk; otherwise
+      // a stray "@ something" line would silently produce a no-op change.
+      if (hunks.length > 0) {
+        changes.push({ path, operation, hunks })
+      }
       i = blockEnd
     } else {
       i++

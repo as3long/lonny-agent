@@ -82,6 +82,7 @@ Example:
         if (/^(diff --git|---\s|\+\+\+\s)/m.test(patchText)) hints.push('Do NOT use unified diff headers like "diff --git" / "--- a/" / "+++ b/". Use the compact "@ <path>" header.')
         if (!/^@\s+\S/m.test(patchText)) hints.push('Missing "@ <path>" file header. Every change must start with a line like "@ src/foo.ts" (or ":create" / ":delete").')
         if (/\\r\\n|\\n|\\t/.test(patchText)) hints.push('Do NOT escape newlines as "\\n" or "\\r\\n"; emit real newlines in patch_text.')
+        if (/^@\s+([a-zA-Z]:[\\/]|\/)/m.test(patchText)) hints.push('Use a path RELATIVE to the working directory in the "@ <path>" header (e.g. "src/foo.ts"), not an absolute path.')
         const hintBlock = hints.length ? `\nHints:\n- ${hints.join('\n- ')}` : ''
         dumpPatchToStderr('no changes parsed', patchText)
         return { success: false, output: '', error: `No changes found in patch.${hintBlock}\n\nReceived patch_text (first 400 chars):\n${previewPatch(patchText)}` }

@@ -102,4 +102,16 @@ describe('batch_edit tool', () => {
     expect(result.success).toBe(false)
     expect(result.error).toContain('escape newlines')
   })
+
+  it('accepts a Windows absolute path in the file header', async () => {
+    const filePath = path.join(editDir, 'abs.txt')
+    fs.writeFileSync(filePath, 'one\ntwo\nthree\n')
+    const app = new PatchApplier()
+    app.markRead(filePath)
+    const tool = createBatchEditTool(app, editDir, true)
+    const patch = `@ ${filePath}\n@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three\n`
+    const result = await tool.execute({ patch_text: patch })
+    expect(result.success).toBe(true)
+    expect(fs.readFileSync(filePath, 'utf8')).toContain('TWO')
+  })
 })
