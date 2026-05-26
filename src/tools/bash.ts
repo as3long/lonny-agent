@@ -2,11 +2,11 @@ import { execSync } from 'node:child_process'
 import { Tool, ToolResult } from './types.js'
 
 /** Regex patterns that indicate a command WRITES to the filesystem.
- *  The bash tool must be read-only to keep `edit` as the sole file-mutation path. */
+ *  The bash tool must be read-only — use `edit` for all file mutations. */
 const WRITE_PATTERNS = [
   />\s+(?!&)\S/,                            // cmd ... > file  (redirect, not 2>&1)
   />>\s*\S/,                                 // cmd >> file (append)
-  /\b(?:touch|cp|mv|rm|mkdir|rmdir|tee|dd|install|ln)\b/,
+  /(?:^|[|;&]\s*)(?:touch|cp|mv|rm|mkdir|rmdir|tee|dd|install|ln)\b/,
   /<<\s*['"]?\w+['"]?/,                      // heredoc redirection
   /\|\s*tee\b/,                              // pipe to tee
 ]

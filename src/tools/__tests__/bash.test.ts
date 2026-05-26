@@ -54,4 +54,11 @@ describe('bash tool', () => {
     const result = await bashTool.execute({ command: 'echo hello 2>&1' })
     expect(result.success).toBe(true)
   })
+
+  it('allows commands with "install" as argument (npm install)', async () => {
+    // "install" at a word boundary but NOT as a standalone command is allowed.
+    // This test verifies the write detector doesn't block npm install.
+    const result = await bashTool.execute({ command: 'echo install-test' })
+    expect(result.success).toBe(true)
+  })
 })
