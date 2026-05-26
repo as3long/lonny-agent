@@ -24,7 +24,10 @@ function performEdit(filePath: string, oldString: string, newString: string, app
 
   applier.markRead(resolved)
 
-  const content = fs.readFileSync(resolved, 'utf-8')
+  const rawContent = fs.readFileSync(resolved, 'utf-8')
+  // Normalize CRLF → LF so that old_string (which has \n) matches files
+  // saved with \r\n on Windows.
+  const content = rawContent.replace(/\r\n/g, '\n')
 
   const index = content.indexOf(oldString)
   if (index === -1) {
