@@ -4,7 +4,7 @@ import { Session, SessionOutput } from '../agent/session.js'
 import { Config } from '../config/index.js'
 import { setOnPlanWritten, PLAN_DIR } from '../tools/write_plan.js'
 import type { Component, OverlayHandle } from '@earendil-works/pi-tui'
-import { ProcessTerminal, TUI, Box, Text, Input, Markdown, SelectList, Container, Loader }
+import { ProcessTerminal, TUI, Box, Text, Input, Markdown, SelectList, Container, Loader, Spacer }
   from '@earendil-works/pi-tui'
 import type { SelectItem, SelectListTheme, MarkdownTheme } from '@earendil-works/pi-tui'
 
@@ -111,6 +111,8 @@ class HeaderBar implements Component {
   private agentStatus: 'running' | 'idle'
   private planCount: number
   private planName: string
+  private totalInputTokens: number = 0
+  private totalOutputTokens: number = 0
 
   constructor(model: string, provider: string) {
     this.model = model
@@ -125,6 +127,10 @@ class HeaderBar implements Component {
   setAgentStatus(s: 'running' | 'idle'): void { this.agentStatus = s }
   setPlanCount(n: number): void { this.planCount = n }
   setPlanName(n: string): void { this.planName = n }
+  setTokenUsage(inputTokens: number, outputTokens: number): void {
+    this.totalInputTokens = inputTokens
+    this.totalOutputTokens = outputTokens
+  }
   invalidate(): void {}
   handleInput?(data: string): void {}
 
@@ -140,6 +146,14 @@ class HeaderBar implements Component {
     const modelInfo = colors.dim(`${this.provider}/${this.model}`)
 
     let rightPart = `${statusDot} ${statusLabel}  ${modeLabel}  ${modelInfo}`
+
+    // Show token usage if there are any
+    const totalTokens = this.totalInputTokens + this.totalOutputTokens
+    if (totalTokens > 0) {
+      const tokenStr = `\u25B4${this.totalInputTokens} \u25BE${this.totalOutputTokens}  ${totalTokens}`
+      rightPart += `  ${colors.dim('|')}  ${colors.dim(tokenStr)}`
+    }
+
     if (this.planCount > 0) {
       rightPart += `  ${colors.dim('|')}  ${colors.accent(`${this.planCount} plan${this.planCount > 1 ? 's' : ''}`)}`
       if (this.planName) rightPart += ` ${colors.dim(this.planName)}`
@@ -289,11 +303,14 @@ export async function startTui(config: Config): Promise<void> {
   const footer = new FooterBar()
 
   // ── Build layout ───────────────────────────────────────────────────────
-  tui.addChild(header)
+  // Header is shown as a fixed overlay at the top so it stays visible
+  // even when chat content is long.
+  tui.addChild(new Spacer(1)) // offset for fixed header overlay
   tui.addChild(chatBox)
   tui.addChild(input)
   tui.addChild(loader)
   tui.addChild(footer)
+  tui.showOverlay(header, { anchor: 'top-left', row: 0, col: 0, nonCapturing: true })
 
   // ── Plans overlay components ───────────────────────────────────────────
   const plansList = new PlansList([], 15, selectTheme)
@@ -373,6 +390,9 @@ export async function startTui(config: Config): Promise<void> {
     header.setPlanCount(plans.length)
     const sel = plansList.getSelectedItem()
     header.setPlanName(sel ? sel.label : '')
+    if (session) {
+      header.setTokenUsage(session.totalInputTokens, session.totalOutputTokens)
+    }
     tui.requestRender(true)
   }
 

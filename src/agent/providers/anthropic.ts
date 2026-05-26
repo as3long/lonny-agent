@@ -87,8 +87,15 @@ export class AnthropicProvider implements LLMProvider {
       input: string
     } | null = null
 
+    let inputTokens = 0
+    let outputTokens = 0
+
     for await (const event of stream) {
-      if (event.type === 'content_block_delta') {
+      if (event.type === 'message_start') {
+        if (event.message.usage) {
+          inputTokens = event.message.usage.input_tokens ?? 0
+        }
+      } else if (event.type === 'content_block_delta') {
         if (event.delta.type === 'text_delta') {
           yield { type: 'text', text: event.delta.text }
         } else if (event.delta.type === 'input_json_delta' && currentToolUse) {
@@ -115,8 +122,11 @@ export class AnthropicProvider implements LLMProvider {
           currentToolUse = null
         }
       } else if (event.type === 'message_stop') {
-        yield { type: 'complete', finish_reason: 'end_turn' }
+        yield { type: 'complete', finish_reason: 'end_turn', usage: { input_tokens: inputTokens, output_tokens: outputTokens } }
       } else if (event.type === 'message_delta') {
+        if (event.usage) {
+          outputTokens = event.usage.output_tokens ?? 0
+        }
         if (event.delta.stop_reason === 'end_turn' || event.delta.stop_reason === 'stop_sequence') {
           if (currentToolUse) {
             yield {
@@ -129,7 +139,7 @@ export class AnthropicProvider implements LLMProvider {
             }
             currentToolUse = null
           }
-          yield { type: 'complete', finish_reason: event.delta.stop_reason }
+          yield { type: 'complete', finish_reason: event.delta.stop_reason, usage: { input_tokens: inputTokens, output_tokens: outputTokens } }
         }
       }
     }

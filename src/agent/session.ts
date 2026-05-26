@@ -106,6 +106,12 @@ function formatToolInput(tc: ToolCall): string {
   return parts.join(' \u2502 ')
 }
 
+function printTokenStats(turnIn: number, turnOut: number, totalIn: number, totalOut: number, output?: SessionOutput): void {
+  const total = totalIn + totalOut
+  const msg = `  ${GY}┃${RS} ${GY}${BLD}\u25B4${RS}${GY}${turnIn}${RS} ${GY}${BLD}\u25BE${RS}${GY}${turnOut}${RS}  ${GY}total${RS} ${total}`
+  writeOut(`\n${msg}\n`, output)
+}
+
 function buildSystemPrompt(config: Config): string {
   const platform = os.platform()
   const release = os.release()
@@ -191,6 +197,10 @@ export class Session {
   applier: PatchApplier
   config: Config
   output?: SessionOutput
+  totalInputTokens: number = 0
+  totalOutputTokens: number = 0
+  turnInputTokens: number = 0
+  turnOutputTokens: number = 0
 
   constructor(config: Config, output?: SessionOutput) {
     this.config = config
@@ -225,6 +235,10 @@ export class Session {
     printUserMessage(userPrompt, out)
     this.messages.push({ role: 'user', content: userPrompt })
 
+    // Reset per-turn token counters
+    this.turnInputTokens = 0
+    this.turnOutputTokens = 0
+
     let iterations = 0
     const maxIterations = 50
 
@@ -246,8 +260,15 @@ export class Session {
         } else if (chunk.type === 'tool_use' && chunk.tool_call) {
           toolCalls.push(chunk.tool_call)
         } else if (chunk.type === 'complete') {
+          if (chunk.usage) {
+            this.turnInputTokens += chunk.usage.input_tokens
+            this.turnOutputTokens += chunk.usage.output_tokens
+            this.totalInputTokens += chunk.usage.input_tokens
+            this.totalOutputTokens += chunk.usage.output_tokens
+          }
           if (chunk.finish_reason === 'stop' || chunk.finish_reason === 'end_turn') {
             if (toolCalls.length === 0) {
+              printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, out)
               writeOut('\n\n', out)
               return
             }
@@ -257,6 +278,7 @@ export class Session {
 
       if (toolCalls.length === 0) {
         if (fullResponse) {
+          printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, out)
           writeOut('\n\n', out)
         }
         return
@@ -286,6 +308,7 @@ export class Session {
     }
 
     if (iterations >= maxIterations) {
+      printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, out)
       writeOut('\nAgent reached maximum iterations. Stopping.\n', out)
     }
   }

@@ -88,7 +88,7 @@ export class OpenAIProvider implements LLMProvider {
       messages: openAIMessages,
       tools: openAIFormattedTools.length > 0 ? openAIFormattedTools : undefined,
       stream: true,
-      stream_options: { include_usage: false },
+      stream_options: { include_usage: true },
       ...(this.thinking ? { thinking: { type: 'enabled' }, reasoning_effort: this.reasoningEffort || 'high' } : {}),
     })
 
@@ -99,10 +99,38 @@ export class OpenAIProvider implements LLMProvider {
     } | null = null
     let fullText = ''
     let reasoningContent: string | undefined
+    let lastUsage: { input_tokens?: number; output_tokens?: number } | undefined
+
+    // Track a pending "complete" yield — OpenAI sends finish_reason in a content
+    // chunk but sends usage in a *separate final chunk* with no choices/delta.
+    // We defer the complete yield until we see the usage chunk (or the stream ends).
+    let pendingComplete: {
+      finish_reason: string
+      reasoning_content?: string
+    } | null = null
 
     for await (const chunk of stream) {
+      // Capture usage info if present (may come in a chunk without choices)
+      const rawUsage: { input_tokens?: number; output_tokens?: number } | undefined = (chunk as any).usage
+      if (rawUsage) {
+        lastUsage = rawUsage
+        // If we have a pending complete, yield it now with usage
+        if (pendingComplete) {
+          yield {
+            type: 'complete',
+            finish_reason: pendingComplete.finish_reason,
+            reasoning_content: pendingComplete.reasoning_content,
+            usage: { input_tokens: rawUsage.input_tokens ?? 0, output_tokens: rawUsage.output_tokens ?? 0 },
+          }
+          pendingComplete = null
+          reasoningContent = undefined
+        }
+      }
+
       const delta = chunk.choices?.[0]?.delta
-      if (!delta) continue
+      if (!delta) {
+        continue
+      }
 
       if ((delta as any).reasoning_content) {
         reasoningContent = (reasoningContent || '') + (delta as any).reasoning_content
@@ -166,12 +194,45 @@ export class OpenAIProvider implements LLMProvider {
           reasoningContent = undefined
           currentToolCall = null
         }
-        yield { type: 'complete', finish_reason: chunk.choices[0].finish_reason, reasoning_content: reasoningContent }
-        reasoningContent = undefined
+
+        if (lastUsage) {
+          // Usage already arrived (e.g. with some providers/configs that bundle it)
+          yield {
+            type: 'complete',
+            finish_reason: chunk.choices[0].finish_reason,
+            reasoning_content: reasoningContent,
+            usage: { input_tokens: lastUsage.input_tokens ?? 0, output_tokens: lastUsage.output_tokens ?? 0 },
+          }
+          reasoningContent = undefined
+        } else {
+          // Usage will come in a later chunk — defer the complete yield
+          pendingComplete = {
+            finish_reason: chunk.choices[0].finish_reason,
+            reasoning_content: reasoningContent,
+          }
+          reasoningContent = undefined
+        }
       }
     }
 
+    // Flush any pending complete (stream ended without a usage chunk)
+    if (pendingComplete) {
+      const usage = lastUsage
+        ? { input_tokens: lastUsage.input_tokens ?? 0, output_tokens: lastUsage.output_tokens ?? 0 }
+        : undefined
+      yield {
+        type: 'complete',
+        finish_reason: pendingComplete.finish_reason,
+        reasoning_content: pendingComplete.reasoning_content,
+        usage,
+      }
+      pendingComplete = null
+    }
+
     if (currentToolCall) {
+      const usage = lastUsage
+        ? { input_tokens: lastUsage.input_tokens ?? 0, output_tokens: lastUsage.output_tokens ?? 0 }
+        : undefined
       yield {
         type: 'tool_use',
         tool_call: {
@@ -180,6 +241,7 @@ export class OpenAIProvider implements LLMProvider {
           input: JSON.parse(currentToolCall.arguments || '{}'),
         },
         reasoning_content: reasoningContent,
+        usage,
       }
     }
   }

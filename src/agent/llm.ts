@@ -16,10 +16,16 @@ export interface LLMProvider {
   ): AsyncGenerator<LLMChunk>
 }
 
+export interface TokenUsage {
+  input_tokens: number
+  output_tokens: number
+}
+
 export interface LLMChunk {
   type: 'text' | 'tool_use' | 'complete'
   text?: string
   tool_call?: ToolCall
   finish_reason?: string
   reasoning_content?: string
+  usage?: TokenUsage
 }
