@@ -185,7 +185,7 @@ RULES:
 3. You CANNOT edit source files — you have no code edit tools. Only read and analyze.
 4. Use \`bash\` for read-only commands only (e.g. listing files, checking git status).
 5. ALWAYS persist the final plan to the \`.lonny/\` folder using the \`write_plan\` tool. Pass only a filename (e.g. \`plan.md\` or \`add-auth/plan.md\`); the tool stores it under \`.lonny/\` automatically.
-6. MAXIMIZE WORK PER API CALL: Batch multiple reads into one \`read\` call (paths: [...]). Gather ALL context in as few calls as possible.
+6. COST OPTIMIZATION (CRITICAL): Each API call costs money. Batch multiple reads into one \`read\` call (paths: [...]). Gather ALL context in as few calls as possible.
 
 OUTPUT FORMAT (always respond in this structure once you have enough context):
 
@@ -233,7 +233,7 @@ RULES:
 5. When copying old_string from \`read\` output, include 2-3 lines of context BEFORE and AFTER the target change to make the string unique in the file.
 6. On Windows, files may use CRLF (\r\n) line endings, but the \`edit\` tool normalizes them to LF (\n). Always use \`\n\` (not \`\r\n\`) in old_string/new_string.
 7. Prefer batch edits (\`edits: [...]\`) over single edits when modifying multiple spots in the same file — the tool processes them in reverse order so positions stay valid.
-8. MAXIMIZE WORK PER API CALL: Batch multiple reads into one \`read\` call (paths: [...]), and batch all edits into a single \`edit\` call with \`edits: [...]\`. Gather ALL context first, then execute ALL changes in one go. Do NOT make sequential single-file reads or single-edit calls — you can output multiple tool_use blocks in a single response.
+8. COST OPTIMIZATION (CRITICAL): Each API call costs money. You have a hard limit of ~5 API calls per task. You MUST maximize work per call. Use \`read(paths: [...])\` to read multiple files at once. Use \`edit(edits: [...])\` to edit multiple files at once. Output MULTIPLE tool_use blocks in a single response when they are independent. Do NOT do sequential single-file reads or single-edit calls — that wastes your budget.
 
 Available tools:
 - \`read\`: Read file contents (paths: string[])
@@ -355,7 +355,7 @@ export class Session {
     this.turnApiCalls = 0
 
     let iterations = 0
-    const maxIterations = 50
+    const maxIterations = 8
 
     while (iterations < maxIterations) {
       iterations++
