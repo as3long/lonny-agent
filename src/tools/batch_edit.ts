@@ -25,13 +25,15 @@ export function createBatchEditTool(applier: PatchApplier, cwd: string, autoAppr
       name: 'batch_edit',
       description: `Apply ALL file edits at once using a compact diff format. This is the ONLY tool for making file changes.
 
+The "@@ -<oldStart>,<oldCount> +<newStart>,<newCount> @@" hunk header line numbers MUST be exact and match the file as last shown by \`read\` (whose output prefixes every line with "<lineNumber>: "). There is NO fuzzy search — wrong line numbers will fail the patch.
+
 Format:
 @ <path>              - update existing file
 @ <path>:create       - create new file
 @ <path>:delete       - delete file
 @@ -<oldStart>,<oldCount> +<newStart>,<newCount> @@  - hunk header
-  (space prefix)      - context line
--                     - line to remove
+  (space prefix)      - context line (must match the file exactly)
+-                     - line to remove (must match the file exactly)
 +                     - line to add
 
 Example:

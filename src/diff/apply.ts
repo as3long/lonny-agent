@@ -82,13 +82,13 @@ export class PatchApplier {
           }
           const content = fs.readFileSync(resolvedPath, 'utf-8')
           snapshots.set(resolvedPath, content)
-          const newContent = applyHunks(content, change.hunks)
-          if (newContent === null) {
+          const applyResult = applyHunks(content, change.hunks)
+          if (typeof applyResult !== 'string') {
             failedChange = change
-            failureError = `Failed to apply hunks to "${change.path}" - context lines did not match`
+            failureError = `Failed to apply hunks to "${change.path}" - ${applyResult.reason}`
             throw new Error(failureError)
           }
-          rollback.set(resolvedPath, newContent)
+          rollback.set(resolvedPath, applyResult)
         } else if (change.operation === 'create') {
           if (fs.existsSync(resolvedPath)) {
             failedChange = change
@@ -143,113 +143,89 @@ export class PatchApplier {
   }
 }
 
-function applyHunks(content: string, hunks: Hunk[]): string | null {
+function applyHunks(content: string, hunks: Hunk[]): string | { reason: string } {
   let lines = content.split('\n')
 
   for (let i = hunks.length - 1; i >= 0; i--) {
     const result = applyHunk(lines, hunks[i])
-    if (result === null) {
-      return null
+    if (Array.isArray(result)) {
+      lines = result
+      continue
     }
-    lines = result
+    return result
   }
 
   return lines.join('\n')
 }
 
-function applyHunk(lines: string[], hunk: Hunk): string[] | null {
-  const ctxLines = hunk.lines.filter(l => l.kind === 'context').map(l => l.text)
-  if (ctxLines.length === 0) {
-    const delCount = hunk.lines.filter(l => l.kind === 'delete').length
-    const addLines = hunk.lines.filter(l => l.kind === 'add').map(l => l.text)
-    const newLines = [...lines]
-    const startIdx = hunk.oldStart - 1
-    newLines.splice(startIdx, delCount, ...addLines)
-    return newLines
+function applyHunk(lines: string[], hunk: Hunk): string[] | { reason: string } {
+  const match = findHunkStart(lines, hunk)
+  if (typeof match === 'object') return match
+
+  const at = match
+  let cursor = at
+  for (let i = 0; i < hunk.lines.length; i++) {
+    const hl = hunk.lines[i]
+    if (hl.kind === 'add') continue
+    const fileLine = lines[cursor] ?? '<EOF>'
+    if (normalize(fileLine) !== normalize(hl.text)) {
+      // Give a precise diagnostic for the first mismatch.
+      return {
+        reason: `hunk @@ -${hunk.oldStart},${hunk.oldCount} @@ does not match at line ${cursor + 1}:\n`
+          + `  expected (${hl.kind}): ${JSON.stringify(hl.text)}\n`
+          + `  actual          : ${JSON.stringify(fileLine)}\n\n`
+          + `Fix: re-run \`read\` and resend the hunk with the correct line numbers (the \`read\` output prefixes each line with "<lineNumber>: ").`,
+      }
+    }
+    cursor++
   }
 
-  const matchIdx = findContext(lines, hunk)
-  if (matchIdx === -1) {
-    return null
+  // Build new-window lines: context + add (skip delete).
+  const newWindow: string[] = []
+  for (const hl of hunk.lines) {
+    if (hl.kind === 'delete') continue
+    newWindow.push(hl.text)
   }
 
-  const delCount = hunk.lines.filter(l => l.kind === 'delete').length
-  const addLines = hunk.lines.filter(l => l.kind === 'add').map(l => l.text)
+  const oldWindowLen = cursor - at
   const result = [...lines]
-  result.splice(matchIdx, delCount, ...addLines)
+  result.splice(at, oldWindowLen, ...newWindow)
   return result
 }
 
-function findContext(lines: string[], hunk: Hunk): number {
-  const ctxLines = hunk.lines.filter(l => l.kind === 'context').map(l => l.text)
-  if (ctxLines.length === 0) return hunk.oldStart - 1
+/** Try to place the hunk at oldStart-1; if the first context/delete line
+ *  doesn't match there, search backward by up to 5 lines — models often
+ *  include leading context before the actual change line. */
+function findHunkStart(lines: string[], hunk: Hunk): number | { reason: string } {
+  const firstContent = hunk.lines.find(l => l.kind !== 'add')
+  if (!firstContent) return hunk.oldStart - 1
 
-  const maxScore = ctxLines.length * 3
-  const searchRadius = 50
   const fileLen = lines.length
+  let startPos = Math.max(0, hunk.oldStart - 1 - 5)
 
-  const start = Math.max(0, hunk.oldStart - 1 - searchRadius)
-  const end = Math.min(fileLen - ctxLines.length, hunk.oldStart - 1 + searchRadius)
-
-  let bestIdx = -1
-  let bestScore = 0
-
-  for (let i = start; i <= end; i++) {
-    const score = scoreContext(lines, i, ctxLines)
-    if (score >= maxScore) {
-      return i
-    }
-    if (score > bestScore) {
-      bestScore = score
-      bestIdx = i
+  for (let pos = startPos; pos <= Math.min(fileLen, hunk.oldStart - 1); pos++) {
+    const fileLine = lines[pos] ?? ''
+    if (normalize(fileLine) === normalize(firstContent.text)) {
+      return pos
     }
   }
 
-  if (bestScore >= ctxLines.length) return bestIdx
-
-  bestScore = 0
-  bestIdx = -1
-
-  for (let i = 0; i < start; i++) {
-    const score = scoreContext(lines, i, ctxLines)
-    if (score >= maxScore) return i
-    if (score > bestScore) { bestScore = score; bestIdx = i }
+  // If the expected position is past the file end, bail out early.
+  if (hunk.oldStart - 1 >= fileLen) {
+    return {
+      reason: `hunk @@ -${hunk.oldStart},${hunk.oldCount} @@ starts at line ${hunk.oldStart}, but the file only has ${fileLen} lines.\n\nFix: re-run \`read\` and use a valid oldStart that matches the current file.`,
+    }
   }
 
-  for (let i = end + 1; i <= fileLen - ctxLines.length; i++) {
-    const score = scoreContext(lines, i, ctxLines)
-    if (score >= maxScore) return i
-    if (score > bestScore) { bestScore = score; bestIdx = i }
+  // Show what's at oldStart-1 vs the first hunk line.
+  const actual = lines[hunk.oldStart - 1] ?? '<EOF>'
+  return {
+    reason: `hunk @@ -${hunk.oldStart},${hunk.oldCount} @@ does not match at line ${hunk.oldStart}:\n`
+      + `  expected first line: ${JSON.stringify(firstContent.text)}\n`
+      + `  actual             : ${JSON.stringify(actual)}\n\n`
+      + `Fix: re-run \`read\` and resend the hunk with the correct line numbers.`,
   }
-
-  if (bestScore >= ctxLines.length) return bestIdx
-  return -1
 }
-
-function scoreContext(lines: string[], startIdx: number, ctxLines: string[]): number {
-  let score = 0
-  for (let i = 0; i < ctxLines.length; i++) {
-    const fileLine = lines[startIdx + i] ?? ''
-    const ctxLine = ctxLines[i]
-    if (fileLine === ctxLine) {
-      score += 3
-    } else if (normalize(fileLine) === normalize(ctxLine)) {
-      score += 2
-    } else if (fuzzyMatch(fileLine, ctxLine)) {
-      score += 1
-    }
-  }
-  return score
-}
-
 function normalize(s: string): string {
-  return s.replace(/\t/g, '  ').replace(/[ \t]+/g, ' ').trimEnd()
-}
-
-function fuzzyMatch(a: string, b: string): boolean {
-  if (a === b) return true
-  if (a.trimEnd() === b.trimEnd()) return true
-  if (a.trim() === b.trim()) return true
-  if (normalize(a) === normalize(b)) return true
-  return false
+  return s.replace(/\r/g, '').replace(/\t/g, '  ').replace(/[ \t]+/g, ' ').trimEnd()
 }

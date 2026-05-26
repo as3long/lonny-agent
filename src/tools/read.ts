@@ -3,11 +3,21 @@ import * as path from 'node:path'
 import { Tool, ToolResult } from './types.js'
 import { PatchApplier } from '../diff/apply.js'
 
+function formatWithLineNumbers(content: string): string {
+  const lines = content.split('\n')
+  // Drop trailing empty element produced by a final \n so the displayed
+  // line count matches the actual line count of the file.
+  const hasTrailingNewline = lines.length > 0 && lines[lines.length - 1] === ''
+  const body = hasTrailingNewline ? lines.slice(0, -1) : lines
+  const pad = String(body.length).length
+  return body.map((l, i) => `${String(i + 1).padStart(pad, ' ')}: ${l}`).join('\n')
+}
+
 export function createReadTool(applier: PatchApplier, cwd: string): Tool {
   return {
     definition: {
       name: 'read',
-      description: 'Read the contents of one or more files. Always read a file before editing it.',
+      description: 'Read the contents of one or more files. Always read a file before editing it. Each line is prefixed with "<lineNumber>: " for accurate line references; the prefix is a display aid only — do NOT include it in batch_edit patch content.',
       parameters: {
         paths: { type: 'array', description: 'File paths to read', required: true },
       },
@@ -33,7 +43,7 @@ export function createReadTool(applier: PatchApplier, cwd: string): Tool {
           }
           const content = fs.readFileSync(resolved, 'utf-8')
           applier.markRead(resolved)
-          results.push(`=== ${filePath} ===\n${content}`)
+          results.push(`=== ${filePath} ===\n${formatWithLineNumbers(content)}`)
         } catch (err) {
           results.push(`=== ${filePath} ===\n(error: ${err instanceof Error ? err.message : String(err)})`)
         }

@@ -76,7 +76,7 @@ describe('batch_edit tool', () => {
     const patch = `@ target.txt\n@@ -99,1 +99,1 @@\n __nonexistent_line_xyz__\n-nope\n+never\n`
     const result = await tool.execute({ patch_text: patch })
     expect(result.success).toBe(false)
-    expect(result.error).toContain('context lines did not match')
+    expect(result.error).toContain('file only has 6 lines')
     expect(result.error).toContain('Received patch_text')
     expect(result.error).toContain('__nonexistent_line_xyz__')
     fs.writeFileSync(filePath, original)
