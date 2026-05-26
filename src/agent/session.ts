@@ -55,6 +55,25 @@ const RS = '\x1b[0m'
 const BLD = '\x1b[1m'
 const TH = '\x1b[48;2;22;22;32m\x1b[38;2;150;150;170m' // dark bg + dim fg for thinking
 
+/** Get terminal width (columns), default to 80. */
+function termWidth(): number {
+  return process.stdout.columns ?? 80
+}
+
+/** Build the top border of the thinking box: ╭── Think ──╮ */
+function thinkTopBorder(): string {
+  const w = termWidth()
+  const leftFill = 8
+  const rightFill = Math.max(0, w - 3 - leftFill - 7 - 1)
+  return `\n  ${GY}╭${'─'.repeat(leftFill)}${RS}${TH} Think ${GY}─${RS}${TH}${'─'.repeat(rightFill)}${GY}╮${RS}\n`
+}
+
+/** Build the bottom border of the thinking box: ╰──╯ */
+function thinkBottomBorder(): string {
+  const w = termWidth()
+  return `  ${GY}╰${'─'.repeat(Math.max(0, w - 4))}${RS}\n\n`
+}
+
 export interface SessionOutput {
   write: (text: string) => void
 }
@@ -376,7 +395,7 @@ export class Session {
           // Stream reasoning content in real-time (only when no text in same chunk)
           if (!chunk.text) {
             if (!reasoningOutput) {
-              writeOut(`\n  ${GY}╭${GY}${'─'.repeat(8)}${RS}${TH} Think ${GY}─${RS}${TH}${'─'.repeat(30)}${GY}╮${RS}\n`, out)
+              writeOut(thinkTopBorder(), out)
               reasoningOutput = true
               reasoningLineStart = true
             }
@@ -405,7 +424,7 @@ export class Session {
             if (!reasoningLineStart) {
               writeOut(`\n`, out)
             }
-            writeOut(`  ${GY}╰${'─'.repeat(44)}${RS}\n\n`, out)
+            writeOut(thinkBottomBorder(), out)
             reasoningOutput = false
             reasoningLineStart = false
           }
@@ -438,7 +457,7 @@ export class Session {
         if (!reasoningLineStart) {
           writeOut(`\n`, out)
         }
-        writeOut(`  ${GY}╰${'─'.repeat(44)}${RS}\n\n`, out)
+        writeOut(thinkBottomBorder(), out)
         reasoningOutput = false
         reasoningLineStart = false
       }
