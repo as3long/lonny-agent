@@ -16,6 +16,15 @@ export function setOnPlanWritten(cb: ((filePath: string) => void) | null): void 
   onPlanWritten = cb
 }
 
+/**
+ * Broadcast a plan write event (invoked by UI layer after plan operations).
+ */
+export function notifyPlanWritten(filePath: string): void {
+  if (onPlanWritten) {
+    onPlanWritten(filePath)
+  }
+}
+
 function sanitizeFilename(name: string): string {
   const trimmed = name.trim()
   if (!trimmed) return ''

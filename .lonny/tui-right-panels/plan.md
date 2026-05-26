@@ -60,6 +60,10 @@ Add a split-panel TUI to display a plan list (`.lonny/*.md` files) and a todo li
    - During `session.chat()`, the agent may call `write_plan`. After `chat()` returns, the TUI calls `plansPanel.scan()` to refresh.
    - All streaming output from the LLM and tool results is appended to `chatBox`.
 
+### Additional changes made during implementation
+
+- **`src/agent/session.ts`**: Added `SessionOutput` interface (`write` + `error` callbacks) and optional `output` parameter to `Session` constructor. All `process.stdout.write`/`console.error` calls were refactored to use `writeOut()`/`writeErr()` helpers that check for the output handler. This avoids hacking `process.stdout` (which would break blessed rendering) and keeps the non-TUI `runAgent()` path clean.
+
 ### Risks and edge cases
 
 - **Windows compatibility**: `blessed` uses `tput` and terminfo; on Windows it falls back to `win32` backend. Need to test with Windows Terminal and PowerShell.
@@ -70,10 +74,10 @@ Add a split-panel TUI to display a plan list (`.lonny/*.md` files) and a todo li
 
 ## Todo List
 
-- [ ] **Step 1**: Install dependencies — run `npm install blessed @types/blessed`
-- [ ] **Step 2**: Create `src/tui/index.ts` — main TUI module: blessed screen setup, layout (chat panel left, plans+todos panels right, input bottom), event loop replacing readline
-- [ ] **Step 3**: Create `src/tui/plans-panel.ts` — scans `.lonny/*.md`, renders scrollable list, supports selection via click/keyboard
-- [ ] **Step 4**: Create `src/tui/todo-panel.ts` — parses `- [ ]`/`- [x]` items from a plan markdown file, renders checklist
-- [ ] **Step 5**: Modify `src/index.ts` — replace the readline-based `tuiLoop` with the new blessed TUI; keep `runAgent()` one-shot mode unchanged
-- [ ] **Step 6**: Modify `src/tools/write_plan.ts` — export `PLAN_DIR` constant for reuse by the TUI; optionally wire a refresh callback so plans panel auto-updates after a plan write
-- [ ] **Step 7**: Build and test — run `npm run build`, then `npm run dev` to verify the TUI renders correctly and panels update on `/mode plan` chat cycles
+- [x] **Step 1**: Install dependencies — run `npm install blessed @types/blessed`
+- [x] **Step 2**: Create `src/tui/index.ts` — main TUI module: blessed screen setup, layout (chat panel left, plans+todos panels right, input bottom), event loop replacing readline
+- [x] **Step 3**: Create `src/tui/plans-panel.ts` — scans `.lonny/*.md`, renders scrollable list, supports selection via click/keyboard
+- [x] **Step 4**: Create `src/tui/todo-panel.ts` — parses `- [ ]`/`- [x]` items from a plan markdown file, renders checklist
+- [x] **Step 5**: Modify `src/index.ts` — replace the readline-based `tuiLoop` with the new blessed TUI; keep `runAgent()` one-shot mode unchanged
+- [x] **Step 6**: Modify `src/tools/write_plan.ts` — export `PLAN_DIR` constant for reuse by the TUI; optionally wire a refresh callback so plans panel auto-updates after a plan write
+- [x] **Step 7**: Build and test — run `npm run build`, then `npm run dev` to verify the TUI renders correctly and panels update on `/mode plan` chat cycles
