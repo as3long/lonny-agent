@@ -12,13 +12,21 @@ import type { SelectItem, SelectListTheme, MarkdownTheme } from '@earendil-works
 const colors = {
   bgDark: (text: string) => `\x1b[48;2;30;30;30m${text}\x1b[0m`,
   bgDim: (text: string) => `\x1b[48;2;25;25;25m${text}\x1b[0m`,
-  headerBg: (text: string) => `\x1b[48;2;45;45;45m${text}\x1b[0m`,
+  headerBg: (text: string) => `\x1b[48;2;18;18;18m${text}\x1b[0m`,
   separator: (text: string) => `\x1b[38;2;60;60;60m${text}\x1b[0m`,
-  statusBg: (text: string) => `\x1b[48;2;20;20;20m${text}\x1b[0m`,
+  statusBg: (text: string) => `\x1b[48;2;18;18;18m${text}\x1b[0m`,
   running: (text: string) => `\x1b[38;2;0;255;100m${text}\x1b[0m`,
   idle: (text: string) => `\x1b[38;2;150;150;150m${text}\x1b[0m`,
   doneTodo: (text: string) => `\x1b[38;2;100;200;100m${text}\x1b[0m`,
   todo: (text: string) => `\x1b[38;2;150;150;150m${text}\x1b[0m`,
+  accent: (text: string) => `\x1b[38;2;0;170;255m${text}\x1b[0m`,
+  dim: (text: string) => `\x1b[38;2;90;90;90m${text}\x1b[0m`,
+  userLabel: (text: string) => `\x1b[38;2;255;200;50m${text}\x1b[0m`,
+  assistantLabel: (text: string) => `\x1b[38;2;0;255;150m${text}\x1b[0m`,
+  error: (text: string) => `\x1b[38;2;255;80;80m${text}\x1b[0m`,
+  success: (text: string) => `\x1b[38;2;0;200;100m${text}\x1b[0m`,
+  inputPrompt: (text: string) => `\x1b[38;2;0;170;255m${text}\x1b[0m`,
+  warn: (text: string) => `\x1b[38;2;255;200;50m${text}\x1b[0m`,
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -87,48 +95,73 @@ function plansToItems(plans: PlanEntry[]): SelectItem[] {
   }))
 }
 
-// ── SplitLayout ──────────────────────────────────────────────────────────
+// ── OpenCode-style Header ────────────────────────────────────────────────
 
-class SplitLayout implements Component {
-  left: Component
-  right: Component | null
-  rightWidthRatio: number
-  minWidthForRight: number
+class HeaderBar implements Component {
+  private mode: string
+  private model: string
+  private provider: string
+  private agentStatus: 'running' | 'idle'
+  private planCount: number
+  private planName: string
 
-  constructor(left: Component, right: Component | null, rightWidthRatio = 0.3, minWidthForRight = 100) {
-    this.left = left
-    this.right = right
-    this.rightWidthRatio = rightWidthRatio
-    this.minWidthForRight = minWidthForRight
+  constructor(model: string, provider: string) {
+    this.model = model
+    this.provider = provider
+    this.mode = 'code'
+    this.agentStatus = 'idle'
+    this.planCount = 0
+    this.planName = ''
   }
 
-  setRight(component: Component | null): void {
-    this.right = component
-  }
-
-  invalidate(): void {
-    this.left.invalidate()
-    if (this.right) this.right.invalidate()
-  }
+  setMode(m: string): void { this.mode = m }
+  setAgentStatus(s: 'running' | 'idle'): void { this.agentStatus = s }
+  setPlanCount(n: number): void { this.planCount = n }
+  setPlanName(n: string): void { this.planName = n }
+  invalidate(): void {}
+  handleInput?(data: string): void {}
 
   render(width: number): string[] {
-    if (!this.right || width < this.minWidthForRight) {
-      return this.left.render(width)
+    const appName = colors.accent('\u2588 lonny')
+    const statusDot = this.agentStatus === 'running'
+      ? colors.running('\u25CF')
+      : colors.dim('\u25CB')
+    const statusLabel = this.agentStatus === 'running'
+      ? colors.running('running')
+      : colors.dim('idle')
+    const modeLabel = colors.warn(this.mode)
+    const modelInfo = colors.dim(`${this.provider}/${this.model}`)
+
+    let rightPart = `${statusDot} ${statusLabel}  ${modeLabel}  ${modelInfo}`
+    if (this.planCount > 0) {
+      rightPart += `  ${colors.dim('|')}  ${colors.accent(`${this.planCount} plan${this.planCount > 1 ? 's' : ''}`)}`
+      if (this.planName) rightPart += ` ${colors.dim(this.planName)}`
     }
-    const separatorWidth = 1
-    const leftWidth = Math.floor(width * (1 - this.rightWidthRatio)) - separatorWidth
-    const rightWidth = width - leftWidth - separatorWidth
-    const leftLines = this.left.render(leftWidth)
-    const rightLines = this.right.render(rightWidth)
-    const maxLines = Math.max(leftLines.length, rightLines.length)
-    const lines: string[] = []
-    for (let i = 0; i < maxLines; i++) {
-      const leftLine = i < leftLines.length ? leftLines[i] : ''.padEnd(leftWidth)
-      const rightLine = i < rightLines.length ? rightLines[i] : ''.padEnd(rightWidth)
-      const separator = colors.separator('│')
-      lines.push(leftLine + separator + rightLine)
-    }
-    return lines
+
+    const line = ` ${appName}  ${colors.dim('·')}  ${rightPart}`
+    const padded = line.length < width ? line + ' '.repeat(width - line.length) : line
+    return [colors.headerBg(padded)]
+  }
+}
+
+// ── OpenCode-style Footer/Status ─────────────────────────────────────────
+
+class FooterBar implements Component {
+  private visible = true
+  invalidate(): void {}
+  handleInput?(data: string): void {}
+
+  render(width: number): string[] {
+    if (!this.visible || width < 40) return []
+    const help = [
+      colors.dim('/mode'),
+      colors.dim('/plans'),
+      colors.dim('/help'),
+      colors.dim('?'),
+    ].join(colors.dim(' · '))
+    const line = ` ${colors.dim('?')} ${colors.dim('help')}  ${colors.dim('·')}  ${help}`
+    const padded = line.length < width ? line + ' '.repeat(width - line.length) : line
+    return [colors.statusBg(padded)]
   }
 }
 
@@ -193,21 +226,20 @@ export async function startTui(config: Config): Promise<void> {
   let chatContent = ''
   let isRunning = false
   let session: Session
-  let planFilter = ''
   let filterMode = false
 
-  // ── Create markdown theme ──────────────────────────────────────────────
+  // ── Create markdown theme (OpenCode-style, clean colors) ───────────────
   const markdownTheme: MarkdownTheme = {
     heading: (t) => `\x1b[38;2;0;170;255m\x1b[1m${t}\x1b[0m`,
     link: (t) => `\x1b[38;2;0;170;255m\x1b[4m${t}\x1b[0m`,
-    linkUrl: (t) => `\x1b[38;2;0;170;255m\x1b[4m${t}\x1b[0m`,
-    code: (t) => `\x1b[38;2;255;215;0m${t}\x1b[0m`,
-    codeBlock: (t) => `\x1b[38;2;255;215;0m${t}\x1b[0m`,
-    codeBlockBorder: (t) => `\x1b[38;2;80;80;80m${t}\x1b[0m`,
-    quote: (t) => `\x1b[38;2;150;150;150m${t}\x1b[0m`,
-    quoteBorder: (t) => `\x1b[38;2;80;80;80m${t}\x1b[0m`,
-    hr: (t) => `\x1b[38;2;80;80;80m${t}\x1b[0m`,
-    listBullet: (t) => `\x1b[38;2;150;150;150m${t}\x1b[0m`,
+    linkUrl: (t) => `\x1b[38;2;90;90;90m\x1b[4m${t}\x1b[0m`,
+    code: (t) => `\x1b[38;2;255;180;50m${t}\x1b[0m`,
+    codeBlock: (t) => `\x1b[38;2;200;200;200m${t}\x1b[0m`,
+    codeBlockBorder: (t) => `\x1b[38;2;60;60;60m${t}\x1b[0m`,
+    quote: (t) => `\x1b[38;2;130;130;130m${t}\x1b[0m`,
+    quoteBorder: (t) => `\x1b[38;2;60;60;60m${t}\x1b[0m`,
+    hr: (t) => `\x1b[38;2;60;60;60m${t}\x1b[0m`,
+    listBullet: (t) => `\x1b[38;2;130;130;130m${t}\x1b[0m`,
     bold: (t) => `\x1b[1m${t}\x1b[0m`,
     italic: (t) => `\x1b[3m${t}\x1b[0m`,
     strikethrough: (t) => `\x1b[9m${t}\x1b[0m`,
@@ -229,71 +261,118 @@ export async function startTui(config: Config): Promise<void> {
   tui.setClearOnShrink(true)
   terminal.setTitle(`lonny ${config.model} ${config.provider}`)
 
-  // ── Create components ──────────────────────────────────────────────────
+  // ── Create components (OpenCode-style layout) ──────────────────────────
+
+  // Top header bar
+  const header = new HeaderBar(config.model, config.provider)
+
+  // Chat area (full width, no side panel)
   const chatMarkdown = new Markdown('', 1, 0, markdownTheme)
   const chatBox = new Box(1, 0)
   chatBox.addChild(chatMarkdown)
 
-  const plansHeader = new Text(' Plans ', 1, 0)
-  plansHeader.setCustomBgFn(colors.headerBg)
-  const plansList = new PlansList([], 10, selectTheme)
-  const todoHeader = new Text(' Todos ', 1, 0)
-  todoHeader.setCustomBgFn(colors.headerBg)
-  const todoText = new Text('(no plan selected)', 1, 0)
-
-  const sideContainer = new Container()
-  sideContainer.addChild(plansHeader)
-  sideContainer.addChild(plansList)
-  sideContainer.addChild(todoHeader)
-  sideContainer.addChild(todoText)
-  const sideBox = new Box(1, 0)
-  sideBox.addChild(sideContainer)
-
-  const splitLayout = new SplitLayout(chatBox, sideBox, 0.3, 100)
-
+  // Input with OpenCode-style prompt
   const input = new Input()
+  // Set the input prompt symbol (the Input component may support this)
 
-  const loader = new Loader(tui, colors.running, colors.idle, 'thinking...', { intervalMs: 100 })
+  // Loader (thinking indicator)
+  const loader = new Loader(tui, colors.running, colors.idle, 'thinking...', { intervalMs: 80 })
 
-  const statusText = new Text('', 1, 0)
-  statusText.setCustomBgFn(colors.statusBg)
-  const statusBox = new Box(0, 0)
-  statusBox.addChild(statusText)
+  // Bottom footer bar
+  const footer = new FooterBar()
 
   // ── Build layout ───────────────────────────────────────────────────────
-  tui.addChild(splitLayout)
+  tui.addChild(header)
+  tui.addChild(chatBox)
   tui.addChild(input)
   tui.addChild(loader)
-  tui.addChild(statusBox)
+  tui.addChild(footer)
 
-  // ── Update status helper ────────────────────────────────────────────────
-  function updateStatus(): void {
+  // ── Plans overlay components ───────────────────────────────────────────
+  const plansList = new PlansList([], 15, selectTheme)
+  let plansOverlayHandle: OverlayHandle | null = null
+
+  function showPlansOverlay(): void {
+    if (plansOverlayHandle?.isHidden() === false) {
+      plansOverlayHandle.hide()
+      plansOverlayHandle = null
+      return
+    }
     const plans = listPlans(config.cwd)
-    const modeLabel = session?.config.mode === 'plan' ? 'plan' : 'code'
-    const runStatus = isRunning ? colors.running('running') : colors.idle('idle')
+    plansList.refresh(plansToItems(plans))
+
+    const headerText = new Text(
+      ` ${colors.accent('\u25B6')} Plans (${plans.length})`,
+      1, 0, colors.headerBg
+    )
+    const container = new Container()
+    container.addChild(headerText)
+    if (plans.length > 0) {
+      container.addChild(plansList)
+    } else {
+      container.addChild(new Text('  (no plans yet)', 1, 0, colors.dim))
+    }
+
+    const box = new Box(1, 1, colors.bgDark)
+    box.addChild(container)
+
+    plansOverlayHandle = tui.showOverlay(box, {
+      anchor: 'right-center',
+      width: 45,
+      maxHeight: '70%',
+      offsetX: -1,
+    })
+  }
+
+  // ── Help overlay ───────────────────────────────────────────────────────────
+  let helpOverlayHandle: OverlayHandle | null = null
+
+  function showHelpOverlay(): void {
+    if (helpOverlayHandle?.isHidden() === false) {
+      helpOverlayHandle.hide()
+      helpOverlayHandle = null
+      return
+    }
+    const helpContent =
+      colors.accent('\u2501').repeat(20) + '\n' +
+      ` ${colors.accent('lonny')} ${colors.dim('TUI Help')}\n` +
+      colors.accent('\u2501').repeat(20) + '\n\n' +
+      ` ${colors.dim('Commands:')}\n` +
+      `   ${colors.inputPrompt('/mode')} code|plan  ${colors.dim('Switch mode')}\n` +
+      `   ${colors.inputPrompt('/plans')}          ${colors.dim('Show plans overlay')}\n` +
+      `   ${colors.inputPrompt('/exit')}           ${colors.dim('Exit')}\n` +
+      `   ${colors.inputPrompt('/help')}           ${colors.dim('This help')}\n\n` +
+      ` ${colors.dim('Keyboard:')}\n` +
+      `   ${colors.dim('Enter')}        ${colors.dim('Send message')}\n` +
+      `   ${colors.dim('↑/↓')}          ${colors.dim('Navigate history')}\n` +
+      `   ${colors.dim('Tab')}          ${colors.dim('Autocomplete')}\n` +
+      `   ${colors.dim('?')}            ${colors.dim('Toggle this help')}\n\n` +
+      colors.accent('\u2501').repeat(20)
+    const helpText = new Text(helpContent, 1, 0)
+    const helpBox = new Box(1, 1, colors.bgDark)
+    helpBox.addChild(helpText)
+    helpOverlayHandle = tui.showOverlay(helpBox, {
+      anchor: 'center',
+      width: 46,
+      maxHeight: 22,
+    })
+  }
+
+  // ── Update helpers ──────────────────────────────────────────────────────
+  function updateHeader(): void {
+    const plans = listPlans(config.cwd)
+    header.setMode(session?.config.mode === 'plan' ? 'plan' : 'code')
+    header.setAgentStatus(isRunning ? 'running' : 'idle')
+    header.setPlanCount(plans.length)
     const sel = plansList.getSelectedItem()
-    const planName = sel ? sel.label : ''
-    let s = ` ${runStatus}  |  mode: ${modeLabel}  |  plans: ${plans.length}`
-    if (planName) s += `  |  plan: ${planName}`
-    statusText.setText(s)
+    header.setPlanName(sel ? sel.label : '')
+    tui.requestRender(true)
   }
 
   function refreshPlans(): void {
     const plans = listPlans(config.cwd)
     plansList.refresh(plansToItems(plans))
-    updateStatus()
-  }
-
-  function loadTodosForSelected(): void {
-    const sel = plansList.getSelectedItem()
-    if (sel) {
-      const entry = listPlans(config.cwd).find(p => p.name === sel.value)
-      if (entry) {
-        todoText.setText(loadTodos(entry.fullPath))
-      }
-    } else {
-      todoText.setText('(no plan selected)')
-    }
+    updateHeader()
   }
 
   // ── Input handling ──────────────────────────────────────────────────────
@@ -308,7 +387,7 @@ export async function startTui(config: Config): Promise<void> {
       const arg = parts.slice(1).join(' ')
 
       if (cmd === 'exit' || cmd === 'quit') {
-        chatContent += `\nGoodbye!\n`
+        chatContent += `\n${colors.dim('Goodbye!')}\n`
         chatMarkdown.setText(chatContent)
         tui.stop()
         process.exit(0)
@@ -318,79 +397,53 @@ export async function startTui(config: Config): Promise<void> {
       if (cmd === 'mode') {
         if (arg === 'code' || arg === 'plan') {
           session.setMode(arg)
-          chatContent += `\nSwitched to ${arg} mode\n`
+          chatContent += `\n${colors.warn('\u21E8')} Switched to ${colors.warn(arg)} mode\n`
           chatMarkdown.setText(chatContent)
-          updateStatus()
+          updateHeader()
         } else {
-          chatContent += `\nUsage: /mode code|plan  (current: ${session.config.mode})\n`
+          chatContent += `\n${colors.error('\u2716')} Usage: ${colors.inputPrompt('/mode code|plan')}  (current: ${session.config.mode})\n`
           chatMarkdown.setText(chatContent)
         }
         return
       }
 
+      if (cmd === 'plans') {
+        showPlansOverlay()
+        return
+      }
+
       if (cmd === 'filter') {
-        planFilter = arg
         plansList.setFilter(arg)
         tui.requestRender(true)
         return
       }
 
-      chatContent += `\nUnknown command: /${cmd}\n`
+      if (cmd === 'help' || cmd === '?') {
+        showHelpOverlay()
+        return
+      }
+
+      chatContent += `\n${colors.error('\u2716')} Unknown command: /${cmd}. ${colors.dim('Type /help for available commands.')}\n`
       chatMarkdown.setText(chatContent)
       return
     }
 
     isRunning = true
     loader.setMessage('thinking...')
-    tui.requestRender(true)
-    updateStatus()
+    updateHeader()
 
     session.chat(trimmed).then(() => {
       isRunning = false
       loader.setMessage('')
-      tui.requestRender(true)
       refreshPlans()
-      loadTodosForSelected()
-      updateStatus()
+      updateHeader()
     }).catch((err: unknown) => {
       isRunning = false
       loader.setMessage('')
-      tui.requestRender(true)
-      chatContent += `\nError: ${err instanceof Error ? err.message : String(err)}\n`
+      const errMsg = err instanceof Error ? err.message : String(err)
+      chatContent += `\n${colors.error('\u2716 Error:')} ${errMsg}\n`
       chatMarkdown.setText(chatContent)
-      updateStatus()
-    })
-  }
-
-  // ── Help overlay ───────────────────────────────────────────────────────────
-  let helpOverlayHandle: OverlayHandle | null = null
-
-  function showHelpOverlay(): void {
-    if (helpOverlayHandle?.isHidden() === false) {
-      helpOverlayHandle.hide()
-      helpOverlayHandle = null
-      return
-    }
-    const helpText = new Text(
-      ' lonny TUI Help\n\n' +
-      ' Keyboard:\n' +
-      '   ↑/↓     Navigate plans\n' +
-      '   Enter   Send message\n' +
-      '   /       Filter plans (type to search, Esc to clear)\n' +
-      '   Esc     Clear filter / close overlay\n\n' +
-      ' Commands:\n' +
-      '   /mode code|plan  Switch mode\n' +
-      '   /exit, /quit     Exit TUI\n' +
-      '   /filter <text>    Filter plans list\n' +
-      '   /help, /?        Show this help\n',
-      1, 0, colors.headerBg
-    )
-    const helpBox = new Box(1, 1, colors.bgDark)
-    helpBox.addChild(helpText)
-    helpOverlayHandle = tui.showOverlay(helpBox, {
-      anchor: 'center',
-      width: 50,
-      maxHeight: 20,
+      updateHeader()
     })
   }
 
@@ -399,16 +452,13 @@ export async function startTui(config: Config): Promise<void> {
     sendMessage(value)
   }
 
-  // ── Plans selection ─────────────────────────────────────────────────────
-  plansList.onSelectionChange = () => {
-    loadTodosForSelected()
-    updateStatus()
-  }
-
   // ── Plan written callback ────────────────────────────────────────────────
   setOnPlanWritten(() => {
     refreshPlans()
-    loadTodosForSelected()
+    // Refresh plans overlay if visible
+    if (plansOverlayHandle?.isHidden() === false) {
+      showPlansOverlay()
+    }
   })
 
   // ── Session output ─────────────────────────────────────────────────────
@@ -421,57 +471,75 @@ export async function startTui(config: Config): Promise<void> {
 
   session = new Session(config, output)
 
-  // ── Resize handling (optimized) ────────────────────────────────────────────
-  let lastCols = terminal.columns
-  function syncSidePanelVisibility(): void {
-    const cols = terminal.columns
-    if (cols !== lastCols && cols >= 80) {
-      lastCols = cols
-      if (cols < 100 && splitLayout.right) {
-        splitLayout.setRight(null)
-      } else if (cols >= 100 && !splitLayout.right) {
-        splitLayout.setRight(sideBox)
-      }
-    }
-  }
-
-  // Polling reduced to 1000ms since we check for changes
-  const resizeInterval = setInterval(syncSidePanelVisibility, 1000)
-
+  // ── Input listener ───────────────────────────────────────────────────────
   tui.addInputListener((data) => {
-    syncSidePanelVisibility()
+    // Check if help overlay is active
+    if (helpOverlayHandle?.isHidden() === false) {
+      if (data === '\x1b' || data === '\x1b[' || data === '?') {
+        helpOverlayHandle.hide()
+        helpOverlayHandle = null
+      }
+      return { consume: true }
+    }
 
-    if (data === '\x1b[A') {
-      const plans = listPlans(config.cwd)
-      if (plans.length > 0) {
-        const sel = plansList.getSelectedItem()
-        const idx = sel ? plans.findIndex(p => p.name === sel.value) : -1
-        const nextIdx = idx <= 0 ? plans.length - 1 : idx - 1
-        plansList.setSelectedIndex(nextIdx)
-        loadTodosForSelected()
-        updateStatus()
+    // Check if plans overlay is active
+    if (plansOverlayHandle?.isHidden() === false) {
+      if (data === '\x1b' || data === '\x1b[' || data === '/') {
+        plansOverlayHandle.hide()
+        plansOverlayHandle = null
+      }
+      if (data === '\x1b[A') {
+        const plans = listPlans(config.cwd)
+        if (plans.length > 0) {
+          const sel = plansList.getSelectedItem()
+          const idx = sel ? plans.findIndex(p => p.name === sel.value) : -1
+          const nextIdx = idx <= 0 ? plans.length - 1 : idx - 1
+          plansList.setSelectedIndex(nextIdx)
+          updateHeader()
+        }
+        return { consume: true }
+      }
+      if (data === '\x1b[B') {
+        const plans = listPlans(config.cwd)
+        if (plans.length > 0) {
+          const sel = plansList.getSelectedItem()
+          const idx = sel ? plans.findIndex(p => p.name === sel.value) : -1
+          const nextIdx = idx === -1 ? 0 : (idx + 1) % plans.length
+          plansList.setSelectedIndex(nextIdx)
+          updateHeader()
+        }
+        return { consume: true }
       }
       return { consume: true }
     }
-    if (data === '\x1b[B') {
-      const plans = listPlans(config.cwd)
-      if (plans.length > 0) {
-        const sel = plansList.getSelectedItem()
-        const idx = sel ? plans.findIndex(p => p.name === sel.value) : -1
-        const nextIdx = idx === -1 ? 0 : (idx + 1) % plans.length
-        plansList.setSelectedIndex(nextIdx)
-        loadTodosForSelected()
-        updateStatus()
-      }
+
+    if (data === '?') {
+      showHelpOverlay()
       return { consume: true }
     }
+
+    if (data === '/') {
+      if (filterMode) {
+        filterMode = false
+        plansList.clearFilter()
+        return undefined
+      }
+      filterMode = true
+      plansList.setFilter('')
+      return { consume: true }
+    }
+
     return undefined
   })
 
   // ── Initial render ─────────────────────────────────────────────────────
   loader.setMessage('')
   refreshPlans()
-  updateStatus()
+
+  // Show welcome message
+  chatContent = `${colors.dim('Welcome to')} ${colors.accent('lonny')} ${colors.dim('- a coding agent optimized for per-call pricing')}\n`
+  chatContent += `${colors.dim('Type')} ${colors.inputPrompt('/help')} ${colors.dim('for available commands or')} ${colors.inputPrompt('?')} ${colors.dim('for keyboard shortcuts')}\n`
+  chatMarkdown.setText(chatContent)
 
   tui.start()
   tui.setFocus(input)
