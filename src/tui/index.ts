@@ -171,6 +171,7 @@ class HeaderBar implements Component {
   private planName: string
   private totalInputTokens: number = 0
   private totalOutputTokens: number = 0
+  private totalApiCalls: number = 0
   private projectName: string = ''
 
   constructor(model: string, provider: string) {
@@ -186,9 +187,10 @@ class HeaderBar implements Component {
   setAgentStatus(s: 'running' | 'idle'): void { this.agentStatus = s }
   setPlanCount(n: number): void { this.planCount = n }
   setPlanName(n: string): void { this.planName = n }
-  setTokenUsage(inputTokens: number, outputTokens: number): void {
+  setTokenUsage(inputTokens: number, outputTokens: number, apiCalls: number): void {
     this.totalInputTokens = inputTokens
     this.totalOutputTokens = outputTokens
+    this.totalApiCalls = apiCalls
   }
   setProjectName(name: string): void { this.projectName = name }
   invalidate(): void {}
@@ -211,8 +213,9 @@ class HeaderBar implements Component {
     const totalTokens = this.totalInputTokens + this.totalOutputTokens
     if (totalTokens > 0) {
       const tokenStr = `\u25B4${this.totalInputTokens} \u25BE${this.totalOutputTokens}  ${totalTokens}`
+      const callsStr = `${this.totalApiCalls} calls`
       const projectTag = this.projectName ? `${this.projectName} ` : ''
-      rightPart += `  ${colors.dim('|')}  ${colors.dim(`${projectTag}${tokenStr}`)}`
+      rightPart += `  ${colors.dim('|')}  ${colors.dim(`${projectTag}${tokenStr}  ${callsStr}`)}`
     }
 
     if (this.planCount > 0) {
@@ -704,6 +707,36 @@ export async function startTui(config: Config): Promise<void> {
   // added after the first message (see landingScreen.onSubmit).
   tui.addChild(new Spacer(1)) // offset for fixed header overlay
 
+  // ── Session output ─────────────────────────────────────────────────────
+  const output: SessionOutput = {
+    write: (text: string) => {
+      chatContent += text
+      chatMarkdown.setText(chatContent)
+    },
+  }
+
+  // Try to restore a saved session for this directory (MUST be before landing screen setup)
+  let restored = false
+  const restoredSession = Session.load(config, output)
+  if (restoredSession) {
+    restored = true
+    session = restoredSession
+    // Find the last user message from the previous session
+    const lastUserMsg = [...session.messages].reverse().find(m => m.role === 'user')
+    const lastQuestion = lastUserMsg && typeof lastUserMsg.content === 'string'
+      ? lastUserMsg.content
+      : null
+    chatContent = '\n' + colors.dim('\u21BA Resumed previous session')
+    if (lastQuestion) {
+      const preview = lastQuestion.length > 80 ? lastQuestion.slice(0, 80) + '\u2026' : lastQuestion
+      chatContent += ` \u2014 ${colors.userLabel(preview)}`
+    }
+    chatContent += '\n\n'
+    chatMarkdown.setText(chatContent)
+  } else {
+    session = new Session(config, output)
+  }
+
   // ── Status bar (bottom bar: cwd | status | version) ──────────────────
   const statusBar = new StatusBar(config.cwd)
   const statusBarHandle = tui.showOverlay(statusBar, {
@@ -716,13 +749,28 @@ export async function startTui(config: Config): Promise<void> {
   // ── Landing screen (centered overlay with pixel logo + styled input) ──
   const landingInput = new LandingInput()
   const landingScreen = new LandingScreen(landingInput)
-  const landingOverlayHandle = tui.showOverlay(landingScreen, {
-    anchor: 'center',
-    width: 70,
-    maxHeight: 14,
-  })
-  // Focus the landing input so it receives keyboard input and shows the cursor
-  tui.setFocus(landingInput)
+  let landingOverlayHandle: OverlayHandle | null = null
+  // Only show the landing screen if no session was restored
+  if (!restored) {
+    landingOverlayHandle = tui.showOverlay(landingScreen, {
+      anchor: 'center',
+      width: 70,
+      maxHeight: 14,
+    })
+    // Focus the landing input so it receives keyboard input and shows the cursor
+    tui.setFocus(landingInput)
+  }
+
+  // If a session was restored, immediately transition to chat layout
+  // (skip the landing screen)
+  if (restored) {
+    statusBarHandle.hide()
+    tui.addChild(chatBox)
+    tui.addChild(input)
+    tui.addChild(loader)
+    tui.addChild(footer)
+    tui.setFocus(input)
+  }
 
   // ── Plans overlay components ───────────────────────────────────────────
   const plansList = new PlansList([], 15, selectTheme)
@@ -776,6 +824,7 @@ export async function startTui(config: Config): Promise<void> {
       ` ${colors.dim('Commands:')}\n` +
       `   ${colors.inputPrompt('/mode')} code|plan  ${colors.dim('Switch mode')}\n` +
       `   ${colors.inputPrompt('/plans')}          ${colors.dim('Show plans overlay')}\n` +
+      `   ${colors.inputPrompt('/new')}            ${colors.dim('Start a new session')}\n` +
       `   ${colors.inputPrompt('/exit')}           ${colors.dim('Exit')}\n` +
       `   ${colors.inputPrompt('/help')}           ${colors.dim('This help')}\n\n` +
       ` ${colors.dim('Keyboard:')}\n` +
@@ -805,7 +854,7 @@ export async function startTui(config: Config): Promise<void> {
     // Load persisted token stats (cumulative across all sessions for this project)
     const tokenStats = loadTokenUsage(config.cwd)
     header.setProjectName(tokenStats.projectName)
-    header.setTokenUsage(tokenStats.totalInputTokens, tokenStats.totalOutputTokens)
+    header.setTokenUsage(tokenStats.totalInputTokens, tokenStats.totalOutputTokens, tokenStats.totalApiCalls)
     tui.requestRender(true)
   }
 
@@ -831,6 +880,15 @@ export async function startTui(config: Config): Promise<void> {
         chatMarkdown.setText(chatContent)
         tui.stop()
         process.exit(0)
+        return
+      }
+
+      if (cmd === 'new') {
+        Session.clearSavedSession(config.cwd)
+        session = new Session(config, output)
+        chatContent = ''
+        chatMarkdown.setText('')
+        updateHeader()
         return
       }
 
@@ -900,7 +958,7 @@ export async function startTui(config: Config): Promise<void> {
 
     // Hide the landing overlay — this also restores focus to the previous
     // target (the Spacer), but we immediately set focus to the chat input.
-    landingOverlayHandle.hide()
+    if (landingOverlayHandle) landingOverlayHandle.hide()
     statusBarHandle.hide()
 
     // Add chat components to the main TUI
@@ -925,16 +983,6 @@ export async function startTui(config: Config): Promise<void> {
       showPlansOverlay()
     }
   })
-
-  // ── Session output ─────────────────────────────────────────────────────
-  const output: SessionOutput = {
-    write: (text: string) => {
-      chatContent += text
-      chatMarkdown.setText(chatContent)
-    },
-  }
-
-  session = new Session(config, output)
 
   // ── Input listener ───────────────────────────────────────────────────────
   tui.addInputListener((data) => {
@@ -1001,10 +1049,11 @@ export async function startTui(config: Config): Promise<void> {
   loader.setMessage('')
   refreshPlans()
 
-  // No welcome message in chatContent — the landing screen (centered overlay
-  // with logo + input) replaces it. chatContent stays empty until the first
-  // message is sent.
-  chatMarkdown.setText('')
+  // If no session was restored, keep the landing screen and clear chat.
+  // If a session was restored, chatContent already has the resume message.
+  if (!restored) {
+    chatMarkdown.setText('')
+  }
 
   tui.start()
 

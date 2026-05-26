@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 interface TokenStatsData {
   totalInputTokens: number
   totalOutputTokens: number
+  totalApiCalls: number
   updatedAt: string
   projectPath: string
   projectName: string
@@ -32,6 +33,7 @@ function ensureDir(dir: string): void {
 export interface TokenUsage {
   totalInputTokens: number
   totalOutputTokens: number
+  totalApiCalls: number
   projectPath: string
   projectName: string
   updatedAt: string
@@ -44,6 +46,7 @@ export function loadTokenUsage(cwd: string): TokenUsage {
     return {
       totalInputTokens: data.totalInputTokens,
       totalOutputTokens: data.totalOutputTokens,
+      totalApiCalls: data.totalApiCalls,
       projectPath: data.projectPath,
       projectName: data.projectName,
       updatedAt: data.updatedAt,
@@ -53,6 +56,7 @@ export function loadTokenUsage(cwd: string): TokenUsage {
     return {
       totalInputTokens: 0,
       totalOutputTokens: 0,
+      totalApiCalls: 0,
       projectPath: absPath,
       projectName: path.basename(absPath),
       updatedAt: '',
@@ -60,7 +64,7 @@ export function loadTokenUsage(cwd: string): TokenUsage {
   }
 }
 
-export function saveTokenUsage(cwd: string, inputTokens: number, outputTokens: number): TokenUsage {
+export function saveTokenUsage(cwd: string, inputTokens: number, outputTokens: number, apiCalls: number): TokenUsage {
   const dir = getTokenDir()
   ensureDir(dir)
 
@@ -70,6 +74,7 @@ export function saveTokenUsage(cwd: string, inputTokens: number, outputTokens: n
   const data: TokenStatsData = {
     totalInputTokens: existing.totalInputTokens + inputTokens,
     totalOutputTokens: existing.totalOutputTokens + outputTokens,
+    totalApiCalls: existing.totalApiCalls + apiCalls,
     updatedAt: new Date().toISOString(),
     projectPath: existing.projectPath,
     projectName: existing.projectName,
@@ -80,6 +85,7 @@ export function saveTokenUsage(cwd: string, inputTokens: number, outputTokens: n
   return {
     totalInputTokens: data.totalInputTokens,
     totalOutputTokens: data.totalOutputTokens,
+    totalApiCalls: data.totalApiCalls,
     projectPath: data.projectPath,
     projectName: data.projectName,
     updatedAt: data.updatedAt,
@@ -100,6 +106,7 @@ export function listAllTokenUsage(): (TokenUsage & { file: string })[] {
         return {
           totalInputTokens: data.totalInputTokens,
           totalOutputTokens: data.totalOutputTokens,
+          totalApiCalls: data.totalApiCalls,
           projectPath: data.projectPath,
           projectName: data.projectName,
           updatedAt: data.updatedAt,

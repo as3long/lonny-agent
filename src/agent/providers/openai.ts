@@ -95,7 +95,7 @@ export class OpenAIProvider implements LLMProvider {
     } | null = null
     let fullText = ''
     let reasoningContent: string | undefined
-    let lastUsage: { input_tokens?: number; output_tokens?: number } | undefined
+    let lastUsage: { prompt_tokens?: number; completion_tokens?: number } | undefined
 
     // Track a pending "complete" yield — OpenAI sends finish_reason in a content
     // chunk but sends usage in a *separate final chunk* with no choices/delta.
@@ -107,7 +107,8 @@ export class OpenAIProvider implements LLMProvider {
 
     for await (const chunk of stream) {
       // Capture usage info if present (may come in a chunk without choices)
-      const rawChunk = chunk as { usage?: { input_tokens?: number; output_tokens?: number } }
+      // OpenAI uses prompt_tokens/completion_tokens; map to our input_tokens/output_tokens
+      const rawChunk = chunk as { usage?: { prompt_tokens?: number; completion_tokens?: number } }
       if (rawChunk.usage) {
         lastUsage = rawChunk.usage
         // If we have a pending complete, yield it now with usage
@@ -116,7 +117,7 @@ export class OpenAIProvider implements LLMProvider {
             type: 'complete',
             finish_reason: pendingComplete.finish_reason,
             reasoning_content: pendingComplete.reasoning_content,
-            usage: { input_tokens: rawChunk.usage.input_tokens ?? 0, output_tokens: rawChunk.usage.output_tokens ?? 0 },
+            usage: { input_tokens: rawChunk.usage.prompt_tokens ?? 0, output_tokens: rawChunk.usage.completion_tokens ?? 0 },
           }
           pendingComplete = null
           reasoningContent = undefined
@@ -198,7 +199,7 @@ export class OpenAIProvider implements LLMProvider {
             type: 'complete',
             finish_reason: chunk.choices[0].finish_reason,
             reasoning_content: reasoningContent,
-            usage: { input_tokens: lastUsage.input_tokens ?? 0, output_tokens: lastUsage.output_tokens ?? 0 },
+            usage: { input_tokens: lastUsage.prompt_tokens ?? 0, output_tokens: lastUsage.completion_tokens ?? 0 },
           }
           reasoningContent = undefined
         } else {
@@ -215,7 +216,7 @@ export class OpenAIProvider implements LLMProvider {
     // Flush any pending complete (stream ended without a usage chunk)
     if (pendingComplete) {
       const usage = lastUsage
-        ? { input_tokens: lastUsage.input_tokens ?? 0, output_tokens: lastUsage.output_tokens ?? 0 }
+        ? { input_tokens: lastUsage.prompt_tokens ?? 0, output_tokens: lastUsage.completion_tokens ?? 0 }
         : undefined
       yield {
         type: 'complete',
@@ -228,7 +229,7 @@ export class OpenAIProvider implements LLMProvider {
 
     if (currentToolCall) {
       const usage = lastUsage
-        ? { input_tokens: lastUsage.input_tokens ?? 0, output_tokens: lastUsage.output_tokens ?? 0 }
+        ? { input_tokens: lastUsage.prompt_tokens ?? 0, output_tokens: lastUsage.completion_tokens ?? 0 }
         : undefined
       yield {
         type: 'tool_use',

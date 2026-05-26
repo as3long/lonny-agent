@@ -1,3 +1,7 @@
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+import * as os from 'node:os'
+import { createHash } from 'node:crypto'
 import { LLMProvider, LLMMessage } from './llm.js'
 import { OpenAIProvider } from './providers/openai.js'
 import { AnthropicProvider } from './providers/anthropic.js'
@@ -6,7 +10,40 @@ import { ToolCall, ToolResult } from '../tools/types.js'
 import { FileReadTracker } from '../diff/apply.js'
 import { Config } from '../config/index.js'
 import { saveTokenUsage } from '../config/tokens.js'
-import * as os from 'node:os'
+
+// ── Session persistence ────────────────────────────────────────────────────
+
+interface SessionData {
+  cwd: string
+  messages: LLMMessage[]
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalApiCalls: number
+  mode: 'code' | 'plan'
+  model: string
+  provider: string
+  updatedAt: string
+}
+
+function getSessionDir(): string {
+  return path.join(os.homedir(), '.lonny', 'sessions')
+}
+
+function getSessionFilePath(cwd: string): string {
+  const absPath = path.resolve(cwd)
+  const hash = createHash('sha256').update(absPath, 'utf-8').digest('hex').slice(0, 12)
+  const dirName = path.basename(absPath)
+  const safeName = dirName.replace(/[<>:"/\\|?*]/g, '_')
+  return path.join(getSessionDir(), `${safeName}-${hash}.json`)
+}
+
+function ensureDir(dir: string): void {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+}
+
+// ── Colors ─────────────────────────────────────────────────────────────────
 
 const CY = '\x1b[36m'
 const GR = '\x1b[32m'
@@ -39,7 +76,7 @@ function printToolInvocation(tc: ToolCall, output?: SessionOutput): void {
   const isWrite = tc.name === 'write_plan' || tc.name === 'edit'
   const icon = isWrite ? `${YE}◆${RS}` : `${GR}◇${RS}`
   const label = isWrite ? `${YE}${tc.name}${RS}` : `${GR}${tc.name}${RS}`
-  writeOut(`  ${GY}│${RS}  ${icon} ${label}${detail ? ` ${GY}${detail}${RS}` : ''}\n`, output)
+  writeOut(`\n  ${GY}│${RS}  ${icon} ${label}${detail ? ` ${GY}${detail}${RS}` : ''}\n`, output)
 }
 
 function printToolResult(tc: ToolCall, result: ToolResult, output?: SessionOutput): void {
@@ -117,9 +154,9 @@ function formatToolInput(tc: ToolCall): string {
   return parts.join(' \u2502 ')
 }
 
-function printTokenStats(turnIn: number, turnOut: number, totalIn: number, totalOut: number, output?: SessionOutput): void {
+function printTokenStats(turnIn: number, turnOut: number, totalIn: number, totalOut: number, turnApi: number, totalApi: number, output?: SessionOutput): void {
   const total = totalIn + totalOut
-  const msg = `  ${GY}┃${RS} ${GY}${BLD}\u25B4${RS}${GY}${turnIn}${RS} ${GY}${BLD}\u25BE${RS}${GY}${turnOut}${RS}  ${GY}total${RS} ${total}`
+  const msg = `  ${GY}┃${RS} ${GY}${BLD}▴${RS}${GY}${turnIn}${RS} ${GY}${BLD}▾${RS}${GY}${turnOut}${RS}  ${GY}total${RS} ${total}  ${GY}calls${RS} ${turnApi}(${totalApi})`
   writeOut(`\n${msg}\n`, output)
 }
 
@@ -216,6 +253,8 @@ export class Session {
   totalOutputTokens: number = 0
   turnInputTokens: number = 0
   turnOutputTokens: number = 0
+  turnApiCalls: number = 0
+  totalApiCalls: number = 0
 
   constructor(config: Config, output?: SessionOutput) {
     this.config = config
@@ -239,6 +278,64 @@ export class Session {
     ]
   }
 
+  /** Persist the current session to ~/.lonny/sessions/ */
+  save(): void {
+    const dir = getSessionDir()
+    ensureDir(dir)
+    const filePath = getSessionFilePath(this.config.cwd)
+    const data: SessionData = {
+      cwd: path.resolve(this.config.cwd),
+      messages: this.messages,
+      totalInputTokens: this.totalInputTokens,
+      totalOutputTokens: this.totalOutputTokens,
+      totalApiCalls: this.totalApiCalls,
+      mode: this.config.mode,
+      model: this.config.model,
+      provider: this.config.provider,
+      updatedAt: new Date().toISOString(),
+    }
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
+  }
+
+  /** Try to load a saved session for the given cwd. Returns null if none exists. */
+  static load(config: Config, output?: SessionOutput): Session | null {
+    const filePath = getSessionFilePath(config.cwd)
+    let data: SessionData
+    try {
+      data = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as SessionData
+    } catch {
+      return null
+    }
+
+    // Verify the cwd matches (in case of hash collision or directory rename)
+    const savedAbs = path.resolve(data.cwd)
+    const currentAbs = path.resolve(config.cwd)
+    if (savedAbs !== currentAbs) {
+      return null
+    }
+
+    const session = new Session(config, output)
+    // Restore messages (replace the default system prompt with the saved one)
+    session.messages = data.messages
+    // Refresh the system prompt in case config changed (e.g. model)
+    session.messages[0] = { role: 'system', content: buildSystemPrompt(config) }
+    // Restore token stats
+    session.totalInputTokens = data.totalInputTokens
+    session.totalOutputTokens = data.totalOutputTokens
+    session.totalApiCalls = data.totalApiCalls
+    return session
+  }
+
+  /** Remove the saved session file for the given cwd. */
+  static clearSavedSession(cwd: string): void {
+    const filePath = getSessionFilePath(cwd)
+    try {
+      fs.unlinkSync(filePath)
+    } catch {
+      // Ignore if file doesn't exist
+    }
+  }
+
   setMode(mode: 'code' | 'plan'): void {
     this.config.mode = mode
     this.messages[0] = { role: 'system', content: buildSystemPrompt(this.config) }
@@ -250,15 +347,18 @@ export class Session {
     printUserMessage(userPrompt, out)
     this.messages.push({ role: 'user', content: userPrompt })
 
-    // Reset per-turn token counters
+    // Reset per-turn counters
     this.turnInputTokens = 0
     this.turnOutputTokens = 0
+    this.turnApiCalls = 0
 
     let iterations = 0
     const maxIterations = 50
 
     while (iterations < maxIterations) {
       iterations++
+      this.turnApiCalls++
+      this.totalApiCalls++
       const toolCalls: ToolCall[] = []
       let fullResponse = ''
       let reasoningContent: string | undefined
@@ -283,9 +383,10 @@ export class Session {
           }
           if (chunk.finish_reason === 'stop' || chunk.finish_reason === 'end_turn') {
             if (toolCalls.length === 0) {
-              printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, out)
+              printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, this.turnApiCalls, this.totalApiCalls, out)
               writeOut('\n\n', out)
-              saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens)
+              saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens, this.turnApiCalls)
+              this.save()
               return
             }
           }
@@ -294,10 +395,11 @@ export class Session {
 
       if (toolCalls.length === 0) {
         if (fullResponse) {
-          printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, out)
+          printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, this.turnApiCalls, this.totalApiCalls, out)
           writeOut('\n\n', out)
         }
-        saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens)
+        saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens, this.turnApiCalls)
+        this.save()
         return
       }
 
@@ -325,10 +427,11 @@ export class Session {
     }
 
     if (iterations >= maxIterations) {
-      printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, out)
+      printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, this.turnApiCalls, this.totalApiCalls, out)
       writeOut('\nAgent reached maximum iterations. Stopping.\n', out)
     }
 
-    saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens)
+    saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens, this.turnApiCalls)
+    this.save()
   }
 }
