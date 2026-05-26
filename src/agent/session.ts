@@ -64,7 +64,7 @@ function termWidth(): number {
 function thinkTopBorder(): string {
   const w = termWidth()
   const leftFill = 8
-  const rightFill = Math.max(0, w - 3 - leftFill - 7 - 1)
+  const rightFill = Math.max(0, w - 12 - leftFill)
   return `\n  ${GY}╭${'─'.repeat(leftFill)}${RS}${TH} Think ${GY}─${RS}${TH}${'─'.repeat(rightFill)}${GY}╮${RS}\n`
 }
 
