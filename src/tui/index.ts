@@ -1,4 +1,4 @@
-import blessed from 'blessed'
+import neoBlessed from 'neo-blessed'
 import { Session, SessionOutput } from '../agent/session.js'
 import { Config } from '../config/index.js'
 import { PlansPanel } from './plans-panel.js'
@@ -6,8 +6,9 @@ import { TodosPanel } from './todo-panel.js'
 import { setOnPlanWritten } from '../tools/write_plan.js'
 
 export async function startTui(config: Config): Promise<void> {
-  // Create blessed screen
-  const screen = blessed.screen({
+  const program = neoBlessed.program({ tput: false as any })
+  const screen = neoBlessed.screen({
+    program,
     smartCSR: true,
     title: 'lonny',
     dockBorders: true,
@@ -18,7 +19,7 @@ export async function startTui(config: Config): Promise<void> {
   // Main vertical layout: top (chat + right panels) + bottom (input)
 
   // Chat panel (left 70%)
-  const chatBox = blessed.box({
+  const chatBox = neoBlessed.box({
     top: 0,
     left: 0,
     width: '70%',
@@ -34,7 +35,7 @@ export async function startTui(config: Config): Promise<void> {
   })
 
   // Right panel container (30%)
-  const rightBox = blessed.box({
+  const rightBox = neoBlessed.box({
     top: 0,
     left: '70%',
     width: '30%',
@@ -42,7 +43,7 @@ export async function startTui(config: Config): Promise<void> {
   })
 
   // Plans panel (right top, 50% of right panel)
-  const plansBox = blessed.list({
+  const plansBox = neoBlessed.list({
     parent: rightBox,
     top: 0,
     left: 0,
@@ -65,7 +66,7 @@ export async function startTui(config: Config): Promise<void> {
   })
 
   // Todos panel (right bottom, 50% of right panel)
-  const todosBox = blessed.list({
+  const todosBox = neoBlessed.list({
     parent: rightBox,
     top: '50%',
     left: 0,
@@ -86,7 +87,7 @@ export async function startTui(config: Config): Promise<void> {
   })
 
   // Input bar (bottom 3 lines)
-  const inputBox = blessed.textbox({
+  const inputBox = neoBlessed.textbox({
     bottom: 0,
     left: 0,
     width: '100%',
@@ -94,7 +95,6 @@ export async function startTui(config: Config): Promise<void> {
     label: ' Input ',
     border: { type: 'line' },
     style: { fg: 'white', bg: 'black' },
-    inputOnFocus: true,
   })
 
   // --- Initialize panels ---
@@ -218,7 +218,7 @@ export async function startTui(config: Config): Promise<void> {
       return
     }
 
-    // Send to session â€” output is captured via sessionOutput
+    // Send to session â€?output is captured via sessionOutput
     try {
       await session.chat(trimmed)
       appendToChat('\n')
@@ -231,7 +231,11 @@ export async function startTui(config: Config): Promise<void> {
   })
 
   // Initial render
-  refreshAll()
-  inputBox.focus()
   screen.render()
+
+  // Delay input focus until the screen is fully laid out
+  setImmediate(() => {
+    inputBox.focus()
+    screen.render()
+  })
 }
