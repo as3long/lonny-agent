@@ -377,6 +377,7 @@ export async function startTui(config: Config): Promise<void> {
   updateStatus()
 
   tui.start()
+  tui.setFocus(input)
 
   // Keep alive
   await new Promise<void>(() => {})
