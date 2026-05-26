@@ -20,9 +20,9 @@ function safeBg(text: string, bg: string): string {
 const colors = {
   bgDark: (text: string) => safeBg(text, '48;2;30;30;30'),
   bgDim: (text: string) => safeBg(text, '48;2;25;25;25'),
-  headerBg: (text: string) => safeBg(text, '48;2;18;18;18'),
+  headerBg: (text: string) => safeBg(text, '48;2;25;25;35'),
   separator: (text: string) => `\x1b[38;2;60;60;60m${text}\x1b[0m`,
-  statusBg: (text: string) => safeBg(text, '48;2;18;18;18'),
+  statusBg: (text: string) => safeBg(text, '48;2;25;25;35'),
   running: (text: string) => `\x1b[38;2;0;255;100m${text}\x1b[0m`,
   idle: (text: string) => `\x1b[38;2;150;150;150m${text}\x1b[0m`,
   doneTodo: (text: string) => `\x1b[38;2;100;200;100m${text}\x1b[0m`,
@@ -225,7 +225,7 @@ class HeaderBar implements Component {
 
     const line = ` ${appName}  ${colors.dim('·')}  ${rightPart}`
     const padded = line.length < width ? line + ' '.repeat(width - line.length) : line
-    return [colors.headerBg(padded)]
+    return [colors.headerBg(padded), colors.dim('\u2500'.repeat(width))]
   }
 }
 
