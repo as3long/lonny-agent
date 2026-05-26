@@ -53,6 +53,7 @@ const MG = '\x1b[35m'
 const GY = '\x1b[90m'
 const RS = '\x1b[0m'
 const BLD = '\x1b[1m'
+const TH = '\x1b[48;2;22;22;32m\x1b[38;2;150;150;170m' // dark bg + dim fg for thinking
 
 export interface SessionOutput {
   write: (text: string) => void
@@ -374,7 +375,7 @@ export class Session {
           // Stream reasoning content in real-time (only when no text in same chunk)
           if (!chunk.text) {
             if (!reasoningOutput) {
-              writeOut(`\n  ${GY}┃${RS} ${GY}${BLD}...${RS}${GY} `, out)
+              writeOut(`\n  ${GY}┃${RS}${TH}`, out)
               reasoningOutput = true
             }
             writeOut(chunk.reasoning_content, out)
