@@ -55,23 +55,14 @@ const RS = '\x1b[0m'
 const BLD = '\x1b[1m'
 const TH = '\x1b[48;2;22;22;32m\x1b[38;2;150;150;170m' // dark bg + dim fg for thinking
 
-/** Get terminal width (columns), default to 80. */
-function termWidth(): number {
-  return process.stdout.columns ?? 80
-}
-
-/** Build the top border of the thinking box: ╭── Think ──╮ */
+/** Build the top border of the thinking box */
 function thinkTopBorder(): string {
-  const w = termWidth()
-  const leftFill = 8
-  const rightFill = Math.max(0, w - 12 - leftFill)
-  return `\n  ${GY}╭${'─'.repeat(leftFill)}${RS}${TH} Think ${GY}─${RS}${TH}${'─'.repeat(rightFill)}${GY}╮${RS}\n`
+  return `\n  ${GY}╭───────${RS}${TH} Think ${GY}────────────────────${RS}\n`
 }
 
-/** Build the bottom border of the thinking box: ╰──╯ */
+/** Build the bottom border of the thinking box */
 function thinkBottomBorder(): string {
-  const w = termWidth()
-  return `  ${GY}╰${'─'.repeat(Math.max(0, w - 4))}${RS}\n\n`
+  return `  ${GY}╰${'─'.repeat(42)}${RS}\n\n`
 }
 
 export interface SessionOutput {
