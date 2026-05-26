@@ -371,11 +371,14 @@ export class Session {
       for await (const chunk of stream) {
         if (chunk.reasoning_content) {
           reasoningContent = chunk.reasoning_content
-          if (!reasoningOutput) {
-            writeOut(`\n  ${GY}┃${RS} ${GY}${BLD}...${RS}${GY} `, out)
-            reasoningOutput = true
+          // Stream reasoning content in real-time (only when no text in same chunk)
+          if (!chunk.text) {
+            if (!reasoningOutput) {
+              writeOut(`\n  ${GY}┃${RS} ${GY}${BLD}...${RS}${GY} `, out)
+              reasoningOutput = true
+            }
+            writeOut(chunk.reasoning_content, out)
           }
-          writeOut(chunk.reasoning_content, out)
         }
         if (chunk.type === 'text' && chunk.text) {
           if (reasoningOutput) {

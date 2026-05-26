@@ -132,6 +132,8 @@ export class OpenAIProvider implements LLMProvider {
       const rawDelta = delta as { reasoning_content?: string }
       if (rawDelta.reasoning_content) {
         reasoningContent = (reasoningContent || '') + rawDelta.reasoning_content
+        // Yield reasoning content as it streams, so the session can display it in real-time
+        yield { type: 'text', text: '', reasoning_content: rawDelta.reasoning_content }
       }
 
       if (delta.content) {
