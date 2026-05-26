@@ -12,7 +12,12 @@ const BLD = '\x1b[1m'
 function tryEnableUtf8(): void {
   if (os.platform() !== 'win32') return
   try {
-    execSync('chcp 65001', { stdio: 'ignore' })
+    execSync('chcp 65001', { stdio: 'pipe' })
+  } catch {
+    // ignore
+  }
+  try {
+    if (process.stdin.isTTY) process.stdin.setEncoding('utf8')
   } catch {
     // ignore
   }
