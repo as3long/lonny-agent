@@ -355,7 +355,7 @@ export class Session {
     this.turnApiCalls = 0
 
     let iterations = 0
-    const maxIterations = 8
+    const maxIterations = 30
 
     while (iterations < maxIterations) {
       iterations++
