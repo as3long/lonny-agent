@@ -16,74 +16,62 @@ const GY = '\x1b[90m'
 const RS = '\x1b[0m'
 const BLD = '\x1b[1m'
 
-/** Output handler interface for TUI integration */
-export interface SessionOutput {
-  write: (text: string) => void
-  error: (...args: any[]) => void
-}
-
-function writeOut(text: string, output?: SessionOutput): void {
-  if (output) {
-    output.write(text)
-  } else {
-    process.stdout.write(text)
-  }
+function writeOut(text: string): void {
+  process.stdout.write(text)
 }
 
 function writeErr(...args: any[]): void {
-  // In TUI mode, errors go to chat box via the output handler
-  // In non-TUI mode, they go to stderr
   console.error(...args)
 }
 
-function printUserMessage(prompt: string, output?: SessionOutput): void {
+function printUserMessage(prompt: string): void {
   const line = `  ${GY}┃${RS} ${BLD}${CY}You${RS}`
-  writeOut(`\n${line}  ${prompt}\n\n`, output)
+  writeOut(`\n${line}  ${prompt}\n\n`)
 }
 
-function printToolInvocation(tc: ToolCall, output?: SessionOutput): void {
+function printToolInvocation(tc: ToolCall): void {
   const detail = formatToolInput(tc)
   const isWrite = tc.name === 'write_plan' || tc.name === 'edit'
   const icon = isWrite ? `${YE}◆${RS}` : `${GR}◇${RS}`
   const label = isWrite ? `${YE}${tc.name}${RS}` : `${GR}${tc.name}${RS}`
-  writeOut(`  ${GY}│${RS}  ${icon} ${label}${detail ? ` ${GY}${detail}${RS}` : ''}\n`, output)
+  writeOut(`  ${GY}│${RS}  ${icon} ${label}${detail ? ` ${GY}${detail}${RS}` : ''}\n`)
 }
 
-function printToolResult(tc: ToolCall, result: ToolResult, output?: SessionOutput): void {
+function printToolResult(tc: ToolCall, result: ToolResult): void {
   if (!result.success) {
-    writeOut(`  ${GY}│${RS}  ${RE}✖${RS} ${RE}${result.error}${RS}\n`, output)
+    writeOut(`  ${GY}│${RS}  ${RE}✖${RS} ${RE}${result.error}${RS}\n`)
     return
   }
   if (tc.name === 'read') {
     const fileCount = (result.output.match(/^=== /gm) || []).length
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} read ${fileCount} file(s)\n`, output)
+    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} read ${fileCount} file(s)\n`)
     for (const line of result.output.split('\n')) {
       if (line.startsWith('=== ')) {
         const fp = line.slice(4, line.includes(' ===') ? line.indexOf(' ===') + 4 : undefined)
-        writeOut(`  ${GY}│${RS}    ${GY}${fp}${RS}\n`, output)
+        writeOut(`  ${GY}│${RS}    ${GY}${fp}${RS}\n`)
       }
     }
   } else if (tc.name === 'glob') {
     const count = result.output.split('\n').filter(l => l && !l.startsWith('No')).length
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} glob ${count} match(es)\n`, output)
+    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} glob ${count} match(es)\n`)
   } else if (tc.name === 'grep') {
     const count = result.output.split('\n').filter(l => l && !l.startsWith('No')).length
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} grep ${count} match(es)\n`, output)
+    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} grep ${count} match(es)\n`)
   } else if (tc.name === 'bash') {
     const outLines = result.output.split('\n')
     const summary = outLines.length > 1 ? `(${outLines.length} lines)` : ''
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} bash ${summary}\n`, output)
+    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} bash ${summary}\n`)
   } else if (tc.name === 'edit') {
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} edit\n`, output)
+    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} edit\n`)
     if (result.output) {
       for (const l of result.output.split('\n')) {
-        if (l.trim()) writeOut(`  ${GY}│${RS}    ${GY}${l.trim()}${RS}\n`, output)
+        if (l.trim()) writeOut(`  ${GY}│${RS}    ${GY}${l.trim()}${RS}\n`)
       }
     }
   } else if (tc.name === 'write_plan') {
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} ${result.output || tc.name}\n`, output)
+    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} ${result.output || tc.name}\n`)
   } else {
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} ${tc.name}\n`, output)
+    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} ${tc.name}\n`)
   }
 }
 
@@ -198,11 +186,9 @@ export class Session {
   registry: ToolRegistry
   applier: PatchApplier
   config: Config
-  output?: SessionOutput
 
-  constructor(config: Config, output?: SessionOutput) {
+  constructor(config: Config) {
     this.config = config
-    this.output = output
     this.applier = new PatchApplier()
     this.registry = new ToolRegistry({
       cwd: config.cwd,
@@ -229,8 +215,7 @@ export class Session {
   }
 
   async chat(userPrompt: string): Promise<void> {
-    const out = this.output
-    printUserMessage(userPrompt, out)
+    printUserMessage(userPrompt)
     this.messages.push({ role: 'user', content: userPrompt })
 
     let iterations = 0
@@ -250,13 +235,13 @@ export class Session {
         }
         if (chunk.type === 'text' && chunk.text) {
           fullResponse += chunk.text
-          writeOut(chunk.text, out)
+          writeOut(chunk.text)
         } else if (chunk.type === 'tool_use' && chunk.tool_call) {
           toolCalls.push(chunk.tool_call)
         } else if (chunk.type === 'complete') {
           if (chunk.finish_reason === 'stop' || chunk.finish_reason === 'end_turn') {
             if (toolCalls.length === 0) {
-              writeOut('\n\n', out)
+              writeOut('\n\n')
               return
             }
           }
@@ -265,7 +250,7 @@ export class Session {
 
       if (toolCalls.length === 0) {
         if (fullResponse) {
-          writeOut('\n\n', out)
+          writeOut('\n\n')
         }
         return
       }
@@ -279,9 +264,9 @@ export class Session {
       this.messages.push(assistantMsg)
 
       for (const tc of toolCalls) {
-        printToolInvocation(tc, out)
+        printToolInvocation(tc)
         const result: ToolResult = await this.registry.dispatch(tc)
-        printToolResult(tc, result, out)
+        printToolResult(tc, result)
 
         const resultMsg: LLMMessage = {
           role: 'tool',
@@ -294,7 +279,7 @@ export class Session {
     }
 
     if (iterations >= maxIterations) {
-      writeOut('\nAgent reached maximum iterations. Stopping.\n', out)
+      writeOut('\nAgent reached maximum iterations. Stopping.\n')
     }
   }
 }

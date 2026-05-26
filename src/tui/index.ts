@@ -1,192 +1,51 @@
-import neoBlessed from 'neo-blessed'
-import { Session, SessionOutput } from '../agent/session.js'
+import * as readline from 'node:readline'
+import * as os from 'node:os'
+import { Session } from '../agent/session.js'
 import { Config } from '../config/index.js'
-import { PlansPanel } from './plans-panel.js'
-import { TodosPanel } from './todo-panel.js'
-import { setOnPlanWritten } from '../tools/write_plan.js'
+
+const CY = '\x1b[36m'
+const GR = '\x1b[32m'
+const YE = '\x1b[33m'
+const MG = '\x1b[35m'
+const RE = '\x1b[31m'
+const GY = '\x1b[90m'
+const RS = '\x1b[0m'
+const BLD = '\x1b[1m'
+const CLR = '\x1b[2J\x1b[H'
+
+const BAR_LEN = 48
+
+function printHeader(config: Config): void {
+  const cwd = config.cwd.replace(os.homedir(), '~')
+  const modeLabel = config.mode === 'plan' ? `${MG}plan${RS} ` : ''
+  const top = '+' + '-'.repeat(BAR_LEN) + '+'
+  const bot = top
+  process.stdout.write(
+    `${CLR}${GY}${top}${RS}\n` +
+    `  ${BLD}lonny${RS} ${GY}${config.model}${RS}  ${GY}${config.provider}${RS}  ${modeLabel}${GY}${cwd}${RS}\n` +
+    `${GY}${bot}${RS}\n`
+  )
+}
 
 export async function startTui(config: Config): Promise<void> {
-  const program = neoBlessed.program({ tput: false as any })
-  const screen = neoBlessed.screen({
-    program,
-    smartCSR: true,
-    title: 'lonny',
-    dockBorders: true,
-    autoPadding: true,
-  })
+  printHeader(config)
+  const session = new Session(config)
 
-  // --- Layout ---
-  // Main vertical layout: top (chat + right panels) + bottom (input)
+  while (true) {
+    const input = await new Promise<string>((resolve) => {
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        prompt: '',
+      })
+      rl.question(`  ${CY}>${RS} ${BLD}${CY}You${RS} `, (answer) => {
+        rl.close()
+        resolve(answer)
+      })
+    })
 
-  // Chat panel (left 70%)
-  const chatBox = neoBlessed.box({
-    parent: screen,
-    top: 0,
-    left: 0,
-    width: '70%',
-    height: '100%-3',
-    label: ' Chat ',
-    border: { type: 'line' },
-    scrollable: true,
-    alwaysScroll: true,
-    scrollbar: { ch: ' ', style: { bg: 'blue' } },
-    tags: true,
-    style: { fg: 'white', bg: 'black' },
-    content: '',
-  })
-
-  // Right panel container (30%)
-  const rightBox = neoBlessed.box({
-    parent: screen,
-    top: 0,
-    left: '70%',
-    width: '30%',
-    height: '100%-3',
-  })
-
-  // Plans panel (right top, 50% of right panel)
-  const plansBox = neoBlessed.list({
-    parent: rightBox,
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '50%',
-    label: ' Plans ',
-    border: { type: 'line' },
-    scrollable: true,
-    alwaysScroll: true,
-    scrollbar: { ch: ' ', style: { bg: 'blue' } },
-    tags: true,
-    style: {
-      fg: 'white',
-      bg: 'black',
-      selected: { fg: 'black', bg: 'blue' },
-    },
-    items: ['{bold}No plans yet{/bold}'],
-    keys: true,
-    vi: true,
-  })
-
-  // Todos panel (right bottom, 50% of right panel)
-  const todosBox = neoBlessed.list({
-    parent: rightBox,
-    top: '50%',
-    left: 0,
-    width: '100%',
-    height: '50%',
-    label: ' Todos ',
-    border: { type: 'line' },
-    scrollable: true,
-    alwaysScroll: true,
-    scrollbar: { ch: ' ', style: { bg: 'blue' } },
-    tags: true,
-    style: {
-      fg: 'white',
-      bg: 'black',
-      selected: { fg: 'black', bg: 'blue' },
-    },
-    items: ['{bold}Select a plan to view todos{/bold}'],
-  })
-
-  // Input bar (bottom 3 lines)
-  const inputBox = neoBlessed.textbox({
-    parent: screen,
-    bottom: 0,
-    left: 0,
-    width: '100%',
-    height: 3,
-    label: ' Input ',
-    border: { type: 'line' },
-    style: { fg: 'white', bg: 'black' },
-    inputOnFocus: true,
-  })
-
-  // --- Initialize panels ---
-  const plansPanel = new PlansPanel(config.cwd)
-  const todosPanel = new TodosPanel()
-
-  // Wire up plan selection
-  plansPanel.onSelect((filePath: string) => {
-    todosPanel.loadPlan(filePath)
-    refreshTodosDisplay()
-  })
-
-  // Keyboard navigation for plans list
-  plansBox.on('select', (_item: any, index: number) => {
-    plansPanel.setSelectedIndex(index)
-    plansPanel.selectCurrent()
-    refreshPlansDisplay()
-  })
-
-  // Key bindings
-  screen.key(['C-c'], () => {
-    screen.destroy()
-    process.exit(0)
-  })
-
-  screen.key(['tab'], () => {
-    if (screen.focused === inputBox) {
-      plansBox.focus()
-    } else {
-      inputBox.focus()
-    }
-    screen.render()
-  })
-
-  // --- Output capture for chat box ---
-  let chatContent = ''
-
-  function appendToChat(text: string): void {
-    chatContent += text
-    chatBox.setContent(chatContent)
-    chatBox.setScrollPerc(100) // scroll to bottom
-    screen.render()
-  }
-
-  // Create session output handler
-  const sessionOutput: SessionOutput = {
-    write: (text: string) => appendToChat(text),
-    error: (...args: any[]) => appendToChat(args.map(a => String(a)).join(' ') + '\n'),
-  }
-
-  // --- Refresh display functions ---
-  function refreshPlansDisplay(): void {
-    const plans = plansPanel.getFormattedItems()
-    plansBox.setItems(plans)
-    plansBox.select(plansPanel.getSelectedIndex())
-    screen.render()
-  }
-
-  function refreshTodosDisplay(): void {
-    const items = todosPanel.getFormattedItems()
-    todosBox.setItems(items)
-    screen.render()
-  }
-
-  function refreshAll(): void {
-    plansPanel.scan()
-    refreshPlansDisplay()
-    refreshTodosDisplay()
-  }
-
-  // Wire up the onPlanWritten callback to auto-refresh
-  setOnPlanWritten((_filePath: string) => {
-    refreshAll()
-  })
-
-  // --- Session setup ---
-  const session = new Session(config, sessionOutput)
-
-  // --- Event loop ---
-  inputBox.on('submit', async (data: any) => {
-    const input = typeof data === 'string' ? data : (data || '')
     const trimmed = input.trim()
-    inputBox.clearValue()
-
-    if (!trimmed) {
-      screen.render()
-      return
-    }
+    if (!trimmed) continue
 
     if (trimmed.startsWith('/')) {
       const parts = trimmed.slice(1).split(/\s+/)
@@ -194,53 +53,32 @@ export async function startTui(config: Config): Promise<void> {
       const arg = parts.slice(1).join(' ')
 
       if (cmd === 'exit' || cmd === 'quit') {
-        appendToChat('  Goodbye!\n')
-        screen.destroy()
+        process.stdout.write(`  ${GY}*${RS} Goodbye!\n`)
         process.exit(0)
-        return
       }
 
       if (cmd === 'mode') {
         if (arg === 'code' || arg === 'plan') {
           session.setMode(arg)
-          appendToChat(`  * Switched to ${arg} mode\n`)
+          printHeader(session.config)
+          process.stdout.write(`  ${GR}*${RS} Switched to ${arg} mode\n`)
         } else {
-          appendToChat(`  * Usage: /mode code|plan  (current: ${session.config.mode})\n`)
+          process.stdout.write(`  ${YE}*${RS} Usage: /mode code|plan  (current: ${session.config.mode})\n`)
         }
-        screen.render()
-        return
+        continue
       }
 
-      if (cmd === 'refresh') {
-        refreshAll()
-        screen.render()
-        return
-      }
-
-      appendToChat(`  * Unknown command: /${cmd}\n`)
-      screen.render()
-      return
+      process.stdout.write(`  ${RE}*${RS} Unknown command: /${cmd}\n`)
+      continue
     }
 
-    // Send to session â€?output is captured via sessionOutput
     try {
       await session.chat(trimmed)
-      appendToChat('\n')
+      const now = new Date()
+      const time = now.toLocaleTimeString()
+      process.stdout.write(`\n${GY}-- ${time} ${'-'.repeat(40)}${RS}\n`)
     } catch (err) {
-      appendToChat(`  x ${err instanceof Error ? err.message : String(err)}\n`)
+      console.error(`\n  ${RE}x${RS} ${err instanceof Error ? err.message : String(err)}`)
     }
-
-    // Refresh plans after chat (agent may have written a plan)
-    refreshAll()
-  })
-
-  // Initial render
-  screen.render()
-
-  // Delay input focus and initial data load until the screen is fully laid out
-  setImmediate(() => {
-    refreshAll()
-    inputBox.focus()
-    screen.render()
-  })
+  }
 }
