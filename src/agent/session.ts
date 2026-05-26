@@ -61,13 +61,6 @@ function termWidth(): number {
   return process.stdout.columns ?? 80
 }
 
-/** Build padding spaces with TH background to fill the rest of the line. */
-function thinkPad(contentLen: number): string {
-  // Subtract 2 as safety margin for TUI padding vs terminal width
-  const pad = Math.max(0, termWidth() - 6 - contentLen)
-  return pad > 0 ? `${TH}${' '.repeat(pad)}` : ''
-}
-
 /** Build the top border of the thinking box */
 function thinkTopBorder(): string {
   return `\n  ${GY}╭───────${RS}${TH} Think ${GY}────────────────────${RS}\n`
@@ -392,7 +385,6 @@ export class Session {
       let reasoningContent: string | undefined
       let reasoningOutput = false
       let reasoningLineStart = false
-      let reasoningLineLen = 0
 
       const stream = this.provider.chat(this.messages, this.registry.getDefinitions())
 
@@ -412,19 +404,15 @@ export class Session {
               if (reasoningLineStart) {
                 writeOut(`  ${GY}│${RS}${TH}`, out)
                 reasoningLineStart = false
-                reasoningLineLen = 0
               }
               const nlIdx = remaining.indexOf('\n')
               if (nlIdx === -1) {
                 writeOut(remaining, out)
-                reasoningLineLen += remaining.length
                 remaining = ''
               } else {
-                const line = remaining.slice(0, nlIdx)
-                writeOut(line, out)
-                writeOut(`${thinkPad(reasoningLineLen + line.length)}${RS}\n`, out)
+                writeOut(remaining.slice(0, nlIdx), out)
+                writeOut(`${RS}\n`, out)
                 reasoningLineStart = true
-                reasoningLineLen = 0
                 remaining = remaining.slice(nlIdx + 1)
               }
             }
@@ -432,16 +420,10 @@ export class Session {
         }
         if (chunk.type === 'text' && chunk.text) {
           if (reasoningOutput) {
-            if (!reasoningLineStart) {
-              // Current line still has TH background active, pad it
-              writeOut(`${thinkPad(reasoningLineLen)}${RS}\n`, out)
-            } else {
-              writeOut(`\n`, out)
-            }
+            writeOut(`${RS}\n`, out)
             writeOut(thinkBottomBorder(), out)
             reasoningOutput = false
             reasoningLineStart = false
-            reasoningLineLen = 0
           }
           fullResponse += chunk.text
           writeOut(chunk.text, out)
@@ -468,16 +450,10 @@ export class Session {
 
       // Close reasoning display if still open (model ended with tool calls, no text)
       if (reasoningOutput) {
-        // If we're mid-line, close it
-        if (!reasoningLineStart) {
-          writeOut(`${thinkPad(reasoningLineLen)}${RS}\n`, out)
-        } else {
-          writeOut(`\n`, out)
-        }
+        writeOut(`${RS}\n`, out)
         writeOut(thinkBottomBorder(), out)
         reasoningOutput = false
         reasoningLineStart = false
-        reasoningLineLen = 0
       }
 
       if (toolCalls.length === 0) {
