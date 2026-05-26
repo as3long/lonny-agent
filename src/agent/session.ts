@@ -143,7 +143,7 @@ Available tools:
 - \`glob\`: Find files by glob pattern (pattern: string)
 - \`grep\`: Search file content by regex (pattern: string, include?: string, path?: string)
 - \`ls\`: List directory (path?: string)
-- \`bash\`: Execute a read-only shell command (command: string, description?: string, timeout?: number)
+- \`bash\`: Execute a shell command (command: string, description?: string, timeout?: number)
 - \`write_plan\`: Save the plan markdown into the \`.lonny/\` folder (filename: string, content: string)`
   }
 
@@ -160,7 +160,7 @@ ${isWindows ? '  - Use \`type\` instead of \`cat\`, \`dir\` instead of \`ls\`, \
 
 RULES:
 1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into \`edit\`.
-2. \`bash\` is READ-ONLY. Use \`edit\` for ALL file changes (single or batch). For multiple changes, pass an \`edits\` array to reduce API calls. \`edit\` uses exact string matching (no line numbers, no hunk headers).
+2. Use \`edit\` for file changes (single or batch via \`edits\` array). \`bash\` can also create and edit files, but \`edit\` is preferred for structured changes.
 3. After applying changes, if more work is needed, continue with Phase 1 (reading) again.
 
 Available tools:
