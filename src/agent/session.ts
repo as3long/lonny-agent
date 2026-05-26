@@ -108,8 +108,10 @@ function buildSystemPrompt(config: Config): string {
 Environment:
 - Platform: ${platform} ${release} (${arch})
 - Working directory: ${cwd}
-- Use ${isWindows ? 'PowerShell/cmd' : 'bash'} commands for the \`bash\` tool.
-  ${isWindows ? 'Use \`type\` instead of \`cat\`, \`dir\` instead of \`ls\`.' : ''}
+- OS: ${isWindows ? 'Windows' : 'Linux/macOS'}
+- Available shell commands: ${isWindows ? 'PowerShell (cmd is also available but PowerShell is preferred)' : 'bash'}
+${isWindows ? '- CRITICAL: Use ONLY Windows commands (PowerShell/cmd) in the \`bash\` tool. Do NOT use Unix/Linux commands like \`cat\`, \`ls\`, \`grep\`, \`which\`, \`chmod\`, \`mv\`, \`cp\`, \`rm\`, \`touch\`, \`mkdir\`, \`uname\`, etc.' : ''}
+${isWindows ? '  - Use \`type\` instead of \`cat\`, \`dir\` instead of \`ls\`, \`where\` instead of \`which\`' : ''}
 
 RULES:
 1. Read first: Use read/grep/glob tools to gather all context you need before planning.
@@ -151,12 +153,14 @@ Environment:
 - Platform: ${platform} ${release} (${arch})
 - Shell: ${shell}
 - Working directory: ${cwd}
-- Use ${isWindows ? 'PowerShell/cmd' : 'bash'} commands for the \`bash\` tool.
-  ${isWindows ? 'Use `type` instead of `cat`, `dir` instead of `ls`, `echo` for file creation with `>` redirection.' : ''}
+- OS: ${isWindows ? 'Windows' : 'Linux/macOS'}
+- Available shell commands: ${isWindows ? 'PowerShell (cmd is also available but PowerShell is preferred)' : 'bash'}
+${isWindows ? '- CRITICAL: Use ONLY Windows commands (PowerShell/cmd) in the \`bash\` tool. Do NOT use Unix/Linux commands like \`cat\`, \`ls\`, \`grep\`, \`which\`, \`chmod\`, \`mv\`, \`cp\`, \`rm\`, \`touch\`, \`mkdir\`, \`uname\`, etc.' : ''}
+${isWindows ? '  - Use \`type\` instead of \`cat\`, \`dir\` instead of \`ls\`, \`where\` instead of \`which\`' : ''}
 
 RULES:
 1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into \`edit\`.
-2. Use \`edit\` for ALL file changes (single or batch). For multiple changes, pass an \`edits\` array — this reduces API calls. \`edit\` uses exact string matching (no line numbers, no hunk headers). For creating or deleting files, use \`bash\`.
+2. \`bash\` is READ-ONLY. Use \`edit\` for ALL file changes (single or batch). For multiple changes, pass an \`edits\` array to reduce API calls. \`edit\` uses exact string matching (no line numbers, no hunk headers).
 3. After applying changes, if more work is needed, continue with Phase 1 (reading) again.
 
 Available tools:

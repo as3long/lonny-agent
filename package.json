@@ -15,6 +15,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
+    "@types/blessed": "^0.1.27",
+    "blessed": "^0.1.81",
     "commander": "^12.0.0",
     "openai": "^4.0.0",
     "zod": "^3.23.0"

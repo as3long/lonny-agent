@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { bashTool } from '../bash.js'
 
 describe('bash tool', () => {
-  it('executes a command successfully', async () => {
+  it('executes a read-only command successfully', async () => {
     const result = await bashTool.execute({ command: 'echo hello' })
     expect(result.success).toBe(true)
     expect(result.output).toContain('hello')
@@ -26,9 +26,32 @@ describe('bash tool', () => {
     expect(result.output).toContain('timed')
   })
 
-  it('handles command with description', async () => {
-    const result = await bashTool.execute({ command: 'echo desc', description: 'test command' })
+  it('rejects redirect to file', async () => {
+    const result = await bashTool.execute({ command: 'echo hello > out.txt' })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('READ-ONLY')
+  })
+
+  it('rejects touch command', async () => {
+    const result = await bashTool.execute({ command: 'touch newfile.txt' })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('READ-ONLY')
+  })
+
+  it('rejects heredoc write', async () => {
+    const result = await bashTool.execute({ command: 'cat > file << EOF\ncontent\nEOF' })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('READ-ONLY')
+  })
+
+  it('rejects cp command', async () => {
+    const result = await bashTool.execute({ command: 'cp a.txt b.txt' })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('READ-ONLY')
+  })
+
+  it('allows 2>&1 redirect (read-only pattern)', async () => {
+    const result = await bashTool.execute({ command: 'echo hello 2>&1' })
     expect(result.success).toBe(true)
-    expect(result.output).toContain('desc')
   })
 })
