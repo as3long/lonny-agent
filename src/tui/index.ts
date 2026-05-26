@@ -181,6 +181,10 @@ class PlansList implements Component {
   render(width: number): string[] {
     return this.selectList.render(width)
   }
+
+  handleInput(data: string): void {
+    this.selectList.handleInput(data)
+  }
 }
 
 // ── startTui ─────────────────────────────────────────────────────────────
@@ -190,6 +194,7 @@ export async function startTui(config: Config): Promise<void> {
   let isRunning = false
   let session: Session
   let planFilter = ''
+  let filterMode = false
 
   // ── Create markdown theme ──────────────────────────────────────────────
   const markdownTheme: MarkdownTheme = {
@@ -323,15 +328,10 @@ export async function startTui(config: Config): Promise<void> {
         return
       }
 
-      if (cmd === 'help' || cmd === '?') {
-        chatContent += `\nCommands:\n/exit, /quit - Exit TUI\n/mode code|plan - Switch mode\n/filter <text> - Filter plans\n/help, /? - Show this help\n`
-        chatMarkdown.setText(chatContent)
-        return
-      }
-
       if (cmd === 'filter') {
         planFilter = arg
         plansList.setFilter(arg)
+        tui.requestRender(true)
         return
       }
 
@@ -341,21 +341,56 @@ export async function startTui(config: Config): Promise<void> {
     }
 
     isRunning = true
-    loader.setHidden(false)
+    loader.setMessage('thinking...')
+    tui.requestRender(true)
     updateStatus()
 
     session.chat(trimmed).then(() => {
       isRunning = false
-      loader.setHidden(true)
+      loader.setMessage('')
+      tui.requestRender(true)
       refreshPlans()
       loadTodosForSelected()
       updateStatus()
     }).catch((err: unknown) => {
       isRunning = false
-      loader.setHidden(true)
+      loader.setMessage('')
+      tui.requestRender(true)
       chatContent += `\nError: ${err instanceof Error ? err.message : String(err)}\n`
       chatMarkdown.setText(chatContent)
       updateStatus()
+    })
+  }
+
+  // ── Help overlay ───────────────────────────────────────────────────────────
+  let helpOverlayHandle: OverlayHandle | null = null
+
+  function showHelpOverlay(): void {
+    if (helpOverlayHandle?.isHidden() === false) {
+      helpOverlayHandle.hide()
+      helpOverlayHandle = null
+      return
+    }
+    const helpText = new Text(
+      ' lonny TUI Help\n\n' +
+      ' Keyboard:\n' +
+      '   ↑/↓     Navigate plans\n' +
+      '   Enter   Send message\n' +
+      '   /       Filter plans (type to search, Esc to clear)\n' +
+      '   Esc     Clear filter / close overlay\n\n' +
+      ' Commands:\n' +
+      '   /mode code|plan  Switch mode\n' +
+      '   /exit, /quit     Exit TUI\n' +
+      '   /filter <text>    Filter plans list\n' +
+      '   /help, /?        Show this help\n',
+      1, 0, colors.headerBg
+    )
+    const helpBox = new Box(1, 1, colors.bgDark)
+    helpBox.addChild(helpText)
+    helpOverlayHandle = tui.showOverlay(helpBox, {
+      anchor: 'center',
+      width: 50,
+      maxHeight: 20,
     })
   }
 
@@ -434,6 +469,7 @@ export async function startTui(config: Config): Promise<void> {
   })
 
   // ── Initial render ─────────────────────────────────────────────────────
+  loader.setMessage('')
   refreshPlans()
   updateStatus()
 
