@@ -1,25 +1,4 @@
-export type FileOperationType = 'update' | 'create' | 'delete'
-
-export interface HunkLine {
-  kind: 'context' | 'add' | 'delete'
-  text: string
-}
-
-export interface Hunk {
-  oldStart: number
-  oldCount: number
-  newStart: number
-  newCount: number
-  lines: HunkLine[]
-}
-
-export interface FileChange {
-  path: string
-  operation: FileOperationType
-  hunks: Hunk[]
-  content?: string
-}
-
-export interface Patch {
-  changes: FileChange[]
-}
+// types.ts intentionally left empty after cleanup.
+// All previously defined types (FileChange, Hunk, HunkLine, Patch, FileOperationType)
+// were dead code — the apply() method that used them was never called.
+// The only remaining functionality is FileReadTracker in apply.ts.

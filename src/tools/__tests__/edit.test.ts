@@ -2,18 +2,18 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { createEditTool } from '../edit.js'
-import { PatchApplier } from '../../diff/apply.js'
+import { FileReadTracker } from '../../diff/apply.js'
 import { makeTempDir } from './helpers.js'
 
 describe('edit tool', () => {
   let tmpDir: string
-  let applier: PatchApplier
+  let applier: FileReadTracker
 
   beforeAll(() => {
     tmpDir = makeTempDir()
     fs.writeFileSync(path.join(tmpDir, 'a.txt'), 'line one\nline two\nline three\n')
     fs.writeFileSync(path.join(tmpDir, 'b.txt'), 'foo\nbar\nbaz\n')
-    applier = new PatchApplier()
+    applier = new FileReadTracker()
   })
 
   afterAll(() => {

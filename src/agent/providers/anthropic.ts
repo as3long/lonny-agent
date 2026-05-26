@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import type { MessageParam } from '@anthropic-ai/sdk/resources/messages.js'
 import { LLMProvider, LLMMessage, LLMChunk } from '../llm.js'
 import { ToolDefinition } from '../../tools/types.js'
 
@@ -15,7 +16,7 @@ export class AnthropicProvider implements LLMProvider {
     messages: LLMMessage[],
     tools: ToolDefinition[],
   ): AsyncGenerator<LLMChunk> {
-    const anthropicTools = tools.map(t => {
+    const anthropicTools: Anthropic.Tool[] = tools.map(t => {
       const properties: Record<string, unknown> = {}
       for (const [key, param] of Object.entries(t.parameters)) {
         const { required: _, ...rest } = param
@@ -37,7 +38,7 @@ export class AnthropicProvider implements LLMProvider {
     const systemMsg = messages.find(m => m.role === 'system')
     const nonSystemMessages = messages.filter(m => m.role !== 'system')
 
-    const anthropicMessages = nonSystemMessages.map(m => {
+    const anthropicMessages: MessageParam[] = nonSystemMessages.map(m => {
       if (m.role === 'user') {
         return { role: 'user' as const, content: m.content || '' }
       }
@@ -76,8 +77,8 @@ export class AnthropicProvider implements LLMProvider {
     const stream = this.client.messages.stream({
       model: this.model,
       system: systemMsg?.content || '',
-      messages: anthropicMessages as any,
-      tools: anthropicTools.length > 0 ? anthropicTools as any : undefined,
+      messages: anthropicMessages,
+      tools: anthropicTools.length > 0 ? anthropicTools : undefined,
       max_tokens: 8192,
     })
 

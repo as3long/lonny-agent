@@ -6,12 +6,12 @@ import { bashTool } from './bash.js'
 import { createEditTool } from './edit.js'
 import { createWritePlanTool } from './write_plan.js'
 import { globTool } from './glob.js'
-import { PatchApplier } from '../diff/apply.js'
+import { FileReadTracker } from '../diff/apply.js'
 
 export interface ToolContext {
   cwd: string
   autoApprove: boolean
-  applier: PatchApplier
+  applier: FileReadTracker
   mode: 'code' | 'plan'
 }
 

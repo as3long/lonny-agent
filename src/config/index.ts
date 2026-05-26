@@ -23,13 +23,18 @@ interface JsonConfig {
   reasoningEffort?: string
 }
 
+let cachedJsonConfig: JsonConfig | null = null
+
 function loadJsonConfig(): JsonConfig {
+  if (cachedJsonConfig) return cachedJsonConfig
   const configPath = path.join(os.homedir(), '.lonny', 'config.json')
   try {
     const raw = fs.readFileSync(configPath, 'utf-8')
-    return JSON.parse(raw) as JsonConfig
+    cachedJsonConfig = JSON.parse(raw) as JsonConfig
+    return cachedJsonConfig
   } catch {
-    return {}
+    cachedJsonConfig = {}
+    return cachedJsonConfig
   }
 }
 

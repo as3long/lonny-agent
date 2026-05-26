@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process'
-import * as fs from 'node:fs'
+import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { Tool, ToolResult } from './types.js'
 
@@ -39,25 +39,33 @@ function includeRe(include: string): RegExp {
 
 interface NodeGrepMatch { file: string; line: number; text: string }
 
-function nodeGrep(dir: string, re: RegExp, incRe: RegExp | null): NodeGrepMatch[] {
+async function nodeGrep(dir: string, re: RegExp, incRe: RegExp | null): Promise<NodeGrepMatch[]> {
   const results: NodeGrepMatch[] = []
   try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    const entries = await fs.readdir(dir, { withFileTypes: true })
+    const subResults: Promise<NodeGrepMatch[]>[] = []
     for (const e of entries) {
       const full = path.join(dir, e.name)
       if (e.isDirectory()) {
         if (e.name === '.git' || e.name === 'node_modules') continue
-        results.push(...nodeGrep(full, re, incRe))
+        subResults.push(nodeGrep(full, re, incRe))
       } else if (e.isFile()) {
         if (incRe && !incRe.test(e.name)) continue
-        const content = fs.readFileSync(full, 'utf-8')
-        const lines = content.split('\n')
-        for (let i = 0; i < lines.length; i++) {
-          if (re.test(lines[i])) {
-            results.push({ file: full, line: i + 1, text: lines[i] })
+        try {
+          const content = await fs.readFile(full, 'utf-8')
+          const lines = content.split('\n')
+          for (let i = 0; i < lines.length; i++) {
+            if (re.test(lines[i])) {
+              results.push({ file: full, line: i + 1, text: lines[i] })
+            }
           }
-        }
+        } catch { /* permission denied etc */ }
       }
+    }
+    // Await all subdirectory results concurrently
+    const subMatches = await Promise.all(subResults)
+    for (const sm of subMatches) {
+      results.push(...sm)
     }
   } catch { /* permission denied etc */ }
   return results
@@ -96,7 +104,7 @@ export function createGrepTool(cwd: string): Tool {
 
         const re = new RegExp(pattern)
         const incRe = include ? includeRe(include) : null
-        const matches = nodeGrep(searchPath, re, incRe)
+        const matches = await nodeGrep(searchPath, re, incRe)
 
         if (matches.length === 0) {
           return { success: true, output: 'No matches found.' }

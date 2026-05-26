@@ -1,7 +1,7 @@
-import * as fs from 'node:fs'
+import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { Tool, ToolResult } from './types.js'
-import { PatchApplier } from '../diff/apply.js'
+import { FileReadTracker } from '../diff/apply.js'
 
 function formatWithLineNumbers(content: string): string {
   const lines = content.split('\n')
@@ -13,7 +13,7 @@ function formatWithLineNumbers(content: string): string {
   return body.map((l, i) => `${String(i + 1).padStart(pad, ' ')}: ${l}`).join('\n')
 }
 
-export function createReadTool(applier: PatchApplier, cwd: string): Tool {
+export function createReadTool(applier: FileReadTracker, cwd: string): Tool {
   return {
     definition: {
       name: 'read',
@@ -32,7 +32,7 @@ export function createReadTool(applier: PatchApplier, cwd: string): Tool {
       for (const filePath of paths) {
         try {
           const resolved = path.resolve(cwd, filePath)
-          const stat = fs.statSync(resolved)
+          const stat = await fs.stat(resolved)
           if (!stat.isFile()) {
             results.push(`=== ${filePath} ===\n(error: not a file)`)
             continue
@@ -41,7 +41,7 @@ export function createReadTool(applier: PatchApplier, cwd: string): Tool {
             results.push(`=== ${filePath} ===\n(error: file too large (>1MB), use bash to read it selectively)`)
             continue
           }
-          const content = fs.readFileSync(resolved, 'utf-8')
+          const content = await fs.readFile(resolved, 'utf-8')
           applier.markRead(resolved)
           results.push(`=== ${filePath} ===\n${formatWithLineNumbers(content)}`)
         } catch (err) {

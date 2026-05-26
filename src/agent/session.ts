@@ -3,7 +3,7 @@ import { OpenAIProvider } from './providers/openai.js'
 import { AnthropicProvider } from './providers/anthropic.js'
 import { ToolRegistry } from '../tools/registry.js'
 import { ToolCall, ToolResult } from '../tools/types.js'
-import { PatchApplier } from '../diff/apply.js'
+import { FileReadTracker } from '../diff/apply.js'
 import { Config } from '../config/index.js'
 import { saveTokenUsage } from '../config/tokens.js'
 import * as os from 'node:os'
@@ -80,6 +80,16 @@ function printToolResult(tc: ToolCall, result: ToolResult, output?: SessionOutpu
   }
 }
 
+interface SingleEditShape {
+  file_path: string
+  old_string: string
+  new_string: string
+}
+
+function isSingleEditShape(v: unknown): v is SingleEditShape {
+  return typeof v === 'object' && v !== null && 'file_path' in v && 'old_string' in v && 'new_string' in v
+}
+
 function formatToolInput(tc: ToolCall): string {
   const parts: string[] = []
   if (tc.name === 'read' && Array.isArray(tc.input.paths)) {
@@ -97,8 +107,8 @@ function formatToolInput(tc: ToolCall): string {
   } else if (tc.name === 'write_plan') {
     if (typeof tc.input.filename === 'string') parts.push(tc.input.filename)
   } else if (tc.name === 'edit') {
-    if (Array.isArray(tc.input.edits)) {
-      const paths = (tc.input.edits as Array<Record<string, unknown>>).map(e => e.file_path)
+    if (Array.isArray(tc.input.edits) && tc.input.edits.every(isSingleEditShape)) {
+      const paths = tc.input.edits.map(e => e.file_path)
       parts.push(paths.join(', '))
     } else if (typeof tc.input.file_path === 'string') {
       parts.push(tc.input.file_path)
@@ -199,7 +209,7 @@ export class Session {
   messages: LLMMessage[]
   provider: LLMProvider
   registry: ToolRegistry
-  applier: PatchApplier
+  applier: FileReadTracker
   config: Config
   output?: SessionOutput
   totalInputTokens: number = 0
@@ -210,7 +220,7 @@ export class Session {
   constructor(config: Config, output?: SessionOutput) {
     this.config = config
     this.output = output
-    this.applier = new PatchApplier()
+    this.applier = new FileReadTracker()
     this.registry = new ToolRegistry({
       cwd: config.cwd,
       autoApprove: config.autoApprove,

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { Tool, ToolResult } from './types.js'
-import { PatchApplier } from '../diff/apply.js'
+import { FileReadTracker } from '../diff/apply.js'
 
 interface SingleEdit {
   file_path: string
@@ -9,7 +9,7 @@ interface SingleEdit {
   new_string: string
 }
 
-function performEdit(filePath: string, oldString: string, newString: string, applier: PatchApplier, cwd: string): { ok: true; removed: number; added: number } | { ok: false; error: string } {
+function performEdit(filePath: string, oldString: string, newString: string, applier: FileReadTracker, cwd: string): { ok: true; removed: number; added: number } | { ok: false; error: string } {
   const resolved = path.resolve(cwd, filePath)
 
   // Create mode: old_string is empty, write new_string to a new file.
@@ -70,7 +70,7 @@ function performEdit(filePath: string, oldString: string, newString: string, app
   return { ok: true, removed: oldString.split('\n').length, added: newString.split('\n').length }
 }
 
-export function createEditTool(applier: PatchApplier, cwd: string): Tool {
+export function createEditTool(applier: FileReadTracker, cwd: string): Tool {
   return {
     definition: {
       name: 'edit',

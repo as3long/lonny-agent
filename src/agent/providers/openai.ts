@@ -1,4 +1,6 @@
 import OpenAI from 'openai'
+import type { Stream } from 'openai/streaming.js'
+import type { ChatCompletionMessageParam, ChatCompletionTool, ChatCompletionChunk } from 'openai/resources/chat/completions.js'
 import { LLMProvider, LLMMessage, LLMChunk } from '../llm.js'
 import { ToolDefinition, ToolCall } from '../../tools/types.js'
 
@@ -19,7 +21,7 @@ export class OpenAIProvider implements LLMProvider {
     messages: LLMMessage[],
     tools: ToolDefinition[],
   ): AsyncGenerator<LLMChunk> {
-    const openAIFormattedTools = tools.map(t => {
+    const openAIFormattedTools: ChatCompletionTool[] = tools.map(t => {
       const properties: Record<string, unknown> = {}
       for (const [key, param] of Object.entries(t.parameters)) {
         const { required: _, ...rest } = param
@@ -41,7 +43,7 @@ export class OpenAIProvider implements LLMProvider {
       }
     })
 
-    const openAIMessages = messages.map(m => {
+    const openAIMessages: ChatCompletionMessageParam[] = messages.map(m => {
       if (m.role === 'tool') {
         return {
           role: 'tool' as const,
@@ -50,7 +52,7 @@ export class OpenAIProvider implements LLMProvider {
         }
       }
       if (m.role === 'assistant' && m.tool_calls) {
-        const msg: Record<string, unknown> = {
+        return {
           role: 'assistant',
           content: m.content,
           tool_calls: m.tool_calls.map(tc => ({
@@ -61,21 +63,15 @@ export class OpenAIProvider implements LLMProvider {
               arguments: JSON.stringify(tc.input),
             },
           })),
-        }
-        if (m.reasoning_content) {
-          msg.reasoning_content = m.reasoning_content
-        }
-        return msg as any
+          ...(m.reasoning_content ? { reasoning_content: m.reasoning_content } : {}),
+        } as ChatCompletionMessageParam
       }
       if (m.role === 'assistant') {
-        const msg: Record<string, unknown> = {
+        return {
           role: 'assistant',
           content: m.content || '',
-        }
-        if (m.reasoning_content) {
-          msg.reasoning_content = m.reasoning_content
-        }
-        return msg as any
+          ...(m.reasoning_content ? { reasoning_content: m.reasoning_content } : {}),
+        } as ChatCompletionMessageParam
       }
       return {
         role: m.role as 'system' | 'user' | 'assistant',
@@ -83,7 +79,7 @@ export class OpenAIProvider implements LLMProvider {
       }
     })
 
-    const stream = await (this.client.chat.completions.create as any)({
+    const stream: Stream<ChatCompletionChunk> = await (this.client.chat.completions.create as any)({
       model: this.model,
       messages: openAIMessages,
       tools: openAIFormattedTools.length > 0 ? openAIFormattedTools : undefined,
@@ -111,16 +107,16 @@ export class OpenAIProvider implements LLMProvider {
 
     for await (const chunk of stream) {
       // Capture usage info if present (may come in a chunk without choices)
-      const rawUsage: { input_tokens?: number; output_tokens?: number } | undefined = (chunk as any).usage
-      if (rawUsage) {
-        lastUsage = rawUsage
+      const rawChunk = chunk as { usage?: { input_tokens?: number; output_tokens?: number } }
+      if (rawChunk.usage) {
+        lastUsage = rawChunk.usage
         // If we have a pending complete, yield it now with usage
         if (pendingComplete) {
           yield {
             type: 'complete',
             finish_reason: pendingComplete.finish_reason,
             reasoning_content: pendingComplete.reasoning_content,
-            usage: { input_tokens: rawUsage.input_tokens ?? 0, output_tokens: rawUsage.output_tokens ?? 0 },
+            usage: { input_tokens: rawChunk.usage.input_tokens ?? 0, output_tokens: rawChunk.usage.output_tokens ?? 0 },
           }
           pendingComplete = null
           reasoningContent = undefined
@@ -132,8 +128,9 @@ export class OpenAIProvider implements LLMProvider {
         continue
       }
 
-      if ((delta as any).reasoning_content) {
-        reasoningContent = (reasoningContent || '') + (delta as any).reasoning_content
+      const rawDelta = delta as { reasoning_content?: string }
+      if (rawDelta.reasoning_content) {
+        reasoningContent = (reasoningContent || '') + rawDelta.reasoning_content
       }
 
       if (delta.content) {

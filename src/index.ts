@@ -40,6 +40,7 @@ async function main() {
 }
 
 main().catch(err => {
-  console.error(`\n${RE}Fatal error:${RS} ${err.message}`)
+  const msg = err instanceof Error ? err.message : String(err)
+  console.error(`\n${RE}Fatal error:${RS} ${msg}`)
   process.exit(1)
 })

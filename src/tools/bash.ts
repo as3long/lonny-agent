@@ -1,4 +1,6 @@
-import { execSync } from 'node:child_process'
+import { exec } from 'node:child_process'
+import { promisify } from 'node:util'
+const execAsync = promisify(exec)
 import { Tool, ToolResult } from './types.js'
 
 export const bashTool: Tool = {
@@ -20,13 +22,12 @@ export const bashTool: Tool = {
     const timeout = (input.timeout as number) || 120_000
 
     try {
-      const output = execSync(command, {
+      const { stdout } = await execAsync(command, {
         encoding: 'utf-8',
         timeout,
         maxBuffer: 10 * 1024 * 1024,
-        stdio: ['pipe', 'pipe', 'pipe'],
       })
-      return { success: true, output: output || '(no output)' }
+      return { success: true, output: stdout || '(no output)' }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       return { success: false, output: '', error: `Command failed: ${msg}` }
