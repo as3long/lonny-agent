@@ -3,7 +3,6 @@ import { createReadTool } from './read.js'
 import { createGrepTool } from './grep.js'
 import { createLsTool } from './ls.js'
 import { bashTool } from './bash.js'
-import { createBatchEditTool } from './batch_edit.js'
 import { createEditTool } from './edit.js'
 import { createWritePlanTool } from './write_plan.js'
 import { globTool } from './glob.js'
@@ -29,7 +28,6 @@ export class ToolRegistry {
     this.register(bashTool)
     if (context.mode === 'code') {
       this.register(createEditTool(context.applier, context.cwd))
-      this.register(createBatchEditTool(context.applier, context.cwd, context.autoApprove))
     } else {
       this.register(createWritePlanTool(context.cwd))
     }
@@ -40,16 +38,12 @@ export class ToolRegistry {
       if (!this.tools.has('edit')) {
         this.register(createEditTool(this.context.applier, this.context.cwd))
       }
-      if (!this.tools.has('batch_edit')) {
-        this.register(createBatchEditTool(this.context.applier, this.context.cwd, this.context.autoApprove))
-      }
       this.tools.delete('write_plan')
     } else {
       if (!this.tools.has('write_plan')) {
         this.register(createWritePlanTool(this.context.cwd))
       }
       this.tools.delete('edit')
-      this.tools.delete('batch_edit')
     }
     this.context.mode = mode
   }

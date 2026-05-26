@@ -23,7 +23,7 @@ function printUserMessage(prompt: string): void {
 
 function printToolInvocation(tc: ToolCall): void {
   const detail = formatToolInput(tc)
-  const isWrite = tc.name === 'batch_edit' || tc.name === 'write_plan' || tc.name === 'edit'
+  const isWrite = tc.name === 'write_plan' || tc.name === 'edit'
   const icon = isWrite ? `${YE}◆${RS}` : `${GR}◇${RS}`
   const label = isWrite ? `${YE}${tc.name}${RS}` : `${GR}${tc.name}${RS}`
   console.error(`  ${GY}│${RS}  ${icon} ${label}${detail ? ` ${GY}${detail}${RS}` : ''}`)
@@ -53,14 +53,14 @@ function printToolResult(tc: ToolCall, result: ToolResult): void {
     const outLines = result.output.split('\n')
     const summary = outLines.length > 1 ? `(${outLines.length} lines)` : ''
     console.error(`  ${GY}│${RS}  ${GR}✔${RS} bash ${summary}`)
-  } else if (tc.name === 'batch_edit') {
-    console.error(`  ${GY}│${RS}  ${GR}✔${RS} batch_edit`)
+  } else if (tc.name === 'edit') {
+    console.error(`  ${GY}│${RS}  ${GR}✔${RS} edit`)
     if (result.output) {
       for (const l of result.output.split('\n')) {
         if (l.trim()) console.error(`  ${GY}│${RS}    ${GY}${l.trim()}${RS}`)
       }
     }
-  } else if (tc.name === 'write_plan' || tc.name === 'edit') {
+  } else if (tc.name === 'write_plan') {
     console.error(`  ${GY}│${RS}  ${GR}✔${RS} ${result.output || tc.name}`)
   } else {
     console.error(`  ${GY}│${RS}  ${GR}✔${RS} ${tc.name}`)
@@ -81,10 +81,6 @@ function formatToolInput(tc: ToolCall): string {
   } else if (tc.name === 'bash') {
     const cmd = typeof tc.input.command === 'string' ? tc.input.command : ''
     parts.push(cmd.length > 80 ? cmd.slice(0, 80) + '…' : cmd)
-  } else if (tc.name === 'batch_edit') {
-    const text = typeof tc.input.patch_text === 'string' ? tc.input.patch_text : ''
-    const lines = text.split('\n').filter(l => l.startsWith('@'))
-    parts.push(lines.join(', '))
   } else if (tc.name === 'write_plan') {
     if (typeof tc.input.filename === 'string') parts.push(tc.input.filename)
   } else if (tc.name === 'edit') {
@@ -159,10 +155,9 @@ Environment:
   ${isWindows ? 'Use `type` instead of `cat`, `dir` instead of `ls`, `echo` for file creation with `>` redirection.' : ''}
 
 RULES:
-1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into edit or batch_edit.
-2. Use \`edit\` for ALL file changes (single or batch). For multiple changes, pass an \`edits\` array — this reduces API calls. \`edit\` uses exact string matching (no line numbers, no hunk headers).
-3. Only use \`batch_edit\` for creating or deleting files.
-4. After applying changes, if more work is needed, continue with Phase 1 (reading) again.
+1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into \`edit\`.
+2. Use \`edit\` for ALL file changes (single or batch). For multiple changes, pass an \`edits\` array — this reduces API calls. \`edit\` uses exact string matching (no line numbers, no hunk headers). For creating or deleting files, use \`bash\`.
+3. After applying changes, if more work is needed, continue with Phase 1 (reading) again.
 
 Available tools:
 - \`read\`: Read file contents (paths: string[])
@@ -170,8 +165,7 @@ Available tools:
 - \`grep\`: Search file content by regex (pattern: string, include?: string, path?: string)
 - \`ls\`: List directory (path?: string)
 - \`bash\`: Execute a shell command (command: string, description?: string, timeout?: number)
-- \`edit\`: Replace exact text in files — single (file_path+old_string+new_string) or batch (edits:[...])
-- \`batch_edit\`: Create or delete files (patch_text: string)`
+- \`edit\`: Replace exact text in files — single (file_path+old_string+new_string) or batch (edits:[...])`
 }
 
 export class Session {
