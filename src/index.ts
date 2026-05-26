@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import * as readline from 'node:readline'
 import * as os from 'node:os'
+import { execSync } from 'node:child_process'
 import { parseArgs } from './cli/index.js'
 import { runAgent } from './agent/index.js'
 import { Session } from './agent/session.js'
@@ -16,20 +17,34 @@ const RS = '\x1b[0m'
 const BLD = '\x1b[1m'
 const CLR = '\x1b[2J\x1b[H'
 
+function tryEnableUtf8(): void {
+  if (os.platform() !== 'win32') return
+  try {
+    execSync('chcp 65001', { stdio: 'ignore' })
+  } catch {
+    // ignore
+  }
+}
+
+const BAR_LEN = 48
+const TOP = '+' + '-'.repeat(BAR_LEN) + '+'
+const BOT = TOP
+const SEP_FOOTER = '-'.repeat(40)
+
 function printHeader(config: Config): void {
   const cwd = config.cwd.replace(os.homedir(), '~')
   const modeLabel = config.mode === 'plan' ? `${MG}plan${RS} ` : ''
   process.stdout.write(
-    `${CLR}${GY}╭────────────────────────────────────────────────╮${RS}\n` +
+    `${CLR}${GY}${TOP}${RS}\n` +
     `  ${BLD}lonny${RS} ${GY}${config.model}${RS}  ${GY}${config.provider}${RS}  ${modeLabel}${GY}${cwd}${RS}\n` +
-    `${GY}╰────────────────────────────────────────────────╯${RS}\n`
+    `${GY}${BOT}${RS}\n`
   )
 }
 
 function printFooter(): void {
   const now = new Date()
   const time = now.toLocaleTimeString()
-  process.stdout.write(`\n${GY}── ${time} ──────────────────────────────────────────${RS}\n`)
+  process.stdout.write(`\n${GY}-- ${time} ${SEP_FOOTER}${RS}\n`)
 }
 
 async function tuiLoop(config: Config): Promise<void> {
@@ -43,7 +58,7 @@ async function tuiLoop(config: Config): Promise<void> {
         output: process.stdout,
         prompt: '',
       })
-      rl.question(`  ${CY}◇${RS} ${BLD}${CY}You${RS} `, (answer) => {
+      rl.question(`  ${CY}>${RS} ${BLD}${CY}You${RS} `, (answer) => {
         rl.close()
         resolve(answer)
       })
@@ -57,18 +72,23 @@ async function tuiLoop(config: Config): Promise<void> {
       const cmd = parts[0]
       const arg = parts.slice(1).join(' ')
 
+      if (cmd === 'exit' || cmd === 'quit') {
+        process.stdout.write(`  ${GY}*${RS} Goodbye!\n`)
+        process.exit(0)
+      }
+
       if (cmd === 'mode') {
         if (arg === 'code' || arg === 'plan') {
           session.setMode(arg)
           printHeader(session.config)
-          process.stdout.write(`  ${GR}●${RS} Switched to ${arg} mode\n`)
+          process.stdout.write(`  ${GR}*${RS} Switched to ${arg} mode\n`)
         } else {
-          process.stdout.write(`  ${YE}●${RS} Usage: /mode code|plan  (current: ${session.config.mode})\n`)
+          process.stdout.write(`  ${YE}*${RS} Usage: /mode code|plan  (current: ${session.config.mode})\n`)
         }
         continue
       }
 
-      process.stdout.write(`  ${RE}●${RS} Unknown command: /${cmd}\n`)
+      process.stdout.write(`  ${RE}*${RS} Unknown command: /${cmd}\n`)
       continue
     }
 
@@ -76,12 +96,13 @@ async function tuiLoop(config: Config): Promise<void> {
       await session.chat(trimmed)
       printFooter()
     } catch (err) {
-      console.error(`\n  ${RS}${RE}✖${RS} ${err instanceof Error ? err.message : String(err)}`)
+      console.error(`\n  ${RE}x${RS} ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 }
 
 async function main() {
+  tryEnableUtf8()
   const { config, prompt } = parseArgs(process.argv)
 
   if (!config.apiKey) {

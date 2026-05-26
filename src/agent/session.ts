@@ -157,6 +157,7 @@ RULES:
 3. The \`batch_edit\` tool accepts a compact diff format that can describe changes to multiple files in one operation. Use it.
 4. Each \`batch_edit\` call costs the same as a single edit call, so always prefer ONE batch over many individual edits.
 5. After applying the batch, if more work is needed, continue with Phase 1 (reading) again.
+6. In \`patch_text\`, emit REAL newlines between hunk lines. NEVER write the literal characters \`\\n\` or \`\\r\\n\` — they will be inserted verbatim into the file and corrupt it.
 
 Available tools:
 - \`read\`: Read file contents (paths: string[])

@@ -77,6 +77,8 @@ describe('batch_edit tool', () => {
     const result = await tool.execute({ patch_text: patch })
     expect(result.success).toBe(false)
     expect(result.error).toContain('context lines did not match')
+    expect(result.error).toContain('Received patch_text')
+    expect(result.error).toContain('__nonexistent_line_xyz__')
     fs.writeFileSync(filePath, original)
   })
 
@@ -85,5 +87,19 @@ describe('batch_edit tool', () => {
     const result = await tool.execute({ patch_text: '@ @@ garbage @@' })
     expect(result.success).toBe(false)
     expect(result.error).toContain('No changes found in patch')
+  })
+
+  it('hints about unified diff headers', async () => {
+    const tool = createBatchEditTool(new PatchApplier(), editDir, true)
+    const result = await tool.execute({ patch_text: 'diff --git a/foo b/foo\n--- a/foo\n+++ b/foo\n@@ -1 +1 @@\n-x\n+y\n' })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('unified diff headers')
+  })
+
+  it('hints about literal "\\n" escapes', async () => {
+    const tool = createBatchEditTool(new PatchApplier(), editDir, true)
+    const result = await tool.execute({ patch_text: '+console.log("hi")\\n+more' })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('escape newlines')
   })
 })

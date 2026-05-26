@@ -4,6 +4,21 @@ import { Tool, ToolResult } from './types.js'
 import { parsePatch } from '../diff/parser.js'
 import { PatchApplier } from '../diff/apply.js'
 
+const GY = '\x1b[90m'
+const RE = '\x1b[31m'
+const RS = '\x1b[0m'
+
+function previewPatch(patchText: string, maxChars = 400): string {
+  if (patchText.length <= maxChars) return patchText
+  return patchText.slice(0, maxChars) + `\n…(${patchText.length - maxChars} more chars)`
+}
+
+function dumpPatchToStderr(reason: string, patchText: string): void {
+  const banner = `${GY}── batch_edit failed: ${reason} ──${RS}`
+  const numbered = patchText.split('\n').map((l, i) => `${GY}${String(i + 1).padStart(4)}│${RS} ${l}`).join('\n')
+  process.stderr.write(`\n${RE}${banner}${RS}\n${numbered}\n${GY}── end patch_text (${patchText.length} chars) ──${RS}\n`)
+}
+
 export function createBatchEditTool(applier: PatchApplier, cwd: string, autoApprove: boolean): Tool {
   return {
     definition: {
@@ -53,15 +68,23 @@ Example:
       const { patch, errors } = parsePatch(patchText)
 
       if (errors.length > 0) {
+        dumpPatchToStderr('parse errors', patchText)
         return {
           success: false,
           output: '',
-          error: `Patch parsing errors:\n${errors.join('\n')}`,
+          error: `Patch parsing errors:\n${errors.join('\n')}\n\nReceived patch_text (first 400 chars):\n${previewPatch(patchText)}`,
         }
       }
 
       if (patch.changes.length === 0) {
-        return { success: false, output: '', error: 'No changes found in patch' }
+        const hints: string[] = []
+        if (/^```/m.test(patchText)) hints.push('Do NOT wrap patch_text in ``` code fences.')
+        if (/^(diff --git|---\s|\+\+\+\s)/m.test(patchText)) hints.push('Do NOT use unified diff headers like "diff --git" / "--- a/" / "+++ b/". Use the compact "@ <path>" header.')
+        if (!/^@\s+\S/m.test(patchText)) hints.push('Missing "@ <path>" file header. Every change must start with a line like "@ src/foo.ts" (or ":create" / ":delete").')
+        if (/\\r\\n|\\n|\\t/.test(patchText)) hints.push('Do NOT escape newlines as "\\n" or "\\r\\n"; emit real newlines in patch_text.')
+        const hintBlock = hints.length ? `\nHints:\n- ${hints.join('\n- ')}` : ''
+        dumpPatchToStderr('no changes parsed', patchText)
+        return { success: false, output: '', error: `No changes found in patch.${hintBlock}\n\nReceived patch_text (first 400 chars):\n${previewPatch(patchText)}` }
       }
 
       if (!autoApprove) {
@@ -100,7 +123,8 @@ Example:
         const lines = result.results.map(r => {
           return `  ${r.operation.toUpperCase()} ${r.path}: FAILED - ${r.error || 'unknown error'}`
         })
-        return { success: false, output: '', error: `Batch edit failed:\n${lines.join('\n')}` }
+        dumpPatchToStderr('apply failed', patchText)
+        return { success: false, output: '', error: `Batch edit failed:\n${lines.join('\n')}\n\nReceived patch_text (first 400 chars):\n${previewPatch(patchText)}` }
       }
     },
   }
