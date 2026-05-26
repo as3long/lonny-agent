@@ -1,4 +1,4 @@
-import * as blessed from 'blessed'
+import blessed from 'blessed'
 import { Session, SessionOutput } from '../agent/session.js'
 import { Config } from '../config/index.js'
 import { PlansPanel } from './plans-panel.js'
