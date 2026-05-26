@@ -366,6 +366,7 @@ export class Session {
       let fullResponse = ''
       let reasoningContent: string | undefined
       let reasoningOutput = false
+      let reasoningLineStart = false
 
       const stream = this.provider.chat(this.messages, this.registry.getDefinitions())
 
@@ -375,16 +376,38 @@ export class Session {
           // Stream reasoning content in real-time (only when no text in same chunk)
           if (!chunk.text) {
             if (!reasoningOutput) {
-              writeOut(`\n  ${GY}┃${RS}${TH}`, out)
+              writeOut(`\n  ${GY}╭${GY}${'─'.repeat(8)}${RS}${TH} Think ${GY}─${RS}${TH}${'─'.repeat(30)}${GY}╮${RS}\n`, out)
               reasoningOutput = true
+              reasoningLineStart = true
             }
-            writeOut(chunk.reasoning_content, out)
+            // Handle newlines in streamed content - add left border on each new line
+            let remaining = chunk.reasoning_content
+            while (remaining.length > 0) {
+              if (reasoningLineStart) {
+                writeOut(`  ${GY}│${RS}${TH}`, out)
+                reasoningLineStart = false
+              }
+              const nlIdx = remaining.indexOf('\n')
+              if (nlIdx === -1) {
+                writeOut(remaining, out)
+                remaining = ''
+              } else {
+                writeOut(remaining.slice(0, nlIdx), out)
+                writeOut(`${RS}\n`, out)
+                reasoningLineStart = true
+                remaining = remaining.slice(nlIdx + 1)
+              }
+            }
           }
         }
         if (chunk.type === 'text' && chunk.text) {
           if (reasoningOutput) {
-            writeOut(`${RS}\n\n`, out)
+            if (!reasoningLineStart) {
+              writeOut(`\n`, out)
+            }
+            writeOut(`  ${GY}╰${'─'.repeat(44)}${RS}\n\n`, out)
             reasoningOutput = false
+            reasoningLineStart = false
           }
           fullResponse += chunk.text
           writeOut(chunk.text, out)
@@ -411,8 +434,13 @@ export class Session {
 
       // Close reasoning display if still open (model ended with tool calls, no text)
       if (reasoningOutput) {
-        writeOut(`${RS}\n\n`, out)
+        // If we're mid-line, close it
+        if (!reasoningLineStart) {
+          writeOut(`\n`, out)
+        }
+        writeOut(`  ${GY}╰${'─'.repeat(44)}${RS}\n\n`, out)
         reasoningOutput = false
+        reasoningLineStart = false
       }
 
       if (toolCalls.length === 0) {
