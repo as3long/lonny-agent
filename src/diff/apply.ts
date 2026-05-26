@@ -194,19 +194,21 @@ function applyHunk(lines: string[], hunk: Hunk): string[] | { reason: string } {
 }
 
 /** Try to place the hunk at oldStart-1; if the first context/delete line
- *  doesn't match there, search backward by up to 5 lines — models often
- *  include leading context before the actual change line. */
+ *  doesn't match there, search in a ±5 line window — models often
+ *  miscalculate line numbers by a few lines. */
 function findHunkStart(lines: string[], hunk: Hunk): number | { reason: string } {
   const firstContent = hunk.lines.find(l => l.kind !== 'add')
   if (!firstContent) return hunk.oldStart - 1
 
   const fileLen = lines.length
-  let startPos = Math.max(0, hunk.oldStart - 1 - 5)
+  const center = hunk.oldStart - 1
 
-  for (let pos = startPos; pos <= Math.min(fileLen, hunk.oldStart - 1); pos++) {
-    const fileLine = lines[pos] ?? ''
-    if (normalize(fileLine) === normalize(firstContent.text)) {
-      return pos
+  for (let offset = 0; offset <= 5; offset++) {
+    for (const pos of [center + offset, center - offset]) {
+      if (pos < 0 || pos >= fileLen) continue
+      if (normalize(lines[pos]) === normalize(firstContent.text)) {
+        return pos
+      }
     }
   }
 
