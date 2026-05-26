@@ -124,7 +124,9 @@ Example:
         return { success: true, output: `Applied ${result.results.length} change(s):\n${lines.join('\n')}` }
       } else {
         const lines = result.results.map(r => {
-          return `  ${r.operation.toUpperCase()} ${r.path}: FAILED - ${r.error || 'unknown error'}`
+          const status = r.status === 'applied' ? 'APPLIED' : r.status === 'rolled back' ? 'ROLLED BACK' : 'FAILED'
+          const detail = r.error ? ` - ${r.error}` : r.status === 'error' ? ' - unknown error' : ''
+          return `  ${status} ${r.path}${detail}`
         })
         dumpPatchToStderr('apply failed', patchText)
         return { success: false, output: '', error: `Batch edit failed:\n${lines.join('\n')}\n\nReceived patch_text (first 400 chars):\n${previewPatch(patchText)}` }
