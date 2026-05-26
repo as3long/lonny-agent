@@ -13,6 +13,7 @@ export interface ToolContext {
   autoApprove: boolean
   applier: FileReadTracker
   mode: 'code' | 'plan'
+  onPlanWritten?: (display: string) => void
 }
 
 export class ToolRegistry {
@@ -29,7 +30,7 @@ export class ToolRegistry {
     if (context.mode === 'code') {
       this.register(createEditTool(context.applier, context.cwd))
     } else {
-      this.register(createWritePlanTool(context.cwd))
+      this.register(createWritePlanTool(context.cwd, context.onPlanWritten))
     }
   }
 
@@ -41,7 +42,7 @@ export class ToolRegistry {
       this.tools.delete('write_plan')
     } else {
       if (!this.tools.has('write_plan')) {
-        this.register(createWritePlanTool(this.context.cwd))
+        this.register(createWritePlanTool(this.context.cwd, this.context.onPlanWritten))
       }
       this.tools.delete('edit')
     }

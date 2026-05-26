@@ -3,7 +3,7 @@ import * as path from 'node:path'
 import { Session, SessionOutput } from '../agent/session.js'
 import { Config } from '../config/index.js'
 import { loadTokenUsage, resetTokenUsage } from '../config/tokens.js'
-import { setOnPlanWritten, PLAN_DIR } from '../tools/write_plan.js'
+import { PLAN_DIR } from '../tools/write_plan.js'
 import type { Component, Focusable, OverlayHandle } from '@earendil-works/pi-tui'
 import { ProcessTerminal, TUI, Box, Text, Input, Markdown, SelectList, Container, Loader, Spacer, CURSOR_MARKER, visibleWidth }
   from '@earendil-works/pi-tui'
@@ -707,6 +707,14 @@ export async function startTui(config: Config): Promise<void> {
   // added after the first message (see landingScreen.onSubmit).
   tui.addChild(new Spacer(1)) // offset for fixed header overlay
 
+  // ── Plan written callback (defined early since it's used by session restore) ──
+  const planCb = () => {
+    refreshPlans()
+    if (plansOverlayHandle?.isHidden() === false) {
+      showPlansOverlay()
+    }
+  }
+
   // ── Session output ─────────────────────────────────────────────────────
   const output: SessionOutput = {
     write: (text: string) => {
@@ -721,6 +729,7 @@ export async function startTui(config: Config): Promise<void> {
   if (restoredSession) {
     restored = true
     session = restoredSession
+    session.onPlanWritten = planCb
     // Find the last user message from the previous session
     const lastUserMsg = [...session.messages].reverse().find(m => m.role === 'user')
     const lastQuestion = lastUserMsg && typeof lastUserMsg.content === 'string'
@@ -735,6 +744,7 @@ export async function startTui(config: Config): Promise<void> {
     chatMarkdown.setText(chatContent)
   } else {
     session = new Session(config, output)
+    session.onPlanWritten = planCb
   }
 
   // ── Status bar (bottom bar: cwd | status | version) ──────────────────
@@ -887,6 +897,7 @@ export async function startTui(config: Config): Promise<void> {
         Session.clearSavedSession(config.cwd)
         resetTokenUsage(config.cwd)
         session = new Session(config, output)
+        session.onPlanWritten = planCb
         chatContent = ''
         chatMarkdown.setText('')
         updateHeader()
@@ -975,15 +986,6 @@ export async function startTui(config: Config): Promise<void> {
     // Process the message through the normal flow
     sendMessage(value)
   }
-
-  // ── Plan written callback ────────────────────────────────────────────────
-  setOnPlanWritten(() => {
-    refreshPlans()
-    // Refresh plans overlay if visible
-    if (plansOverlayHandle?.isHidden() === false) {
-      showPlansOverlay()
-    }
-  })
 
   // ── Input listener ───────────────────────────────────────────────────────
   tui.addInputListener((data) => {

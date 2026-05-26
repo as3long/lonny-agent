@@ -10,6 +10,7 @@ import { ToolCall, ToolResult } from '../tools/types.js'
 import { FileReadTracker } from '../diff/apply.js'
 import { Config } from '../config/index.js'
 import { saveTokenUsage } from '../config/tokens.js'
+import type { ToolContext } from '../tools/registry.js'
 
 // ── Session persistence ────────────────────────────────────────────────────
 
@@ -262,6 +263,7 @@ export class Session {
   applier: FileReadTracker
   config: Config
   output?: SessionOutput
+  onPlanWritten?: (display: string) => void
   totalInputTokens: number = 0
   totalOutputTokens: number = 0
   turnInputTokens: number = 0
@@ -278,6 +280,7 @@ export class Session {
       autoApprove: config.autoApprove,
       applier: this.applier,
       mode: config.mode,
+      onPlanWritten: this.onPlanWritten,
     })
 
     if (config.provider === 'openai') {
