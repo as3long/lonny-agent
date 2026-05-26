@@ -145,57 +145,86 @@ EXAMPLES:
         const os = typeof input.old_string === 'string' ? input.old_string : ''
         const ns = typeof input.new_string === 'string' ? input.new_string : ''
         if (!fp) return { success: false, output: '', error: 'file_path is required (or use edits: [...])' }
-        // old_string omitted → edit mode; old_string = '' → create mode
         if (!('old_string' in input)) return { success: false, output: '', error: 'old_string is required (pass empty string to create a new file)' }
         edits = [{ file_path: fp, old_string: os, new_string: ns }]
       }
 
-      // Take snapshots before making any changes (for rollback)
-      const snapshots: Map<string, string | null> = new Map()
+      // Group edits by resolved file path
+      const fileGroups = new Map<string, { edits: SingleEdit[]; originalContent: string | null }>()
       for (const e of edits) {
         const resolved = path.resolve(cwd, e.file_path)
-        if (snapshots.has(resolved)) continue
-        try {
-          const content = fs.readFileSync(resolved, 'utf-8')
-          snapshots.set(resolved, content)
-        } catch {
-          snapshots.set(resolved, null)
+        if (!fileGroups.has(resolved)) {
+          let originalContent: string | null = null
+          try { originalContent = fs.readFileSync(resolved, 'utf-8') } catch { /* file doesn't exist yet */ }
+          fileGroups.set(resolved, { edits: [], originalContent })
         }
+        fileGroups.get(resolved)!.edits.push(e)
       }
 
       const results: string[] = []
       let anyFailed = false
       let firstError = ''
+      const modifiedFiles = new Map<string, string | null>() // resolved path → new content (null = deleted)
 
-      for (const e of edits) {
-        const r = performEdit(e.file_path, e.old_string, e.new_string, applier, cwd)
-        if (r.ok) {
-          const label = r.removed === 0 ? `Created` : `Edited`
-          results.push(`  ${label} ${e.file_path} (${r.removed}→${r.added} lines)`)
-        } else {
-          results.push(`  FAIL ${e.file_path}: ${r.error}`)
-          if (!anyFailed) {
-            anyFailed = true
-            firstError = r.error
+      for (const [resolved, group] of fileGroups) {
+        const relPath = path.relative(cwd, resolved).replace(/\\/g, '/')
+        let content = group.originalContent !== null ? group.originalContent.replace(/\r\n/g, '\n') : null
+
+        // Process in reverse order so positions stay valid
+        for (let i = group.edits.length - 1; i >= 0; i--) {
+          const e = group.edits[i]
+
+          if (e.old_string === '') {
+            // Create mode
+            if (content !== null) {
+              results.push(`  FAIL ${relPath}: File already exists`)
+              if (!anyFailed) { anyFailed = true; firstError = `File already exists: ${relPath}` }
+              break
+            }
+            content = e.new_string
+            results.push(`  Created ${relPath} (${e.new_string.split('\n').length} lines)`)
+            continue
           }
+
+          // Edit mode
+          if (content === null) {
+            results.push(`  FAIL ${relPath}: File not found`)
+            if (!anyFailed) { anyFailed = true; firstError = `File not found: ${relPath}` }
+            break
+          }
+
+          const idx = content.indexOf(e.old_string)
+          if (idx === -1) {
+            results.push(`  FAIL ${relPath}: old_string not found`)
+            if (!anyFailed) { anyFailed = true; firstError = `old_string not found in ${relPath}` }
+            break
+          }
+          const lastIdx = content.lastIndexOf(e.old_string)
+          if (idx !== lastIdx) {
+            results.push(`  FAIL ${relPath}: old_string appears MULTIPLE times`)
+            if (!anyFailed) { anyFailed = true; firstError = `old_string appears MULTIPLE times in ${relPath}` }
+            break
+          }
+
+          content = content.slice(0, idx) + e.new_string + content.slice(idx + e.old_string.length)
         }
+
+        if (anyFailed) break
+        modifiedFiles.set(resolved, content)
       }
 
-      // If any edit failed, rollback all snapshots
+      // Rollback on failure
       if (anyFailed) {
-        for (const [filePath, content] of snapshots) {
-          const relPath = path.relative(cwd, filePath).replace(/\\/g, '/')
-          if (content === null) {
+        for (const [filePath, group] of fileGroups) {
+          const originalContent = group.originalContent
+          if (originalContent === null) {
             try { fs.unlinkSync(filePath) } catch { /* ok */ }
           } else {
             try {
               fs.mkdirSync(path.dirname(filePath), { recursive: true })
-              fs.writeFileSync(filePath, content, 'utf-8')
+              fs.writeFileSync(filePath, originalContent, 'utf-8')
             } catch { /* ok */ }
           }
-        }
-        // Re-read tracked files so subsequent checks don't trip on timestamps
-        for (const [filePath] of snapshots) {
           applier.markRead(filePath)
         }
         return {
@@ -203,6 +232,25 @@ EXAMPLES:
           output: '',
           error: `Edit batch failed — all changes rolled back.\n${results.join('\n')}\n\nFirst error: ${firstError}`,
         }
+      }
+
+      // Write all modified files
+      for (const [resolved, content] of modifiedFiles) {
+        try {
+          if (content === null) {
+            fs.unlinkSync(resolved)
+          } else {
+            fs.mkdirSync(path.dirname(resolved), { recursive: true })
+            fs.writeFileSync(resolved, content, 'utf-8')
+          }
+        } catch (err) {
+          return {
+            success: false,
+            output: '',
+            error: `Failed to write ${path.relative(cwd, resolved).replace(/\\/g, '/')}: ${err instanceof Error ? err.message : String(err)}`,
+          }
+        }
+        applier.markRead(resolved)
       }
 
       return {

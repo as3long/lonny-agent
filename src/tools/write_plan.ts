@@ -2,7 +2,19 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { Tool, ToolResult } from './types.js'
 
-const PLAN_DIR = '.lonny'
+/** Directory where plans are stored, relative to project root */
+export const PLAN_DIR = '.lonny'
+
+/** Optional callback invoked after each successful plan write (for UI refresh) */
+export let onPlanWritten: ((filePath: string) => void) | null = null
+
+/**
+ * Set a callback that fires whenever a plan is written.
+ * Used by the TUI to refresh the plans panel.
+ */
+export function setOnPlanWritten(cb: ((filePath: string) => void) | null): void {
+  onPlanWritten = cb
+}
 
 function sanitizeFilename(name: string): string {
   const trimmed = name.trim()
@@ -61,6 +73,10 @@ export function createWritePlanTool(cwd: string): Tool {
         fs.mkdirSync(path.dirname(target), { recursive: true })
         fs.writeFileSync(target, content, 'utf8')
         const display = path.relative(cwd, target).replace(/\\/g, '/')
+        // Notify TUI callback (if set)
+        if (onPlanWritten) {
+          onPlanWritten(display)
+        }
         return { success: true, output: `Wrote plan to ${display} (${Buffer.byteLength(content, 'utf8')} bytes)` }
       } catch (err) {
         return {
