@@ -8,6 +8,8 @@ export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
   let provider: string | undefined
   let model: string | undefined
   let autoApprove = false
+  let thinking: boolean | undefined
+  let reasoningEffort: string | undefined
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
@@ -23,6 +25,10 @@ export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
       model = args[++i]
     } else if (arg === '--auto-approve') {
       autoApprove = true
+    } else if (arg === '--thinking') {
+      thinking = true
+    } else if (arg === '--reasoning-effort') {
+      reasoningEffort = args[++i]
     }
   }
 
@@ -30,7 +36,7 @@ export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
     prompt = args[0]
   }
 
-  const config = loadConfig({ apiKey, baseUrl, provider: provider as 'openai' | 'anthropic' | undefined, model, autoApprove })
+  const config = loadConfig({ apiKey, baseUrl, provider: provider as 'openai' | 'anthropic' | undefined, model, autoApprove, thinking, reasoningEffort })
 
   return { config, prompt }
 }

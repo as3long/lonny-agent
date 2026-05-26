@@ -10,6 +10,8 @@ export interface Config {
   model: string
   cwd: string
   autoApprove: boolean
+  thinking?: boolean
+  reasoningEffort?: string
 }
 
 interface JsonConfig {
@@ -17,6 +19,8 @@ interface JsonConfig {
   baseUrl?: string
   provider?: string
   model?: string
+  thinking?: boolean
+  reasoningEffort?: string
 }
 
 function loadJsonConfig(): JsonConfig {
@@ -40,5 +44,7 @@ export function loadConfig(options: Partial<Config>): Config {
     model: options.model || process.env.LONNY_MODEL || jsonConfig.model || 'claude-sonnet-4-20250514',
     cwd: options.cwd || process.cwd(),
     autoApprove: options.autoApprove ?? false,
+    thinking: options.thinking ?? jsonConfig.thinking,
+    reasoningEffort: options.reasoningEffort || jsonConfig.reasoningEffort,
   }
 }

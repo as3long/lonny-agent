@@ -136,7 +136,7 @@ export class Session {
     })
 
     if (config.provider === 'openai') {
-      this.provider = new OpenAIProvider(config.apiKey, config.baseUrl, config.model)
+      this.provider = new OpenAIProvider(config.apiKey, config.baseUrl, config.model, config.thinking, config.reasoningEffort)
     } else {
       this.provider = new AnthropicProvider(config.apiKey, config.baseUrl, config.model)
     }
@@ -157,10 +157,14 @@ export class Session {
       iterations++
       const toolCalls: ToolCall[] = []
       let fullResponse = ''
+      let reasoningContent: string | undefined
 
       const stream = this.provider.chat(this.messages, this.registry.getDefinitions())
 
       for await (const chunk of stream) {
+        if (chunk.reasoning_content) {
+          reasoningContent = chunk.reasoning_content
+        }
         if (chunk.type === 'text' && chunk.text) {
           fullResponse += chunk.text
           process.stdout.write(chunk.text)
@@ -187,6 +191,7 @@ export class Session {
         role: 'assistant',
         content: fullResponse || null,
         tool_calls: toolCalls,
+        reasoning_content: reasoningContent,
       }
       this.messages.push(assistantMsg)
 

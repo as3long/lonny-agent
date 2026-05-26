@@ -98,7 +98,7 @@ Example:
         return { success: true, output: `Applied ${result.results.length} change(s):\n${lines.join('\n')}` }
       } else {
         const lines = result.results.map(r => {
-          return `  ${r.operation.toUpperCase()} ${r.path}: FAILED - ${r.error}`
+          return `  ${r.operation.toUpperCase()} ${r.path}: FAILED - ${r.error || 'unknown error'}`
         })
         return { success: false, output: '', error: `Batch edit failed:\n${lines.join('\n')}` }
       }

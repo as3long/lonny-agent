@@ -1,6 +1,6 @@
 import { Patch, FileChange, FileOperationType, Hunk, HunkLine } from './types.js'
 
-const FILE_HEADER_RE = /^@\s+(\S+)(?::(create|delete))?$/
+const FILE_HEADER_RE = /^@\s+([^\s:]+)(?::(create|delete))?$/
 const HUNK_HEADER_RE = /^@@\s+-(\d+),?(\d*)\s+\+(\d+),?(\d*)\s*@@/
 
 interface ParseResult {

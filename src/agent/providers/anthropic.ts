@@ -15,17 +15,24 @@ export class AnthropicProvider implements LLMProvider {
     messages: LLMMessage[],
     tools: ToolDefinition[],
   ): AsyncGenerator<LLMChunk> {
-    const anthropicTools = tools.map(t => ({
-      name: t.name,
-      description: t.description,
-      input_schema: {
-        type: 'object' as const,
-        properties: t.parameters as Record<string, unknown>,
-        required: Object.entries(t.parameters)
-          .filter(([, v]) => v.required)
-          .map(([k]) => k),
-      },
-    }))
+    const anthropicTools = tools.map(t => {
+      const properties: Record<string, unknown> = {}
+      for (const [key, param] of Object.entries(t.parameters)) {
+        const { required: _, ...rest } = param
+        properties[key] = rest
+      }
+      return {
+        name: t.name,
+        description: t.description,
+        input_schema: {
+          type: 'object' as const,
+          properties,
+          required: Object.entries(t.parameters)
+            .filter(([, v]) => v.required)
+            .map(([k]) => k),
+        },
+      }
+    })
 
     const systemMsg = messages.find(m => m.role === 'system')
     const nonSystemMessages = messages.filter(m => m.role !== 'system')

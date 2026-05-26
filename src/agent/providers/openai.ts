@@ -5,30 +5,41 @@ import { ToolDefinition, ToolCall } from '../../tools/types.js'
 export class OpenAIProvider implements LLMProvider {
   private client: OpenAI
   private model: string
+  private thinking?: boolean
+  private reasoningEffort?: string
 
-  constructor(apiKey: string, baseURL?: string, model?: string) {
+  constructor(apiKey: string, baseURL?: string, model?: string, thinking?: boolean, reasoningEffort?: string) {
     this.client = new OpenAI({ apiKey, baseURL })
     this.model = model || 'gpt-4o'
+    this.thinking = thinking
+    this.reasoningEffort = reasoningEffort
   }
 
   async *chat(
     messages: LLMMessage[],
     tools: ToolDefinition[],
   ): AsyncGenerator<LLMChunk> {
-    const openAIFormattedTools = tools.map(t => ({
-      type: 'function' as const,
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: {
-          type: 'object',
-          properties: t.parameters as Record<string, unknown>,
-          required: Object.entries(t.parameters)
-            .filter(([, v]) => v.required)
-            .map(([k]) => k),
+    const openAIFormattedTools = tools.map(t => {
+      const properties: Record<string, unknown> = {}
+      for (const [key, param] of Object.entries(t.parameters)) {
+        const { required: _, ...rest } = param
+        properties[key] = rest
+      }
+      return {
+        type: 'function' as const,
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: {
+            type: 'object',
+            properties,
+            required: Object.entries(t.parameters)
+              .filter(([, v]) => v.required)
+              .map(([k]) => k),
+          },
         },
-      },
-    }))
+      }
+    })
 
     const openAIMessages = messages.map(m => {
       if (m.role === 'tool') {
@@ -39,8 +50,8 @@ export class OpenAIProvider implements LLMProvider {
         }
       }
       if (m.role === 'assistant' && m.tool_calls) {
-        return {
-          role: 'assistant' as const,
+        const msg: Record<string, unknown> = {
+          role: 'assistant',
           content: m.content,
           tool_calls: m.tool_calls.map(tc => ({
             id: tc.id,
@@ -51,6 +62,20 @@ export class OpenAIProvider implements LLMProvider {
             },
           })),
         }
+        if (m.reasoning_content) {
+          msg.reasoning_content = m.reasoning_content
+        }
+        return msg as any
+      }
+      if (m.role === 'assistant') {
+        const msg: Record<string, unknown> = {
+          role: 'assistant',
+          content: m.content || '',
+        }
+        if (m.reasoning_content) {
+          msg.reasoning_content = m.reasoning_content
+        }
+        return msg as any
       }
       return {
         role: m.role as 'system' | 'user' | 'assistant',
@@ -58,12 +83,13 @@ export class OpenAIProvider implements LLMProvider {
       }
     })
 
-    const stream = await this.client.chat.completions.create({
+    const stream = await (this.client.chat.completions.create as any)({
       model: this.model,
-      messages: openAIMessages as any,
+      messages: openAIMessages,
       tools: openAIFormattedTools.length > 0 ? openAIFormattedTools : undefined,
       stream: true,
       stream_options: { include_usage: false },
+      ...(this.thinking ? { thinking: { type: 'enabled' }, reasoning_effort: this.reasoningEffort || 'high' } : {}),
     })
 
     let currentToolCall: {
@@ -72,14 +98,20 @@ export class OpenAIProvider implements LLMProvider {
       arguments: string
     } | null = null
     let fullText = ''
+    let reasoningContent: string | undefined
 
     for await (const chunk of stream) {
       const delta = chunk.choices?.[0]?.delta
       if (!delta) continue
 
+      if ((delta as any).reasoning_content) {
+        reasoningContent = (reasoningContent || '') + (delta as any).reasoning_content
+      }
+
       if (delta.content) {
         fullText += delta.content
-        yield { type: 'text', text: delta.content }
+        yield { type: 'text', text: delta.content, reasoning_content: reasoningContent }
+        reasoningContent = undefined
       }
 
       if (delta.tool_calls) {
@@ -93,7 +125,9 @@ export class OpenAIProvider implements LLMProvider {
                   name: currentToolCall.name,
                   input: JSON.parse(currentToolCall.arguments || '{}'),
                 },
+                reasoning_content: reasoningContent,
               }
+              reasoningContent = undefined
             }
             currentToolCall = {
               id: tc.id,
@@ -116,6 +150,7 @@ export class OpenAIProvider implements LLMProvider {
                 name: currentToolCall.name,
                 input: JSON.parse(currentToolCall.arguments || '{}'),
               },
+              reasoning_content: reasoningContent,
             }
           } catch {
             yield {
@@ -125,11 +160,14 @@ export class OpenAIProvider implements LLMProvider {
                 name: currentToolCall.name,
                 input: {},
               },
+              reasoning_content: reasoningContent,
             }
           }
+          reasoningContent = undefined
           currentToolCall = null
         }
-        yield { type: 'complete', finish_reason: chunk.choices[0].finish_reason }
+        yield { type: 'complete', finish_reason: chunk.choices[0].finish_reason, reasoning_content: reasoningContent }
+        reasoningContent = undefined
       }
     }
 
@@ -141,6 +179,7 @@ export class OpenAIProvider implements LLMProvider {
           name: currentToolCall.name,
           input: JSON.parse(currentToolCall.arguments || '{}'),
         },
+        reasoning_content: reasoningContent,
       }
     }
   }

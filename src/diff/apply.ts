@@ -185,39 +185,68 @@ function findContext(lines: string[], hunk: Hunk): number {
   const ctxLines = hunk.lines.filter(l => l.kind === 'context').map(l => l.text)
   if (ctxLines.length === 0) return hunk.oldStart - 1
 
-  const searchStart = Math.max(0, hunk.oldStart - 1 - 3)
+  const maxScore = ctxLines.length * 3
+  const searchRadius = 50
+  const fileLen = lines.length
 
-  for (let i = searchStart; i <= lines.length - ctxLines.length; i++) {
-    if (matchesContext(lines, i, ctxLines)) {
+  const start = Math.max(0, hunk.oldStart - 1 - searchRadius)
+  const end = Math.min(fileLen - ctxLines.length, hunk.oldStart - 1 + searchRadius)
+
+  let bestIdx = -1
+  let bestScore = 0
+
+  for (let i = start; i <= end; i++) {
+    const score = scoreContext(lines, i, ctxLines)
+    if (score >= maxScore) {
       return i
+    }
+    if (score > bestScore) {
+      bestScore = score
+      bestIdx = i
     }
   }
 
-  return -1
+  if (bestIdx >= 0) return bestIdx
+
+  for (let i = 0; i < start; i++) {
+    const score = scoreContext(lines, i, ctxLines)
+    if (score >= maxScore) return i
+    if (score > bestScore) { bestScore = score; bestIdx = i }
+  }
+
+  for (let i = end + 1; i <= fileLen - ctxLines.length; i++) {
+    const score = scoreContext(lines, i, ctxLines)
+    if (score >= maxScore) return i
+    if (score > bestScore) { bestScore = score; bestIdx = i }
+  }
+
+  return bestIdx
 }
 
-function matchesContext(lines: string[], startIdx: number, ctxLines: string[]): boolean {
-  const delLines = new Set<string>()
-  let delIdx = 0
-  const hunkDelLines = ctxLines.length === 0
-    ? []
-    : new Array(ctxLines.length).fill(null)
-
+function scoreContext(lines: string[], startIdx: number, ctxLines: string[]): number {
+  let score = 0
   for (let i = 0; i < ctxLines.length; i++) {
     const fileLine = lines[startIdx + i] ?? ''
     const ctxLine = ctxLines[i]
-
-    if (fuzzyMatch(fileLine, ctxLine)) {
-      continue
+    if (fileLine === ctxLine) {
+      score += 3
+    } else if (normalize(fileLine) === normalize(ctxLine)) {
+      score += 2
+    } else if (fuzzyMatch(fileLine, ctxLine)) {
+      score += 1
     }
-    return false
   }
-  return true
+  return score
+}
+
+function normalize(s: string): string {
+  return s.replace(/\t/g, '  ').replace(/[ \t]+/g, ' ').trimEnd()
 }
 
 function fuzzyMatch(a: string, b: string): boolean {
   if (a === b) return true
   if (a.trimEnd() === b.trimEnd()) return true
   if (a.trim() === b.trim()) return true
+  if (normalize(a) === normalize(b)) return true
   return false
 }

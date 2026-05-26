@@ -6,6 +6,7 @@ export interface LLMMessage {
   tool_call_id?: string
   tool_calls?: ToolCall[]
   name?: string
+  reasoning_content?: string
 }
 
 export interface LLMProvider {
@@ -20,4 +21,5 @@ export interface LLMChunk {
   text?: string
   tool_call?: ToolCall
   finish_reason?: string
+  reasoning_content?: string
 }
