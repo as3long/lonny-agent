@@ -2,6 +2,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { Session, SessionOutput } from '../agent/session.js'
 import { Config } from '../config/index.js'
+import { loadTokenUsage } from '../config/tokens.js'
 import { setOnPlanWritten, PLAN_DIR } from '../tools/write_plan.js'
 import type { Component, OverlayHandle } from '@earendil-works/pi-tui'
 import { ProcessTerminal, TUI, Box, Text, Input, Markdown, SelectList, Container, Loader, Spacer }
@@ -113,6 +114,7 @@ class HeaderBar implements Component {
   private planName: string
   private totalInputTokens: number = 0
   private totalOutputTokens: number = 0
+  private projectName: string = ''
 
   constructor(model: string, provider: string) {
     this.model = model
@@ -131,6 +133,7 @@ class HeaderBar implements Component {
     this.totalInputTokens = inputTokens
     this.totalOutputTokens = outputTokens
   }
+  setProjectName(name: string): void { this.projectName = name }
   invalidate(): void {}
   handleInput?(data: string): void {}
 
@@ -151,7 +154,8 @@ class HeaderBar implements Component {
     const totalTokens = this.totalInputTokens + this.totalOutputTokens
     if (totalTokens > 0) {
       const tokenStr = `\u25B4${this.totalInputTokens} \u25BE${this.totalOutputTokens}  ${totalTokens}`
-      rightPart += `  ${colors.dim('|')}  ${colors.dim(tokenStr)}`
+      const projectTag = this.projectName ? `${this.projectName} ` : ''
+      rightPart += `  ${colors.dim('|')}  ${colors.dim(`${projectTag}${tokenStr}`)}`
     }
 
     if (this.planCount > 0) {
@@ -390,9 +394,10 @@ export async function startTui(config: Config): Promise<void> {
     header.setPlanCount(plans.length)
     const sel = plansList.getSelectedItem()
     header.setPlanName(sel ? sel.label : '')
-    if (session) {
-      header.setTokenUsage(session.totalInputTokens, session.totalOutputTokens)
-    }
+    // Load persisted token stats (cumulative across all sessions for this project)
+    const tokenStats = loadTokenUsage(config.cwd)
+    header.setProjectName(tokenStats.projectName)
+    header.setTokenUsage(tokenStats.totalInputTokens, tokenStats.totalOutputTokens)
     tui.requestRender(true)
   }
 

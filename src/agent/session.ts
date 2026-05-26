@@ -5,6 +5,7 @@ import { ToolRegistry } from '../tools/registry.js'
 import { ToolCall, ToolResult } from '../tools/types.js'
 import { PatchApplier } from '../diff/apply.js'
 import { Config } from '../config/index.js'
+import { saveTokenUsage } from '../config/tokens.js'
 import * as os from 'node:os'
 
 const CY = '\x1b[36m'
@@ -179,7 +180,11 @@ ${isWindows ? '  - Use \`type\` instead of \`cat\`, \`dir\` instead of \`ls\`, \
 RULES:
 1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into \`edit\`.
 2. Use \`edit\` for file changes (single or batch via \`edits\` array). \`bash\` can also create and edit files, but \`edit\` is preferred for structured changes.
-3. After applying changes, if more work is needed, continue with Phase 1 (reading) again.
+3. After making edits to a file, if you need to make ANOTHER edit to the SAME file, you MUST re-read it first to get the updated content. The old_string from your previous read is stale and will cause \`old_string not found\`.
+4. If \`edit\` reports \`old_string not found\`, do NOT retry with the same old_string — re-read the file immediately to see its actual current content, then retry with correctly-copied text.
+5. When copying old_string from \`read\` output, include 2-3 lines of context BEFORE and AFTER the target change to make the string unique in the file.
+6. On Windows, files may use CRLF (\r\n) line endings, but the \`edit\` tool normalizes them to LF (\n). Always use \`\n\` (not \`\r\n\`) in old_string/new_string.
+7. Prefer batch edits (\`edits: [...]\`) over single edits when modifying multiple spots in the same file — the tool processes them in reverse order so positions stay valid.
 
 Available tools:
 - \`read\`: Read file contents (paths: string[])
@@ -270,6 +275,7 @@ export class Session {
             if (toolCalls.length === 0) {
               printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, out)
               writeOut('\n\n', out)
+              saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens)
               return
             }
           }
@@ -281,6 +287,7 @@ export class Session {
           printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, out)
           writeOut('\n\n', out)
         }
+        saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens)
         return
       }
 
@@ -311,5 +318,7 @@ export class Session {
       printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, out)
       writeOut('\nAgent reached maximum iterations. Stopping.\n', out)
     }
+
+    saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens)
   }
 }
