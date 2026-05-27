@@ -16,7 +16,7 @@ export interface ToolContext {
   cwd: string
   autoApprove: boolean
   applier: FileReadTracker
-  mode: 'code' | 'plan'
+  mode: 'code' | 'plan' | 'ask'
   onPlanWritten?: (display: string) => void
 }
 
@@ -42,6 +42,13 @@ export class ToolRegistry {
 
   /** Register all built-in tools */
   private registerBuiltins(): void {
+    // ask mode: only fetch and search
+    if (this.context.mode === 'ask') {
+      this.register(fetchTool)
+      this.register(searchTool)
+      return
+    }
+
     this.register(createReadTool(this.context.applier, this.context.cwd))
     this.register(globTool)
     this.register(createGrepTool(this.context.cwd))
@@ -58,19 +65,28 @@ export class ToolRegistry {
     }
   }
 
-  setMode(mode: 'code' | 'plan'): void {
+  setMode(mode: 'code' | 'plan' | 'ask'): void {
+    // Update context.mode FIRST so registerBuiltins() and mode-based logic
+    // use the NEW mode, not the stale one (fixes bug when switching from
+    // ask→code or plan→code where all tools would be missing)
+    this.context.mode = mode
+
     if (mode === 'code') {
-      if (!this.tools.has('edit')) {
-        this.register(createEditTool(this.context.applier, this.context.cwd))
-      }
-      this.tools.delete('write_plan')
-    } else {
+      // Re-register all built-in tools for code mode
+      this.tools.clear()
+      this.registerBuiltins()
+    } else if (mode === 'plan') {
+      // Keep existing tools but swap edit/write_plan
       if (!this.tools.has('write_plan')) {
         this.register(createWritePlanTool(this.context.cwd, this.context.onPlanWritten))
       }
       this.tools.delete('edit')
+    } else if (mode === 'ask') {
+      // Ask mode: only fetch and search
+      this.tools.clear()
+      this.register(fetchTool)
+      this.register(searchTool)
     }
-    this.context.mode = mode
   }
 
   /** Register a single tool */

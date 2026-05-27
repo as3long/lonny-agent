@@ -5,7 +5,7 @@ import * as os from 'node:os'
 export interface Config {
   apiKey: string
   baseUrl?: string
-  mode: 'code' | 'plan'
+  mode: 'code' | 'plan' | 'ask'
   provider: 'openai' | 'anthropic' | 'google' | 'ollama'
   model: string
   cwd: string
@@ -15,6 +15,7 @@ export interface Config {
   enableCache?: boolean
   temperature?: number
   maxTokens?: number
+  tavilyApiKey?: string
 }
 
 interface JsonConfig {
@@ -27,6 +28,7 @@ interface JsonConfig {
   enableCache?: boolean
   temperature?: number
   maxTokens?: number
+  tavilyApiKey?: string
 }
 
 let cachedJsonConfig: JsonConfig | null = null
@@ -73,5 +75,6 @@ export function loadConfig(options: Partial<Config>): Config {
     enableCache,
     temperature: options.temperature ?? jsonConfig.temperature,
     maxTokens: options.maxTokens ?? jsonConfig.maxTokens,
+    tavilyApiKey: jsonConfig.tavilyApiKey,
   }
 }

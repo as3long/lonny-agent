@@ -25,7 +25,7 @@ interface SessionData {
   totalInputTokens: number
   totalOutputTokens: number
   totalApiCalls: number
-  mode: 'code' | 'plan'
+  mode: 'code' | 'plan' | 'ask'
   model: string
   provider: string
   updatedAt: string
@@ -262,6 +262,17 @@ A short, ordered description of the approach. Reference concrete files using \`p
 End your response by telling the user where the plan was saved and asking whether they want to switch to \`code\` mode to execute it. Use exactly: "Switch to code mode to implement this plan? (run \`/mode code\`)"
 
 If the user's request is a question rather than a change request, answer it directly and skip the plan/todo sections.`
+    : config.mode === 'ask'
+    ? `You are a Q&A assistant. You can ONLY use the following tools to search for information:
+- \`fetch\`: Fetch content from a URL
+- \`search\`: Search the web using Tavily
+
+You CANNOT execute any shell commands (\`bash\`), read local files, or make any changes to the codebase.
+
+RULES (ask-specific):
+1. Use \`fetch\` and \`search\` to find information and answer user questions.
+2. You CANNOT use \`bash\`, \`read\`, \`edit\`, \`write_plan\`, \`glob\`, \`grep\`, \`ls\`, \`find\`, or \`git\`.
+3. If the user wants you to modify code or run commands, explain you are in ask mode and suggest switching to code mode.`
     : `You are a coding agent optimized for per-call pricing.
 
 RULES (code-specific):
@@ -392,7 +403,7 @@ export class Session {
     }
   }
 
-  setMode(mode: 'code' | 'plan'): void {
+  setMode(mode: 'code' | 'plan' | 'ask'): void {
     this.config.mode = mode
     this.messages[0] = { role: 'system', content: buildSystemPrompt(this.config) }
     this.registry.setMode(mode)

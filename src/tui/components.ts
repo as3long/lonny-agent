@@ -177,7 +177,6 @@ export class HeaderBar implements Component {
   private totalOutputTokens: number = 0
   private totalApiCalls: number = 0
   private projectName: string = ''
-  private balance: string = ''
 
   constructor(model: string, provider: string) {
     this.model = model
@@ -198,13 +197,8 @@ export class HeaderBar implements Component {
     this.totalApiCalls = apiCalls
   }
   setProjectName(name: string): void { this.projectName = name }
-  setBalance(b: string): void { this.balance = b }
   invalidate(): void {}
   handleInput?(data: string): void {}
-
-  private visibleLen(s: string): number {
-    return s.replace(/\x1b\[[0-9;]*m/g, '').length
-  }
 
   render(width: number): string[] {
     const appName = colors.accent('\u2588 lonny')
@@ -214,7 +208,9 @@ export class HeaderBar implements Component {
     const statusLabel = this.agentStatus === 'running'
       ? colors.running('running')
       : colors.dim('idle')
-    const modeLabel = colors.warn(this.mode)
+    const modeLabel = this.mode === 'ask'
+      ? colors.success(this.mode)
+      : colors.warn(this.mode)
     const modelInfo = colors.dim(`${this.provider}/${this.model}`)
 
     let rightPart = `${statusDot} ${statusLabel}  ${modeLabel}  ${modelInfo}`
@@ -228,19 +224,13 @@ export class HeaderBar implements Component {
       rightPart += `  ${colors.dim('|')}  ${colors.dim(`${projectTag}${tokenStr}  ${callsStr}`)}`
     }
 
-    if (this.balance) {
-      rightPart += `  ${colors.dim('|')}  ${colors.dim(this.balance)}`
-    }
-
     if (this.planCount > 0) {
       rightPart += `  ${colors.dim('|')}  ${colors.accent(`${this.planCount} plan${this.planCount > 1 ? 's' : ''}`)}`
       if (this.planName) rightPart += ` ${colors.dim(this.planName)}`
     }
 
     const line = ` ${appName}  ${colors.dim('·')}  ${rightPart}`
-    const visLen = this.visibleLen(line)
-    const padded = visLen < width ? line + ' '.repeat(width - visLen) : line
-    return [colors.headerBg(padded), colors.dim('\u2500'.repeat(width))]
+    return [colors.headerBg(line), colors.dim('\u2500'.repeat(width))]
   }
 }
 
@@ -254,6 +244,7 @@ export class RichFooter implements Component {
   private totalInputTokens: number = 0
   private totalOutputTokens: number = 0
   private totalApiCalls: number = 0
+  private balance: string = ''
   private visible = true
   private phase: 'landing' | 'chat' = 'landing'
 
@@ -272,12 +263,34 @@ export class RichFooter implements Component {
   }
   setVisible(v: boolean): void { this.visible = v }
   setPhase(p: 'landing' | 'chat'): void { this.phase = p }
+  setBalance(b: string): void { this.balance = b }
 
   invalidate(): void {}
   handleInput?(data: string): void {}
 
   private visibleLen(s: string): number {
-    return s.replace(/\x1b\[[0-9;]*m/g, '').length
+    const stripped = s.replace(/\x1b\[[0-9;]*m/g, '')
+    let len = 0
+    for (const ch of stripped) {
+      const code = ch.charCodeAt(0)
+      if (code >= 0x1100 && (
+          code <= 0x115F ||
+          code === 0x2329 || code === 0x232A ||
+          (code >= 0x2E80 && code <= 0xA4CF && code !== 0x303F) ||
+          (code >= 0xAC00 && code <= 0xD7A3) ||
+          (code >= 0xF900 && code <= 0xFAFF) ||
+          (code >= 0xFE10 && code <= 0xFE19) ||
+          (code >= 0xFE30 && code <= 0xFE6F) ||
+          (code >= 0xFF00 && code <= 0xFF60) ||
+          (code >= 0xFFE0 && code <= 0xFFE6) ||
+          (code >= 0x1F004)
+      )) {
+        len += 2
+      } else {
+        len += 1
+      }
+    }
+    return len
   }
 
   render(width: number): string[] {
@@ -307,6 +320,8 @@ export class RichFooter implements Component {
     // Mode tag
     const modeTag = this.mode === 'plan'
       ? `\x1b[38;2;255;200;50m${this.mode}\x1b[0m`
+      : this.mode === 'ask'
+      ? `\x1b[38;2;0;200;100m${this.mode}\x1b[0m`
       : `\x1b[38;2;0;200;255m${this.mode}\x1b[0m`
     segments.push(modeTag)
 
@@ -321,6 +336,11 @@ export class RichFooter implements Component {
       const tokenStr = `\u25B4${formatTokens(this.totalInputTokens)} \u25BE${formatTokens(this.totalOutputTokens)}  ${formatTokens(totalTokens)}`
       segments.push(`\x1b[38;2;110;110;110m${tokenStr}\x1b[0m`)
       segments.push(`\x1b[38;2;110;110;110m${this.totalApiCalls}c\x1b[0m`)
+    }
+
+    // Balance (DeepSeek official API only)
+    if (this.balance) {
+      segments.push(`\x1b[38;2;255;200;50m\u4F59\u989D\x1b[0m\uFF1A${this.balance}`)
     }
 
     // Build center part from segments
@@ -383,7 +403,28 @@ export class LandingScreen implements Component {
   }
 
   private visibleLen(s: string): number {
-    return s.replace(/\x1b\[[0-9;]*m/g, '').length
+    const stripped = s.replace(/\x1b\[[0-9;]*m/g, '')
+    let len = 0
+    for (const ch of stripped) {
+      const code = ch.charCodeAt(0)
+      if (code >= 0x1100 && (
+          code <= 0x115F ||
+          code === 0x2329 || code === 0x232A ||
+          (code >= 0x2E80 && code <= 0xA4CF && code !== 0x303F) ||
+          (code >= 0xAC00 && code <= 0xD7A3) ||
+          (code >= 0xF900 && code <= 0xFAFF) ||
+          (code >= 0xFE10 && code <= 0xFE19) ||
+          (code >= 0xFE30 && code <= 0xFE6F) ||
+          (code >= 0xFF00 && code <= 0xFF60) ||
+          (code >= 0xFFE0 && code <= 0xFFE6) ||
+          (code >= 0x1F004)
+      )) {
+        len += 2
+      } else {
+        len += 1
+      }
+    }
+    return len
   }
 
   render(width: number): string[] {
@@ -537,7 +578,28 @@ export class TodoPanel implements Component {
   }
 
   private visibleLen(s: string): number {
-    return s.replace(/\x1b\[[0-9;]*m/g, '').length
+    const stripped = s.replace(/\x1b\[[0-9;]*m/g, '')
+    let len = 0
+    for (const ch of stripped) {
+      const code = ch.charCodeAt(0)
+      if (code >= 0x1100 && (
+          code <= 0x115F ||
+          code === 0x2329 || code === 0x232A ||
+          (code >= 0x2E80 && code <= 0xA4CF && code !== 0x303F) ||
+          (code >= 0xAC00 && code <= 0xD7A3) ||
+          (code >= 0xF900 && code <= 0xFAFF) ||
+          (code >= 0xFE10 && code <= 0xFE19) ||
+          (code >= 0xFE30 && code <= 0xFE6F) ||
+          (code >= 0xFF00 && code <= 0xFF60) ||
+          (code >= 0xFFE0 && code <= 0xFFE6) ||
+          (code >= 0x1F004)
+      )) {
+        len += 2
+      } else {
+        len += 1
+      }
+    }
+    return len
   }
 
   render(width: number): string[] {

@@ -78,7 +78,7 @@ export async function startTui(config: Config): Promise<void> {
 
   // Chat input — Editor with multi-line support, history, and autocomplete
   const slashCommands: SlashCommand[] = [
-    { name: 'mode', description: 'Switch mode (code|plan)', argumentHint: 'code|plan' },
+    { name: 'mode', description: 'Switch mode (code|plan|ask)', argumentHint: 'code|plan|ask' },
     { name: 'model', description: 'Switch model', argumentHint: '<name>' },
     { name: 'plans', description: 'Show plans overlay' },
     { name: 'prompts', description: 'List prompt templates' },
@@ -155,8 +155,11 @@ export async function startTui(config: Config): Promise<void> {
       if (isDeepSeekOfficial(config.baseUrl) && config.apiKey) {
         const balance = await fetchDeepSeekBalance(config.apiKey)
         if (balance.isAvailable && balance.display) {
-          header.setBalance(balance.display)
+          footer.setBalance(balance.display)
           tui.requestRender(true)
+        } else if (balance.error) {
+          chatContent += `\n${colors.warn('\u26A0')} Balance fetch failed: ${balance.error}\n`
+          chatMarkdown.setText(chatContent)
         }
       }
     } catch {
@@ -303,7 +306,7 @@ export async function startTui(config: Config): Promise<void> {
       ` ${colors.accent('lonny')} ${colors.dim('TUI Help')}\n` +
       colors.accent('\u2501').repeat(20) + '\n\n' +
       ` ${colors.dim('Commands:')}\n` +
-      `   ${colors.inputPrompt('/mode')} code|plan  ${colors.dim('Switch mode')}\n` +
+      ` ${colors.inputPrompt('/mode')} code|plan|ask  ${colors.dim('Switch mode')}\n` +
       `   ${colors.inputPrompt('/model')} <name>    ${colors.dim('Switch model')}\n` +
       `   ${colors.inputPrompt('/plans')}          ${colors.dim('Show plans overlay')}\n` +
       `   ${colors.inputPrompt('/new')}            ${colors.dim('Start a new session')}\n` +
@@ -332,7 +335,7 @@ export async function startTui(config: Config): Promise<void> {
   // ── Update helpers ──────────────────────────────────────────────────────
   function updateHeader(): void {
     const plans = listPlans(config.cwd)
-    header.setMode(session?.config.mode === 'plan' ? 'plan' : 'code')
+    header.setMode(session?.config.mode === 'plan' ? 'plan' : session?.config.mode === 'ask' ? 'ask' : 'code')
     header.setAgentStatus(isRunning ? 'running' : 'idle')
     header.setPlanCount(plans.length)
     const sel = plansList.getSelectedItem()
@@ -342,7 +345,7 @@ export async function startTui(config: Config): Promise<void> {
     header.setProjectName(tokenStats.projectName)
     header.setTokenUsage(tokenStats.totalInputTokens, tokenStats.totalOutputTokens, tokenStats.totalApiCalls)
     // Also update footer with latest state
-    footer.setMode(session?.config.mode === 'plan' ? 'plan' : 'code')
+    footer.setMode(session?.config.mode === 'plan' ? 'plan' : session?.config.mode === 'ask' ? 'ask' : 'code')
     footer.setModel(config.model, config.provider)
     footer.setTokenUsage(tokenStats.totalInputTokens, tokenStats.totalOutputTokens, tokenStats.totalApiCalls)
     tui.requestRender(true)
@@ -360,9 +363,9 @@ export async function startTui(config: Config): Promise<void> {
       if (isDeepSeekOfficial(config.baseUrl) && config.apiKey) {
         const balance = await fetchDeepSeekBalance(config.apiKey)
         if (balance.isAvailable && balance.display) {
-          header.setBalance(balance.display)
+          footer.setBalance(balance.display)
         } else {
-          header.setBalance('')
+          footer.setBalance('')
         }
         tui.requestRender(true)
       }
@@ -405,13 +408,13 @@ export async function startTui(config: Config): Promise<void> {
       }
 
       if (cmd === 'mode') {
-        if (arg === 'code' || arg === 'plan') {
+        if (arg === 'code' || arg === 'plan' || arg === 'ask') {
           session.setMode(arg)
-          chatContent += `\n${colors.warn('\u21E8')} Switched to ${colors.warn(arg)} mode\n`
+          chatContent += `\n${colors.warn('\u21E8')} Switched to ${arg === 'ask' ? colors.success(arg) : colors.warn(arg)} mode\n`
           chatMarkdown.setText(chatContent)
           updateHeader()
         } else {
-          chatContent += `\n${colors.error('\u2716')} Usage: ${colors.inputPrompt('/mode code|plan')}  (current: ${session.config.mode})\n`
+          chatContent += `\n${colors.error('\u2716')} Usage: ${colors.inputPrompt('/mode code|plan|ask')}  (current: ${session.config.mode})\n`
           chatMarkdown.setText(chatContent)
         }
         return

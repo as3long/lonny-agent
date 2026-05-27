@@ -10,7 +10,7 @@ export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
   let autoApprove = false
   let thinking: boolean | undefined
   let reasoningEffort: string | undefined
-  let mode: 'code' | 'plan' | undefined
+  let mode: 'code' | 'plan' | 'ask' | undefined
   let temperature: number | undefined
   let maxTokens: number | undefined
 
