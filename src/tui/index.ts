@@ -809,6 +809,7 @@ export async function startTui(config: Config): Promise<void> {
     anchor: 'bottom-left',
     row: 0,
     col: 0,
+    width: terminal.columns,
     nonCapturing: true,
   })
 
