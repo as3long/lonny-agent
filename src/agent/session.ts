@@ -13,6 +13,8 @@ import { FileReadTracker } from '../diff/apply.js'
 import { Config } from '../config/index.js'
 import { saveTokenUsage } from '../config/tokens.js'
 import { compact, shouldCompact, estimateMessagesTokens } from './compaction.js'
+import { loadSkills, formatSkillsForPrompt } from './skills.js'
+import { getGlobalEventBus, EventChannels } from './event-bus.js'
 import type { ToolContext } from '../tools/registry.js'
 
 // ── Session persistence ────────────────────────────────────────────────────
@@ -188,6 +190,10 @@ function buildSystemPrompt(config: Config): string {
   const cwd = config.cwd
   const isWindows = platform === 'win32'
 
+  // ── Load skills ────────────────────────────────────────────────────────
+  const skills = loadSkills(cwd)
+  const skillsSection = formatSkillsForPrompt(skills)
+
   // ── Shared rules (identical across modes; stable prefix for caching) ─────
   const sharedRules = `
 RULES:
@@ -203,7 +209,9 @@ Available tools:
 - \`ls\`: List directory (path?: string)
 - \`bash\`: Execute a shell command
 - \`edit\`: Replace exact text in files — single (file_path+old_string+new_string) or batch (edits:[...])
-- \`write_plan\`: Save plan markdown into .lonny/ folder (plan mode only)`
+- \`write_plan\`: Save plan markdown into .lonny/ folder (plan mode only)
+- \`find\`: Find files by name pattern (pattern: string, path?: string, maxResults?: number)
+- \`git\`: Run read-only git commands (command: string)`
 
   // ── Mode-specific instructions ───────────────────────────────────────────
   const modeInstructions = config.mode === 'plan'
@@ -254,7 +262,7 @@ ${isWindows ? '  - Use \`type\` instead of \`cat\`, \`dir\` instead of \`ls\`, \
   return `${modeInstructions}
 
 ${envSection}
-${sharedRules}`
+${sharedRules}${skillsSection}`
 }
 
 export class Session {
@@ -364,6 +372,7 @@ export class Session {
   }
 
   async chat(userPrompt: string): Promise<void> {
+    const bus = getGlobalEventBus()
     const out = this.output
     printUserMessage(userPrompt, out)
     this.messages.push({ role: 'user', content: userPrompt })
@@ -376,6 +385,8 @@ export class Session {
     let iterations = 0
     const maxIterations = 30
 
+    bus.emit(EventChannels.TURN_START, { prompt: userPrompt })
+
     while (iterations < maxIterations) {
       iterations++
       this.turnApiCalls++
@@ -385,6 +396,8 @@ export class Session {
       let reasoningContent: string | undefined
       let reasoningOutput = false
       let reasoningLineStart = false
+
+      bus.emit(EventChannels.LLM_STREAM_START, { iteration: iterations })
 
       const stream = this.provider.chat(this.messages, this.registry.getDefinitions())
 
@@ -441,12 +454,15 @@ export class Session {
               printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, this.turnApiCalls, this.totalApiCalls, out)
               writeOut('\n\n', out)
               saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens, this.turnApiCalls)
+              bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
               this.save()
               return
             }
           }
         }
       }
+
+      bus.emit(EventChannels.LLM_STREAM_END, { iteration: iterations, toolCallCount: toolCalls.length })
 
       // Close reasoning display if still open (model ended with tool calls, no text)
       if (reasoningOutput) {
@@ -462,6 +478,7 @@ export class Session {
           writeOut('\n\n', out)
         }
         saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens, this.turnApiCalls)
+        bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
         this.save()
         return
       }
@@ -475,8 +492,14 @@ export class Session {
       this.messages.push(assistantMsg)
 
       for (const tc of toolCalls) {
+        bus.emit(EventChannels.TOOL_CALL, { name: tc.name, input: tc.input, id: tc.id })
         printToolInvocation(tc, out)
         const result: ToolResult = await this.registry.dispatch(tc)
+        if (result.success) {
+          bus.emit(EventChannels.TOOL_RESULT, { name: tc.name, id: tc.id })
+        } else {
+          bus.emit(EventChannels.TOOL_ERROR, { name: tc.name, id: tc.id, error: result.error })
+        }
         printToolResult(tc, result, out)
 
         const resultMsg: LLMMessage = {
@@ -494,6 +517,7 @@ export class Session {
         const result = compact(this.messages)
         if (result.compressed) {
           this.messages = result.messages
+          bus.emit(EventChannels.COMPACTION_TRIGGERED, { before, after: result.newCount })
           if (out) {
             out.write(`\n  ${GY}┃${RS} ${GY}📦 Compressed context: ${before} → ${result.newCount} messages${RS}\n`)
           }
@@ -507,6 +531,7 @@ export class Session {
     }
 
     saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens, this.turnApiCalls)
+    bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
     this.save()
   }
 }

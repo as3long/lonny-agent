@@ -3,6 +3,9 @@ import * as path from 'node:path'
 import { Session, SessionOutput } from '../agent/session.js'
 import { Config } from '../config/index.js'
 import { loadTokenUsage, resetTokenUsage } from '../config/tokens.js'
+import { loadSkills, ensureSkillsDir } from '../agent/skills.js'
+import { loadPromptTemplates, ensurePromptsDir } from '../agent/prompt-templates.js'
+import { getGlobalEventBus, EventChannels } from '../agent/event-bus.js'
 import { PLAN_DIR } from '../tools/write_plan.js'
 import type { Component, Focusable, OverlayHandle } from '@earendil-works/pi-tui'
 import { ProcessTerminal, TUI, Box, Text, Input, Markdown, SelectList, Container, Loader, Spacer, CURSOR_MARKER, visibleWidth }
@@ -240,7 +243,10 @@ class FooterBar implements Component {
     if (!this.visible || width < 40) return []
     const help = [
       colors.dim('/mode'),
+      colors.dim('/model'),
       colors.dim('/plans'),
+      colors.dim('/prompts'),
+      colors.dim('/skills'),
       colors.dim('/help'),
       colors.dim('?'),
     ].join(colors.dim(' · '))
@@ -832,8 +838,12 @@ export async function startTui(config: Config): Promise<void> {
       colors.accent('\u2501').repeat(20) + '\n\n' +
       ` ${colors.dim('Commands:')}\n` +
       `   ${colors.inputPrompt('/mode')} code|plan  ${colors.dim('Switch mode')}\n` +
+      `   ${colors.inputPrompt('/model')} <name>    ${colors.dim('Switch model')}\n` +
       `   ${colors.inputPrompt('/plans')}          ${colors.dim('Show plans overlay')}\n` +
       `   ${colors.inputPrompt('/new')}            ${colors.dim('Start a new session')}\n` +
+      `   ${colors.inputPrompt('/prompts')}        ${colors.dim('List prompt templates')}\n` +
+      `   ${colors.inputPrompt('/skills')}         ${colors.dim('List active skills')}\n` +
+      `   ${colors.inputPrompt('/init')}           ${colors.dim('Create .lonny/skills/ & prompts/')}\n` +
       `   ${colors.inputPrompt('/exit')}           ${colors.dim('Exit')}\n` +
       `   ${colors.inputPrompt('/help')}           ${colors.dim('This help')}\n\n` +
       ` ${colors.dim('Keyboard:')}\n` +
@@ -917,6 +927,54 @@ export async function startTui(config: Config): Promise<void> {
         return
       }
 
+      if (cmd === 'model') {
+        if (arg) {
+          session.config.model = arg
+          // Rebuild system prompt with new model context
+          session.setMode(session.config.mode) // triggers rebuild
+          chatContent += `\n${colors.warn('\u21E8')} Model switched to ${colors.warn(arg)}\n`
+          chatMarkdown.setText(chatContent)
+          updateHeader()
+        } else {
+          chatContent += `\n${colors.inputPrompt('Current model:')} ${colors.dim(session.config.model)}\n`
+          chatMarkdown.setText(chatContent)
+        }
+        getGlobalEventBus().emit(EventChannels.MODEL_CHANGE, { model: arg })
+        return
+      }
+
+      if (cmd === 'prompts') {
+        const templates = loadPromptTemplates(config.cwd)
+        if (templates.length === 0) {
+          chatContent += `\n${colors.warn('No prompt templates found.')} ${colors.dim('Create .md files in .lonny/prompts/')}\n`
+        } else {
+          chatContent += `\n${colors.accent('\u25B6')} ${colors.warn(`Prompt Templates (${templates.length})`)}\n`
+          for (const t of templates) {
+            chatContent += `  ${colors.dim('\u2022')} ${colors.inputPrompt(t.name)}`
+            if (t.description) chatContent += ` ${colors.dim('\u2014 ' + t.description)}`
+            chatContent += '\n'
+          }
+        }
+        chatMarkdown.setText(chatContent)
+        return
+      }
+
+      if (cmd === 'skills') {
+        const skills = loadSkills(config.cwd)
+        if (skills.length === 0) {
+          chatContent += `\n${colors.warn('No skills loaded.')} ${colors.dim('Create .md files in .lonny/skills/')}\n`
+        } else {
+          chatContent += `\n${colors.accent('\u25B6')} ${colors.warn(`Active Skills (${skills.length})`)}\n`
+          for (const s of skills) {
+            chatContent += `  ${colors.dim('\u2022')} ${colors.inputPrompt(s.name)}`
+            if (s.description) chatContent += ` ${colors.dim('\u2014 ' + s.description)}`
+            chatContent += '\n'
+          }
+        }
+        chatMarkdown.setText(chatContent)
+        return
+      }
+
       if (cmd === 'plans') {
         showPlansOverlay()
         return
@@ -930,6 +988,14 @@ export async function startTui(config: Config): Promise<void> {
 
       if (cmd === 'help' || cmd === '?') {
         showHelpOverlay()
+        return
+      }
+
+      if (cmd === 'init') {
+        ensureSkillsDir(config.cwd)
+        ensurePromptsDir(config.cwd)
+        chatContent += `\n${colors.success('\u2714')} Initialized .lonny/skills/ and .lonny/prompts/\n`
+        chatMarkdown.setText(chatContent)
         return
       }
 
