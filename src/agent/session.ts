@@ -236,6 +236,7 @@ function buildSystemPrompt(config: Config): string {
 - \`find\`: Find files by name pattern (pattern: string, path?: string, maxResults?: number)
 - \`git\`: Run read-only git commands (command: string)
 - \`search\`: Search the web using Tavily (query: string, search_depth?: string, include_answer?: boolean, max_results?: number, topic?: string, days?: number)
+- \`exec\`: Run JavaScript in a sandbox to orchestrate multiple tool calls — all tools are available as \`await tools.xxx(args)\` inside exec (code mode only)
 `
   }
 
