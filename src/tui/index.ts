@@ -541,10 +541,17 @@ class RichFooter implements Component {
   }
 }
 
-// ── LandingScreen (pixel logo) ──────────────────────────────────────────
+// ── LandingScreen (pixel logo + welcome) ──────────────────────────────
 
 class LandingScreen implements Component {
   onSubmit?: (value: string) => void
+  private model: string
+  private provider: string
+
+  constructor(model: string, provider: string) {
+    this.model = model
+    this.provider = provider
+  }
 
   invalidate(): void {}
 
@@ -555,8 +562,17 @@ class LandingScreen implements Component {
     }
   }
 
+  private visibleLen(s: string): number {
+    return s.replace(/\x1b\[[0-9;]*m/g, '').length
+  }
+
   render(width: number): string[] {
     const lines: string[] = []
+    const center = (text: string, totalWidth: number): string => {
+      const textWidth = this.visibleLen(text)
+      const pad = Math.max(0, Math.floor((totalWidth - textWidth) / 2))
+      return ' '.repeat(pad) + text
+    }
 
     // ── Pixel logo ─────────────────────────────────────────────────────
     const logoLines = renderPixelLogo()
@@ -567,13 +583,29 @@ class LandingScreen implements Component {
       lines.push(padStr + line)
     }
 
-    // ── Blank line ─────────────────────────────────────────────────────
+    // ── Decorative divider ────────────────────────────────────────────
+    const divider = colors.dim('\u2500'.repeat(Math.min(36, width - 4)))
+    lines.push(center(divider, width))
+
+    // ── Prompt text ───────────────────────────────────────────────────
+    lines.push('')
+    const prompt = colors.dim('Type a message and press ') + colors.accent('Enter') + colors.dim(' to start')
+    lines.push(center(prompt, width))
     lines.push('')
 
-    // ── Prompt text ────────────────────────────────────────────────────
-    const promptText = colors.dim('Type a message and press ') + colors.accent('Enter') + colors.dim(' to start')
-    const promptPad = Math.max(0, Math.floor((width - 40) / 2))
-    lines.push(' '.repeat(promptPad) + promptText)
+    // ── Quick command hints ───────────────────────────────────────────
+    const cmds = [
+      colors.inputPrompt('/mode'),
+      colors.inputPrompt('/model'),
+      colors.inputPrompt('/plans'),
+      colors.inputPrompt('/help'),
+    ].join(colors.dim('  \u00B7  '))
+    lines.push(center(colors.dim('Commands: ') + cmds, width))
+
+    // ── Model & version info ──────────────────────────────────────────
+    const modelInfo = colors.dim(`${this.provider}/${this.model}`)
+    const versionInfo = colors.dim(`v${APP_VERSION}`)
+    lines.push(center(modelInfo + colors.separator('  \u2502  ') + versionInfo, width))
 
     return lines
   }
@@ -781,7 +813,7 @@ export async function startTui(config: Config): Promise<void> {
   })
 
   // ── Landing screen (centered overlay with pixel logo) ─────────────────
-  const landingScreen = new LandingScreen()
+  const landingScreen = new LandingScreen(config.model, config.provider)
   let landingOverlayHandle: OverlayHandle | null = null
   // Only show the landing screen if no session was restored
   if (!restored) {
