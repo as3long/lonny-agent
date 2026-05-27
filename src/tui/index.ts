@@ -930,22 +930,6 @@ export async function startTui(config: Config): Promise<void> {
     nonCapturing: true,
   })
 
-  // If a session was restored, immediately transition to chat layout
-  // (skip the landing screen)
-  if (restored) {
-    footer.setPhase('chat')
-    tui.addChild(chatBox)
-    tui.addChild(editor)
-    tui.addChild(loader)
-    showTodoPanel()
-    tui.setFocus(editor)
-  }
-
-  // ── Plans overlay components ───────────────────────────────────────────
-  const plansList = new PlansList([], 15, selectTheme)
-  let plansOverlayHandle: OverlayHandle | null = null
-  let plansDetailMode = false
-
   // ── Persistent Todo Side Panel ────────────────────────────────────────
   const todoPanel = new TodoPanel(config.cwd)
   let todoPanelHandle: OverlayHandle | null = null
@@ -964,6 +948,22 @@ export async function startTui(config: Config): Promise<void> {
       visible: (w: number) => w >= 110,
     })
   }
+
+  // If a session was restored, immediately transition to chat layout
+  // (skip the landing screen)
+  if (restored) {
+    footer.setPhase('chat')
+    tui.addChild(chatBox)
+    tui.addChild(editor)
+    tui.addChild(loader)
+    showTodoPanel()
+    tui.setFocus(editor)
+  }
+
+  // ── Plans overlay components ───────────────────────────────────────────
+  const plansList = new PlansList([], 15, selectTheme)
+  let plansOverlayHandle: OverlayHandle | null = null
+  let plansDetailMode = false
 
   function showPlansOverlay(): void {
     if (plansOverlayHandle?.isHidden() === false) {
