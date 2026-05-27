@@ -73,11 +73,16 @@ export function compact(
   // Keep system prompt (index 0)
   const systemMsg = messages[0]
 
-  // Keep recent messages
-  const recentMessages = messages.slice(-keepRecent)
+  // Find a safe cutoff — don't split tool-call cycles, which would orphan
+  // tool role messages from their preceding assistant(tool_calls) message.
+  let cutoff = messages.length - keepRecent
+  if (cutoff < 1) cutoff = 1
+  while (cutoff > 1 && messages[cutoff]?.role === 'tool') {
+    cutoff--
+  }
 
-  // Messages to summarize (exclude system prompt and recent messages)
-  const toSummarize = messages.slice(1, messages.length - keepRecent)
+  const recentMessages = messages.slice(cutoff)
+  const toSummarize = messages.slice(1, cutoff)
 
   if (toSummarize.length === 0) {
     return { messages, compressed: false, originalCount: messages.length, newCount: messages.length }
