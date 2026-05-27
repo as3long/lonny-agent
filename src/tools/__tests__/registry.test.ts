@@ -27,6 +27,7 @@ describe('ToolRegistry', () => {
     expect(names).toContain('ls')
     expect(names).toContain('bash')
     expect(names).toContain('edit')
+    expect(names).toContain('fetch')
     expect(names).not.toContain('write_plan')
   })
 
@@ -37,6 +38,7 @@ describe('ToolRegistry', () => {
     expect(names).toContain('read')
     expect(names).not.toContain('edit')
     expect(names).toContain('write_plan')
+    expect(names).toContain('fetch')
   })
 
   it('setMode adds edit when switching to code', () => {

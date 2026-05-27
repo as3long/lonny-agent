@@ -8,6 +8,7 @@ import { createWritePlanTool } from './write_plan.js'
 import { globTool } from './glob.js'
 import { createFindTool } from './find.js'
 import { createGitTool } from './git.js'
+import { fetchTool } from './fetch.js'
 import { FileReadTracker } from '../diff/apply.js'
 
 export interface ToolContext {
@@ -47,6 +48,7 @@ export class ToolRegistry {
     this.register(bashTool)
     this.register(createFindTool(this.context.cwd))
     this.register(createGitTool(this.context.cwd))
+    this.register(fetchTool)
     if (this.context.mode === 'code') {
       this.register(createEditTool(this.context.applier, this.context.cwd))
     } else {
