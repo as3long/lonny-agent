@@ -1,8 +1,12 @@
 import OpenAI from 'openai'
+import type {
+  ChatCompletionChunk,
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+} from 'openai/resources/chat/completions.js'
 import type { Stream } from 'openai/streaming.js'
-import type { ChatCompletionMessageParam, ChatCompletionTool, ChatCompletionChunk } from 'openai/resources/chat/completions.js'
-import { LLMProvider, LLMMessage, LLMChunk } from '../llm.js'
-import { ToolDefinition, ToolCall } from '../../tools/types.js'
+import { ToolCall, type ToolDefinition } from '../../tools/types.js'
+import type { LLMChunk, LLMMessage, LLMProvider } from '../llm.js'
 
 // Extended create params for non-standard OpenAI-compatible providers
 interface ExtendedCreateParams {
@@ -23,7 +27,14 @@ export class OpenAIProvider implements LLMProvider {
   private reasoningEffort?: string
   private enableCache: boolean
 
-  constructor(apiKey: string, baseURL?: string, model?: string, thinking?: boolean, reasoningEffort?: string, enableCache?: boolean) {
+  constructor(
+    apiKey: string,
+    baseURL?: string,
+    model?: string,
+    thinking?: boolean,
+    reasoningEffort?: string,
+    enableCache?: boolean,
+  ) {
     this.client = new OpenAI({ apiKey, baseURL })
     this.model = model || 'gpt-4o'
     this.thinking = thinking
@@ -31,10 +42,7 @@ export class OpenAIProvider implements LLMProvider {
     this.enableCache = enableCache ?? false
   }
 
-  async *chat(
-    messages: LLMMessage[],
-    tools: ToolDefinition[],
-  ): AsyncGenerator<LLMChunk> {
+  async *chat(messages: LLMMessage[], tools: ToolDefinition[]): AsyncGenerator<LLMChunk> {
     const openAIFormattedTools: ChatCompletionTool[] = tools.map(t => {
       const properties: Record<string, unknown> = {}
       for (const [key, param] of Object.entries(t.parameters)) {
@@ -93,13 +101,19 @@ export class OpenAIProvider implements LLMProvider {
       }
     })
 
-    const stream: Stream<ChatCompletionChunk> = await (this.client.chat.completions.create as (params: ExtendedCreateParams) => Promise<Stream<ChatCompletionChunk>>)({
+    const stream: Stream<ChatCompletionChunk> = await (
+      this.client.chat.completions.create as (
+        params: ExtendedCreateParams,
+      ) => Promise<Stream<ChatCompletionChunk>>
+    )({
       model: this.model,
       messages: openAIMessages,
       tools: openAIFormattedTools.length > 0 ? openAIFormattedTools : undefined,
       stream: true,
       stream_options: { include_usage: true },
-      ...(this.thinking ? { thinking: { type: 'enabled' }, reasoning_effort: this.reasoningEffort || 'high' } : {}),
+      ...(this.thinking
+        ? { thinking: { type: 'enabled' }, reasoning_effort: this.reasoningEffort || 'high' }
+        : {}),
       ...(this.enableCache ? { enable_cache: true } : {}),
     })
 
@@ -132,7 +146,10 @@ export class OpenAIProvider implements LLMProvider {
             type: 'complete',
             finish_reason: pendingComplete.finish_reason,
             reasoning_content: pendingComplete.reasoning_content,
-            usage: { input_tokens: rawChunk.usage.prompt_tokens ?? 0, output_tokens: rawChunk.usage.completion_tokens ?? 0 },
+            usage: {
+              input_tokens: rawChunk.usage.prompt_tokens ?? 0,
+              output_tokens: rawChunk.usage.completion_tokens ?? 0,
+            },
           }
           pendingComplete = null
           reasoningContent = undefined
@@ -216,7 +233,10 @@ export class OpenAIProvider implements LLMProvider {
             type: 'complete',
             finish_reason: chunk.choices[0].finish_reason,
             reasoning_content: reasoningContent,
-            usage: { input_tokens: lastUsage.prompt_tokens ?? 0, output_tokens: lastUsage.completion_tokens ?? 0 },
+            usage: {
+              input_tokens: lastUsage.prompt_tokens ?? 0,
+              output_tokens: lastUsage.completion_tokens ?? 0,
+            },
           }
           reasoningContent = undefined
         } else {
@@ -233,7 +253,10 @@ export class OpenAIProvider implements LLMProvider {
     // Flush any pending complete (stream ended without a usage chunk)
     if (pendingComplete) {
       const usage = lastUsage
-        ? { input_tokens: lastUsage.prompt_tokens ?? 0, output_tokens: lastUsage.completion_tokens ?? 0 }
+        ? {
+            input_tokens: lastUsage.prompt_tokens ?? 0,
+            output_tokens: lastUsage.completion_tokens ?? 0,
+          }
         : undefined
       yield {
         type: 'complete',
@@ -246,7 +269,10 @@ export class OpenAIProvider implements LLMProvider {
 
     if (currentToolCall) {
       const usage = lastUsage
-        ? { input_tokens: lastUsage.prompt_tokens ?? 0, output_tokens: lastUsage.completion_tokens ?? 0 }
+        ? {
+            input_tokens: lastUsage.prompt_tokens ?? 0,
+            output_tokens: lastUsage.completion_tokens ?? 0,
+          }
         : undefined
       yield {
         type: 'tool_use',

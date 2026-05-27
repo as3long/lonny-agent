@@ -1,6 +1,6 @@
 import * as fs from 'node:fs'
-import * as path from 'node:path'
 import * as os from 'node:os'
+import * as path from 'node:path'
 
 export interface Config {
   apiKey: string
@@ -56,16 +56,21 @@ function isDeepSeekModel(model: string, baseUrl?: string): boolean {
 export function loadConfig(options: Partial<Config>): Config {
   const jsonConfig = loadJsonConfig()
 
-  const model = options.model || process.env.LONNY_MODEL || jsonConfig.model || 'claude-sonnet-4-20250514'
+  const model =
+    options.model || process.env.LONNY_MODEL || jsonConfig.model || 'claude-sonnet-4-20250514'
   const baseUrl = options.baseUrl || process.env.LONNY_BASE_URL || jsonConfig.baseUrl || undefined
 
   // Auto-enable cache for DeepSeek models unless explicitly disabled
-  const enableCache = options.enableCache ?? jsonConfig.enableCache ?? (isDeepSeekModel(model, baseUrl) || undefined)
+  const enableCache =
+    options.enableCache ?? jsonConfig.enableCache ?? (isDeepSeekModel(model, baseUrl) || undefined)
 
   return {
     apiKey: options.apiKey || process.env.LONNY_API_KEY || jsonConfig.apiKey || '',
     baseUrl,
-    provider: (options.provider || process.env.LONNY_PROVIDER || jsonConfig.provider || 'anthropic') as 'openai' | 'anthropic' | 'google' | 'ollama',
+    provider: (options.provider ||
+      process.env.LONNY_PROVIDER ||
+      jsonConfig.provider ||
+      'anthropic') as 'openai' | 'anthropic' | 'google' | 'ollama',
     mode: options.mode || 'code',
     model,
     cwd: options.cwd || process.cwd(),

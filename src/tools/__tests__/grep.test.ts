@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createGrepTool } from '../grep.js'
 import { makeTempDir } from './helpers.js'
 
@@ -9,7 +9,10 @@ describe('grep tool', () => {
 
   beforeAll(() => {
     tmpDir = makeTempDir()
-    fs.writeFileSync(path.join(tmpDir, 'hello.ts'), 'const x = 1\nfunction greet() { return "hello" }\nexport { greet }\n')
+    fs.writeFileSync(
+      path.join(tmpDir, 'hello.ts'),
+      'const x = 1\nfunction greet() { return "hello" }\nexport { greet }\n',
+    )
     fs.writeFileSync(path.join(tmpDir, 'world.js'), 'const y = 2\nconsole.log("world")\n')
     fs.mkdirSync(path.join(tmpDir, 'sub'))
     fs.writeFileSync(path.join(tmpDir, 'sub', 'deep.ts'), 'const z = 3\n// TODO: implement\n')

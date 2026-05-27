@@ -1,17 +1,24 @@
-import { Tool, ToolDefinition } from './types.js'
 import { execSync } from 'node:child_process'
+import type { Tool, ToolDefinition } from './types.js'
 
 export const createGitTool = (cwd: string): Tool => {
   const definition: ToolDefinition = {
     name: 'git',
-    description: 'Run git commands for repository operations. Supports status, diff, log, show, branch, and other read-only git operations.',
+    description:
+      'Run git commands for repository operations. Supports status, diff, log, show, branch, and other read-only git operations.',
     parameters: {
-      command: { type: 'string', description: 'Git subcommand and arguments (e.g. "status", "diff", "log --oneline -5")', required: true },
+      command: {
+        type: 'string',
+        description: 'Git subcommand and arguments (e.g. "status", "diff", "log --oneline -5")',
+        required: true,
+      },
       path: { type: 'string', description: 'Repository path (default: cwd)', required: false },
     },
   }
 
-  const execute = async (input: Record<string, unknown>): Promise<{ success: boolean; output: string; error?: string }> => {
+  const execute = async (
+    input: Record<string, unknown>,
+  ): Promise<{ success: boolean; output: string; error?: string }> => {
     const gitCmd = String(input.command || '').trim()
     const repoPath = String(input.path || cwd)
 

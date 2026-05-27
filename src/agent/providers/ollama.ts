@@ -1,5 +1,5 @@
-import { LLMProvider, LLMMessage, LLMChunk } from '../llm.js'
-import { ToolDefinition, ToolCall } from '../../tools/types.js'
+import { ToolCall, type ToolDefinition } from '../../tools/types.js'
+import type { LLMChunk, LLMMessage, LLMProvider } from '../llm.js'
 
 interface OllamaTool {
   type: 'function'
@@ -40,10 +40,7 @@ export class OllamaProvider implements LLMProvider {
     this.model = model || 'llama3.2'
   }
 
-  async *chat(
-    messages: LLMMessage[],
-    tools: ToolDefinition[],
-  ): AsyncGenerator<LLMChunk> {
+  async *chat(messages: LLMMessage[], tools: ToolDefinition[]): AsyncGenerator<LLMChunk> {
     // Build Ollama-format messages
     const ollamaMessages: OllamaMessage[] = messages.map(m => {
       if (m.role === 'system') {
@@ -74,27 +71,30 @@ export class OllamaProvider implements LLMProvider {
     })
 
     // Build tools
-    const ollamaTools: OllamaTool[] | undefined = tools.length > 0 ? tools.map(t => {
-      const properties: Record<string, unknown> = {}
-      for (const [key, param] of Object.entries(t.parameters)) {
-        const { required: _, ...rest } = param
-        properties[key] = rest
-      }
-      return {
-        type: 'function' as const,
-        function: {
-          name: t.name,
-          description: t.description,
-          parameters: {
-            type: 'object',
-            properties,
-            required: Object.entries(t.parameters)
-              .filter(([, v]) => v.required)
-              .map(([k]) => k),
-          },
-        },
-      }
-    }) : undefined
+    const ollamaTools: OllamaTool[] | undefined =
+      tools.length > 0
+        ? tools.map(t => {
+            const properties: Record<string, unknown> = {}
+            for (const [key, param] of Object.entries(t.parameters)) {
+              const { required: _, ...rest } = param
+              properties[key] = rest
+            }
+            return {
+              type: 'function' as const,
+              function: {
+                name: t.name,
+                description: t.description,
+                parameters: {
+                  type: 'object',
+                  properties,
+                  required: Object.entries(t.parameters)
+                    .filter(([, v]) => v.required)
+                    .map(([k]) => k),
+                },
+              },
+            }
+          })
+        : undefined
 
     const body: Record<string, unknown> = {
       model: this.model,

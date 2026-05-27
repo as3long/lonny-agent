@@ -1,5 +1,5 @@
-import { Tool, ToolResult } from './types.js'
 import { fmtErr } from './errors.js'
+import type { Tool, ToolResult } from './types.js'
 
 export const fetchTool: Tool = {
   definition: {

@@ -1,9 +1,13 @@
-import { LLMProvider, LLMMessage, LLMChunk } from '../llm.js'
-import { ToolDefinition, ToolCall } from '../../tools/types.js'
+import { ToolCall, type ToolDefinition } from '../../tools/types.js'
+import type { LLMChunk, LLMMessage, LLMProvider } from '../llm.js'
 
 interface GoogleContent {
   role: 'user' | 'model'
-  parts: { text?: string; functionCall?: { name: string; args: Record<string, unknown> }; functionResponse?: { name: string; response: Record<string, unknown> } }[]
+  parts: {
+    text?: string
+    functionCall?: { name: string; args: Record<string, unknown> }
+    functionResponse?: { name: string; response: Record<string, unknown> }
+  }[]
 }
 
 interface GoogleTool {
@@ -44,10 +48,7 @@ export class GoogleProvider implements LLMProvider {
     this.baseUrl = baseURL || 'https://generativelanguage.googleapis.com/v1beta'
   }
 
-  async *chat(
-    messages: LLMMessage[],
-    tools: ToolDefinition[],
-  ): AsyncGenerator<LLMChunk> {
+  async *chat(messages: LLMMessage[], tools: ToolDefinition[]): AsyncGenerator<LLMChunk> {
     const systemInstruction = messages.find(m => m.role === 'system')?.content || ''
     const nonSystemMessages = messages.filter(m => m.role !== 'system')
 
@@ -78,37 +79,44 @@ export class GoogleProvider implements LLMProvider {
         // Tool results are sent as functionResponse in a user message
         contents.push({
           role: 'user',
-          parts: [{
-            functionResponse: {
-              name: m.name || '',
-              response: { content: m.content || '' },
+          parts: [
+            {
+              functionResponse: {
+                name: m.name || '',
+                response: { content: m.content || '' },
+              },
             },
-          }],
+          ],
         })
       }
     }
 
     // Build tools
-    const googleTools: GoogleTool[] | undefined = tools.length > 0 ? [{
-      functionDeclarations: tools.map(t => {
-        const properties: Record<string, unknown> = {}
-        for (const [key, param] of Object.entries(t.parameters)) {
-          const { required: _, ...rest } = param
-          properties[key] = rest
-        }
-        return {
-          name: t.name,
-          description: t.description,
-          parameters: {
-            type: 'object',
-            properties,
-            required: Object.entries(t.parameters)
-              .filter(([, v]) => v.required)
-              .map(([k]) => k),
-          },
-        }
-      }),
-    }] : undefined
+    const googleTools: GoogleTool[] | undefined =
+      tools.length > 0
+        ? [
+            {
+              functionDeclarations: tools.map(t => {
+                const properties: Record<string, unknown> = {}
+                for (const [key, param] of Object.entries(t.parameters)) {
+                  const { required: _, ...rest } = param
+                  properties[key] = rest
+                }
+                return {
+                  name: t.name,
+                  description: t.description,
+                  parameters: {
+                    type: 'object',
+                    properties,
+                    required: Object.entries(t.parameters)
+                      .filter(([, v]) => v.required)
+                      .map(([k]) => k),
+                  },
+                }
+              }),
+            },
+          ]
+        : undefined
 
     // Build request body
     const body: Record<string, unknown> = {

@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { createEditTool } from '../edit.js'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { FileReadTracker } from '../../diff/apply.js'
+import { createEditTool } from '../edit.js'
 import { makeTempDir } from './helpers.js'
 
 describe('edit tool', () => {
@@ -30,13 +30,21 @@ describe('edit tool', () => {
     })
 
     it('replaces an exact string', async () => {
-      const r = await tool().execute({ file_path: 'a.txt', old_string: 'line two', new_string: 'line TWO' })
+      const r = await tool().execute({
+        file_path: 'a.txt',
+        old_string: 'line two',
+        new_string: 'line TWO',
+      })
       expect(r.success).toBe(true)
       expect(fs.readFileSync(path.join(tmpDir, 'a.txt'), 'utf8')).toContain('line TWO')
     })
 
     it('replaces multi-line string', async () => {
-      const r = await tool().execute({ file_path: 'a.txt', old_string: 'line one\nline TWO', new_string: 'line 1\nline 2' })
+      const r = await tool().execute({
+        file_path: 'a.txt',
+        old_string: 'line one\nline TWO',
+        new_string: 'line 1\nline 2',
+      })
       expect(r.success).toBe(true)
       const content = fs.readFileSync(path.join(tmpDir, 'a.txt'), 'utf8')
       expect(content).toContain('line 1')
@@ -44,7 +52,11 @@ describe('edit tool', () => {
     })
 
     it('reports old_string not found', async () => {
-      const r = await tool().execute({ file_path: 'a.txt', old_string: 'nonexistent', new_string: 'x' })
+      const r = await tool().execute({
+        file_path: 'a.txt',
+        old_string: 'nonexistent',
+        new_string: 'x',
+      })
       expect(r.success).toBe(false)
       expect(r.error).toContain('not found')
     })
@@ -68,7 +80,11 @@ describe('edit tool', () => {
     })
 
     it('reports file not found', async () => {
-      const r = await tool().execute({ file_path: 'nonexistent.txt', old_string: 'x', new_string: 'y' })
+      const r = await tool().execute({
+        file_path: 'nonexistent.txt',
+        old_string: 'x',
+        new_string: 'y',
+      })
       expect(r.success).toBe(false)
       expect(r.error).toContain('not found')
     })
@@ -151,7 +167,11 @@ describe('edit tool', () => {
     })
 
     it('creates a new file with empty old_string', async () => {
-      const r = await tool().execute({ file_path: 'created-test/new.ts', old_string: '', new_string: 'const x = 1\nexport { x }' })
+      const r = await tool().execute({
+        file_path: 'created-test/new.ts',
+        old_string: '',
+        new_string: 'const x = 1\nexport { x }',
+      })
       expect(r.success).toBe(true)
       const content = fs.readFileSync(path.join(createdDir(), 'new.ts'), 'utf8')
       expect(content).toBe('const x = 1\nexport { x }')
@@ -170,7 +190,11 @@ describe('edit tool', () => {
     })
 
     it('rejects create when file already exists', async () => {
-      const r = await tool().execute({ file_path: 'created-test/new.ts', old_string: '', new_string: 'x' })
+      const r = await tool().execute({
+        file_path: 'created-test/new.ts',
+        old_string: '',
+        new_string: 'x',
+      })
       expect(r.success).toBe(false)
       expect(r.error).toContain('already exists')
     })

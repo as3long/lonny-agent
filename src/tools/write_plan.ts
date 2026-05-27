@@ -1,7 +1,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { Tool, ToolResult } from './types.js'
 import { fmtErr } from './errors.js'
+import type { Tool, ToolResult } from './types.js'
 
 /** Directory where plans are stored, relative to project root */
 export const PLAN_DIR = '.lonny'
@@ -14,7 +14,10 @@ function sanitizeFilename(name: string): string {
   // Reject path traversal.
   if (trimmed.includes('..')) return ''
   // Normalize separators and strip any leading ".lonny/" the model may add.
-  const normalized = trimmed.replace(/\\/g, '/').replace(/^\.lonny\//, '').replace(/^\/+/, '')
+  const normalized = trimmed
+    .replace(/\\/g, '/')
+    .replace(/^\.lonny\//, '')
+    .replace(/^\/+/, '')
   if (!normalized || normalized === '.') return ''
   return normalized
 }
@@ -27,12 +30,14 @@ export function createWritePlanTool(cwd: string, onPlanWritten?: (display: strin
       parameters: {
         filename: {
           type: 'string',
-          description: 'File name (e.g. "plan.md" or "feature-x/plan.md"). Must NOT be absolute or contain "..". Will be placed under .lonny/.',
+          description:
+            'File name (e.g. "plan.md" or "feature-x/plan.md"). Must NOT be absolute or contain "..". Will be placed under .lonny/.',
           required: true,
         },
         content: {
           type: 'string',
-          description: 'Full markdown content of the plan, including the Plan section and Todo List.',
+          description:
+            'Full markdown content of the plan, including the Plan section and Todo List.',
           required: true,
         },
       },
@@ -49,7 +54,11 @@ export function createWritePlanTool(cwd: string, onPlanWritten?: (display: strin
 
       const safeName = sanitizeFilename(filename)
       if (!safeName) {
-        return { success: false, output: '', error: `Invalid filename: "${filename}". Use a relative name without ".." or absolute paths.` }
+        return {
+          success: false,
+          output: '',
+          error: `Invalid filename: "${filename}". Use a relative name without ".." or absolute paths.`,
+        }
       }
 
       const planDir = path.resolve(cwd, PLAN_DIR)
@@ -64,7 +73,10 @@ export function createWritePlanTool(cwd: string, onPlanWritten?: (display: strin
         fs.writeFileSync(target, content, 'utf8')
         const display = path.relative(cwd, target).replace(/\\/g, '/')
         onPlanWritten?.(display)
-        return { success: true, output: `Wrote plan to ${display} (${Buffer.byteLength(content, 'utf8')} bytes)` }
+        return {
+          success: true,
+          output: `Wrote plan to ${display} (${Buffer.byteLength(content, 'utf8')} bytes)`,
+        }
       } catch (err) {
         return {
           success: false,

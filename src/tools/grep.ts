@@ -1,8 +1,8 @@
 import { execSync } from 'node:child_process'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import { Tool, ToolResult } from './types.js'
 import { fmtErr } from './errors.js'
+import type { Tool, ToolResult } from './types.js'
 
 function hasRg(): boolean {
   try {
@@ -19,26 +19,46 @@ function includeRe(include: string): RegExp {
   let i = 0
   while (i < include.length) {
     const ch = include[i]
-    if (ch === '.') { re += '\\.'; i++; continue }
+    if (ch === '.') {
+      re += '\\.'
+      i++
+      continue
+    }
     if (ch === '*') {
-      if (include[i + 1] === '*') { re += '.*'; i += 2; continue }
-      re += '[^/]*'; i++; continue
+      if (include[i + 1] === '*') {
+        re += '.*'
+        i += 2
+        continue
+      }
+      re += '[^/]*'
+      i++
+      continue
     }
     if (ch === '{') {
       const end = include.indexOf('}', i)
       if (end !== -1) {
         const parts = include.slice(i + 1, end).split(',')
-        re += '(?:' + parts.map(p => p.replace(/\./g, '\\.').replace(/\*/g, '[^/]*')).join('|') + ')'
-        i = end + 1; continue
+        re += `(?:${parts.map(p => p.replace(/\./g, '\\.').replace(/\*/g, '[^/]*')).join('|')})`
+        i = end + 1
+        continue
       }
     }
-    if (ch === '?') { re += '.'; i++; continue }
-    re += ch; i++
+    if (ch === '?') {
+      re += '.'
+      i++
+      continue
+    }
+    re += ch
+    i++
   }
-  return new RegExp(re + '$')
+  return new RegExp(`${re}$`)
 }
 
-interface NodeGrepMatch { file: string; line: number; text: string }
+interface NodeGrepMatch {
+  file: string
+  line: number
+  text: string
+}
 
 async function nodeGrep(dir: string, re: RegExp, incRe: RegExp | null): Promise<NodeGrepMatch[]> {
   const results: NodeGrepMatch[] = []
@@ -60,7 +80,9 @@ async function nodeGrep(dir: string, re: RegExp, incRe: RegExp | null): Promise<
               results.push({ file: full, line: i + 1, text: lines[i] })
             }
           }
-        } catch { /* permission denied etc */ }
+        } catch {
+          /* permission denied etc */
+        }
       }
     }
     // Await all subdirectory results concurrently
@@ -68,7 +90,9 @@ async function nodeGrep(dir: string, re: RegExp, incRe: RegExp | null): Promise<
     for (const sm of subMatches) {
       results.push(...sm)
     }
-  } catch { /* permission denied etc */ }
+  } catch {
+    /* permission denied etc */
+  }
   return results
 }
 
@@ -92,7 +116,7 @@ export function createGrepTool(cwd: string): Tool {
       }
 
       const include = input.include as string | undefined
-      const searchPath = input.path as string | undefined || cwd
+      const searchPath = (input.path as string | undefined) || cwd
 
       try {
         if (useRg) {

@@ -1,8 +1,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import type { Component } from '@earendil-works/pi-tui'
+import type { Component, SelectItem, SelectListTheme } from '@earendil-works/pi-tui'
 import { SelectList } from '@earendil-works/pi-tui'
-import type { SelectItem, SelectListTheme } from '@earendil-works/pi-tui'
 import { PLAN_DIR } from '../tools/write_plan.js'
 import { visibleLen } from './utils.js'
 
@@ -71,7 +70,7 @@ function renderPixelLogo(): string[] {
   for (let row = 0; row < 5; row++) {
     const lonnyPart = LONNY_CHARS.map(ch => PIXEL_FONT[ch][row]).join(' ')
     const codePart = CODE_CHARS.map(ch => PIXEL_FONT[ch][row]).join(' ')
-    lines.push(midGray + lonnyPart + '  ' + brightWhite + codePart + reset)
+    lines.push(`${midGray + lonnyPart}  ${brightWhite}${codePart}${reset}`)
   }
   return lines
 }
@@ -109,7 +108,11 @@ export function listPlans(cwd: string): PlanEntry[] {
       .map(f => {
         const fullPath = path.join(planDir, f)
         let mtime = 0
-        try { mtime = fs.statSync(fullPath).mtimeMs } catch { /* ignore */ }
+        try {
+          mtime = fs.statSync(fullPath).mtimeMs
+        } catch {
+          /* ignore */
+        }
         return {
           name: f.replace(/\.md$/, ''),
           description: f,
@@ -130,7 +133,10 @@ export function loadTodos(filePath: string): string {
     const todos: string[] = []
     let inTodo = false
     for (const line of lines) {
-      if (line.startsWith('## Todo List')) { inTodo = true; continue }
+      if (line.startsWith('## Todo List')) {
+        inTodo = true
+        continue
+      }
       if (inTodo && line.startsWith('## ')) break
       if (inTodo) {
         const m = line.trim().match(/^- \[([ x])\]\s+(.+)/)
@@ -152,16 +158,16 @@ export function plansToItems(plans: PlanEntry[]): SelectItem[] {
     value: p.name,
     label: p.name,
     description: p.mtime
-      ? `${new Date(p.mtime).toLocaleDateString()} ${new Date(p.mtime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`
-      : ''
+      ? `${new Date(p.mtime).toLocaleDateString()} ${new Date(p.mtime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+      : '',
   }))
 }
 
 // ── Rich Footer helpers ────────────────────────────────────────────────────
 
 function formatTokens(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k'
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
   return String(n)
 }
 
@@ -188,30 +194,36 @@ export class HeaderBar implements Component {
     this.planName = ''
   }
 
-  setMode(m: string): void { this.mode = m }
-  setAgentStatus(s: 'running' | 'idle'): void { this.agentStatus = s }
-  setPlanCount(n: number): void { this.planCount = n }
-  setPlanName(n: string): void { this.planName = n }
+  setMode(m: string): void {
+    this.mode = m
+  }
+  setAgentStatus(s: 'running' | 'idle'): void {
+    this.agentStatus = s
+  }
+  setPlanCount(n: number): void {
+    this.planCount = n
+  }
+  setPlanName(n: string): void {
+    this.planName = n
+  }
   setTokenUsage(inputTokens: number, outputTokens: number, apiCalls: number): void {
     this.totalInputTokens = inputTokens
     this.totalOutputTokens = outputTokens
     this.totalApiCalls = apiCalls
   }
-  setProjectName(name: string): void { this.projectName = name }
+  setProjectName(name: string): void {
+    this.projectName = name
+  }
   invalidate(): void {}
-  handleInput?(data: string): void {}
+  handleInput?(_data: string): void {}
 
   render(width: number): string[] {
     const appName = colors.accent('\u2588 lonny')
-    const statusDot = this.agentStatus === 'running'
-      ? colors.running('\u25CF')
-      : colors.dim('\u25CB')
-    const statusLabel = this.agentStatus === 'running'
-      ? colors.running('running')
-      : colors.dim('idle')
-    const modeLabel = this.mode === 'ask'
-      ? colors.success(this.mode)
-      : colors.warn(this.mode)
+    const statusDot =
+      this.agentStatus === 'running' ? colors.running('\u25CF') : colors.dim('\u25CB')
+    const statusLabel =
+      this.agentStatus === 'running' ? colors.running('running') : colors.dim('idle')
+    const modeLabel = this.mode === 'ask' ? colors.success(this.mode) : colors.warn(this.mode)
     const modelInfo = colors.dim(`${this.provider}/${this.model}`)
 
     let rightPart = `${statusDot} ${statusLabel}  ${modeLabel}  ${modelInfo}`
@@ -256,20 +268,33 @@ export class RichFooter implements Component {
     this.provider = provider
   }
 
-  setMode(m: string): void { this.mode = m }
-  setModel(model: string, provider: string): void { this.model = model; this.provider = provider }
+  setMode(m: string): void {
+    this.mode = m
+  }
+  setModel(model: string, provider: string): void {
+    this.model = model
+    this.provider = provider
+  }
   setTokenUsage(inputTokens: number, outputTokens: number, apiCalls: number): void {
     this.totalInputTokens = inputTokens
     this.totalOutputTokens = outputTokens
     this.totalApiCalls = apiCalls
   }
-  setVisible(v: boolean): void { this.visible = v }
-  setPhase(p: 'landing' | 'chat'): void { this.phase = p }
-  setBalance(b: string): void { this.balance = b }
-  setAgentStatus(s: 'running' | 'idle'): void { this.agentStatus = s }
+  setVisible(v: boolean): void {
+    this.visible = v
+  }
+  setPhase(p: 'landing' | 'chat'): void {
+    this.phase = p
+  }
+  setBalance(b: string): void {
+    this.balance = b
+  }
+  setAgentStatus(s: 'running' | 'idle'): void {
+    this.agentStatus = s
+  }
 
   invalidate(): void {}
-  handleInput?(data: string): void {}
+  handleInput?(_data: string): void {}
 
   private visibleLen(s: string): number {
     return visibleLen(s)
@@ -281,18 +306,16 @@ export class RichFooter implements Component {
     const { statusBg, statusText, statusAccent, reset } = landingColors
 
     // Left: working directory
-    const dir = this.cwd.length > 30 ? '...' + this.cwd.slice(-27) : this.cwd
-    const leftPart = statusAccent + '\u25A0' + reset + statusBg + statusText + ' ' + dir + reset
+    const dir = this.cwd.length > 30 ? `...${this.cwd.slice(-27)}` : this.cwd
+    const leftPart = `${statusAccent}\u25A0${reset}${statusBg}${statusText} ${dir}${reset}`
 
     if (this.phase === 'landing') {
       // Minimal: cwd | ready | version
-      const centerPart = statusBg + statusText + '  ready  ' + reset
-      const rightPart = statusBg + statusText + 'v' + APP_VERSION + ' ' + reset
+      const centerPart = `${statusBg + statusText}  ready  ${reset}`
+      const rightPart = `${statusBg + statusText}v${APP_VERSION} ${reset}`
       const line = leftPart + centerPart + rightPart
       const visLen = this.visibleLen(line)
-      const padded = visLen < width
-        ? line + statusBg + ' '.repeat(width - visLen) + reset
-        : line
+      const padded = visLen < width ? line + statusBg + ' '.repeat(width - visLen) + reset : line
       return [padded]
     }
 
@@ -300,20 +323,23 @@ export class RichFooter implements Component {
     const segments: string[] = []
 
     // Status dot
-    const statusDot = this.agentStatus === 'running'
-      ? `\x1b[38;2;0;255;100m\u25CF\x1b[0m`
-      : `\x1b[38;2;150;150;150m\u25CB\x1b[0m`
-    const statusLabel = this.agentStatus === 'running'
-      ? `\x1b[38;2;0;255;100mrunning\x1b[0m`
-      : `\x1b[38;2;150;150;150midle\x1b[0m`
+    const statusDot =
+      this.agentStatus === 'running'
+        ? `\x1b[38;2;0;255;100m\u25CF\x1b[0m`
+        : `\x1b[38;2;150;150;150m\u25CB\x1b[0m`
+    const statusLabel =
+      this.agentStatus === 'running'
+        ? `\x1b[38;2;0;255;100mrunning\x1b[0m`
+        : `\x1b[38;2;150;150;150midle\x1b[0m`
     segments.push(`${statusDot} ${statusLabel}`)
 
     // Mode tag
-    const modeTag = this.mode === 'plan'
-      ? `\x1b[38;2;255;200;50m${this.mode}\x1b[0m`
-      : this.mode === 'ask'
-      ? `\x1b[38;2;0;200;100m${this.mode}\x1b[0m`
-      : `\x1b[38;2;0;200;255m${this.mode}\x1b[0m`
+    const modeTag =
+      this.mode === 'plan'
+        ? `\x1b[38;2;255;200;50m${this.mode}\x1b[0m`
+        : this.mode === 'ask'
+          ? `\x1b[38;2;0;200;100m${this.mode}\x1b[0m`
+          : `\x1b[38;2;0;200;255m${this.mode}\x1b[0m`
     segments.push(modeTag)
 
     // Model/provider
@@ -335,11 +361,11 @@ export class RichFooter implements Component {
     }
 
     // Build center part from segments
-    const separator = statusBg + ' \x1b[38;2;60;60;60m\u2502\x1b[0m ' + reset
-    const centerContent = statusBg + statusText + '  ' + segments.join(separator) + '  ' + reset
+    const separator = `${statusBg} \x1b[38;2;60;60;60m\u2502\x1b[0m ${reset}`
+    const centerContent = `${statusBg + statusText}  ${segments.join(separator)}  ${reset}`
 
     // Right: version
-    const rightPart = statusBg + statusText + 'v' + APP_VERSION + ' ' + reset
+    const rightPart = `${statusBg + statusText}v${APP_VERSION} ${reset}`
 
     const line = leftPart + centerContent + rightPart
 
@@ -353,7 +379,7 @@ export class RichFooter implements Component {
         '\x1b[38;2;110;110;110m/help\x1b[0m',
         '\x1b[38;2;110;110;110m?\x1b[0m',
       ].join(' \x1b[38;2;60;60;60m\u00b7\x1b[0m ')
-      const hintStr = statusBg + statusText + '  ' + hints + '  ' + reset
+      const hintStr = `${statusBg + statusText}  ${hints}  ${reset}`
       // Only append if it fits
       const fullLine = line + hintStr
       // Calculate approximate visible length (strip ANSI)
@@ -364,9 +390,7 @@ export class RichFooter implements Component {
     }
 
     const visLen = this.visibleLen(result)
-    const padded = visLen < width
-      ? result + statusBg + ' '.repeat(width - visLen) + reset
-      : result
+    const padded = visLen < width ? result + statusBg + ' '.repeat(width - visLen) + reset : result
 
     return [padded]
   }
@@ -420,7 +444,8 @@ export class LandingScreen implements Component {
 
     // ── Prompt text ───────────────────────────────────────────────────
     lines.push('')
-    const prompt = colors.dim('Type a message and press ') + colors.accent('Enter') + colors.dim(' to start')
+    const prompt =
+      colors.dim('Type a message and press ') + colors.accent('Enter') + colors.dim(' to start')
     lines.push(center(prompt, width))
     lines.push('')
 
@@ -448,7 +473,6 @@ export class PlansList implements Component {
   private selectList: SelectList
   private maxVisible: number
   private theme: SelectListTheme
-  private allItems: SelectItem[] = []
   onSelectionChange?: (item: SelectItem) => void
 
   constructor(items: SelectItem[], maxVisible: number, theme: SelectListTheme) {
@@ -456,7 +480,7 @@ export class PlansList implements Component {
     this.selectList = new SelectList(items, maxVisible, theme)
     this.maxVisible = maxVisible
     this.theme = theme
-    this.selectList.onSelectionChange = (item) => {
+    this.selectList.onSelectionChange = item => {
       if (this.onSelectionChange) this.onSelectionChange(item)
     }
   }
@@ -533,7 +557,10 @@ export class TodoPanel implements Component {
       const lines = content.split('\n')
       let inTodo = false
       for (const line of lines) {
-        if (line.startsWith('## Todo List')) { inTodo = true; continue }
+        if (line.startsWith('## Todo List')) {
+          inTodo = true
+          continue
+        }
         if (inTodo && line.startsWith('## ')) break
         if (inTodo) {
           const m = line.trim().match(/^- \[([ x])\]\s+(.+)/)
@@ -579,14 +606,14 @@ export class TodoPanel implements Component {
     for (const todo of this.todos) {
       const icon = todo.done ? '\u2705' : '\u2B1C'
       const textStyle = todo.done ? colors.doneTodo : colors.todo
-      let text = todo.text
+      const text = todo.text
       // Truncate text if too long (account for visible width)
       const maxTextLen = contentWidth - 1 // 1 for space after icon
       let truncated = text
       let textVisLen = this.visibleLen(textStyle(text))
       if (textVisLen > maxTextLen) {
         // Simple truncation: cut raw text and add ellipsis
-        truncated = text.slice(0, maxTextLen - 1) + '\u2026'
+        truncated = `${text.slice(0, maxTextLen - 1)}\u2026`
         textVisLen = maxTextLen
       }
       const line = ` ${icon} ${textStyle(truncated)}`

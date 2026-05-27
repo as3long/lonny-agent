@@ -1,6 +1,6 @@
 import { glob } from 'node:fs/promises'
-import { Tool, ToolResult } from './types.js'
 import { fmtErr } from './errors.js'
+import type { Tool, ToolResult } from './types.js'
 
 export const globTool: Tool = {
   definition: {

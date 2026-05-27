@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { createReadTool } from '../read.js'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { FileReadTracker } from '../../diff/apply.js'
+import { createReadTool } from '../read.js'
 import { makeTempDir } from './helpers.js'
 
 describe('read tool', () => {
@@ -40,7 +40,7 @@ describe('read tool', () => {
   })
 
   it('pads line numbers to a consistent width', async () => {
-    const big = Array.from({ length: 12 }, (_, i) => `line${i + 1}`).join('\n') + '\n'
+    const big = `${Array.from({ length: 12 }, (_, i) => `line${i + 1}`).join('\n')}\n`
     fs.writeFileSync(path.join(tmpDir, 'big.txt'), big)
     const result = await tool().execute({ paths: ['big.txt'] })
     expect(result.output).toContain(' 1: line1')

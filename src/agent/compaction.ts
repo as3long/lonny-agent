@@ -1,4 +1,4 @@
-import { LLMMessage } from './llm.js'
+import type { LLMMessage } from './llm.js'
 
 /**
  * Context compaction — reduces long message histories while preserving
@@ -46,14 +46,17 @@ export interface CompactionResult {
  * Check if compaction should be triggered.
  * Returns true if total estimated tokens exceed the threshold.
  */
-export function shouldCompact(messages: LLMMessage[], maxTokens: number = DEFAULT_MAX_TOKENS): boolean {
+export function shouldCompact(
+  messages: LLMMessage[],
+  maxTokens: number = DEFAULT_MAX_TOKENS,
+): boolean {
   const total = estimateMessagesTokens(messages)
   return total > maxTokens * COMPACTION_THRESHOLD
 }
 
 /**
  * Compact a message list by summarizing older conversation turns.
- * 
+ *
  * Strategy:
  * 1. Keep the system prompt (first message)
  * 2. Keep the most recent N messages (default 20) untouched
@@ -66,12 +69,22 @@ export function compact(
   keepRecent: number = 20,
 ): CompactionResult {
   if (messages.length <= keepRecent + 1) {
-    return { messages, compressed: false, originalCount: messages.length, newCount: messages.length }
+    return {
+      messages,
+      compressed: false,
+      originalCount: messages.length,
+      newCount: messages.length,
+    }
   }
 
   const totalTokens = estimateMessagesTokens(messages)
   if (totalTokens <= maxTokens * COMPACTION_THRESHOLD) {
-    return { messages, compressed: false, originalCount: messages.length, newCount: messages.length }
+    return {
+      messages,
+      compressed: false,
+      originalCount: messages.length,
+      newCount: messages.length,
+    }
   }
 
   // Keep system prompt (index 0)
@@ -89,7 +102,12 @@ export function compact(
   const toSummarize = messages.slice(1, cutoff)
 
   if (toSummarize.length === 0) {
-    return { messages, compressed: false, originalCount: messages.length, newCount: messages.length }
+    return {
+      messages,
+      compressed: false,
+      originalCount: messages.length,
+      newCount: messages.length,
+    }
   }
 
   // Build a summary of the older conversation
@@ -119,8 +137,8 @@ function buildSummary(messages: LLMMessage[]): string {
   let userCount = 0
   let toolCallCount = 0
   let editCount = 0
-  let readFiles = new Set<string>()
-  let bashCommands: string[] = []
+  const readFiles = new Set<string>()
+  const bashCommands: string[] = []
 
   for (const m of messages) {
     if (m.role === 'user') {
@@ -140,7 +158,7 @@ function buildSummary(messages: LLMMessage[]): string {
           if (paths) paths.forEach(p => readFiles.add(p as string))
         } else if (tc.name === 'bash') {
           const cmd = tc.input.command as string | undefined
-          if (cmd) bashCommands.push(cmd.length > 60 ? cmd.slice(0, 60) + '…' : cmd)
+          if (cmd) bashCommands.push(cmd.length > 60 ? `${cmd.slice(0, 60)}…` : cmd)
         }
       }
     }
@@ -151,7 +169,9 @@ function buildSummary(messages: LLMMessage[]): string {
   if (editCount > 0) summary.push(`Files edited: ${editCount} operations`)
   if (readFiles.size > 0) summary.push(`Files read: ${readFiles.size} unique files`)
   if (bashCommands.length > 0) {
-    summary.push(`Commands executed: ${bashCommands.slice(0, 5).join(', ')}${bashCommands.length > 5 ? ` (+${bashCommands.length - 5} more)` : ''}`)
+    summary.push(
+      `Commands executed: ${bashCommands.slice(0, 5).join(', ')}${bashCommands.length > 5 ? ` (+${bashCommands.length - 5} more)` : ''}`,
+    )
   }
 
   return summary.join('\n')

@@ -1,8 +1,8 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { Tool, ToolResult } from './types.js'
-import { FileReadTracker } from '../diff/apply.js'
+import type { FileReadTracker } from '../diff/apply.js'
 import { fmtErr } from './errors.js'
+import type { Tool, ToolResult } from './types.js'
 
 interface SingleEdit {
   file_path: string
@@ -10,13 +10,22 @@ interface SingleEdit {
   new_string: string
 }
 
-function performEdit(filePath: string, oldString: string, newString: string, applier: FileReadTracker, cwd: string): { ok: true; removed: number; added: number } | { ok: false; error: string } {
+function performEdit(
+  filePath: string,
+  oldString: string,
+  newString: string,
+  applier: FileReadTracker,
+  cwd: string,
+): { ok: true; removed: number; added: number } | { ok: false; error: string } {
   const resolved = path.resolve(cwd, filePath)
 
   // Create mode: old_string is empty, write new_string to a new file.
   if (oldString === '') {
     if (fs.existsSync(resolved)) {
-      return { ok: false, error: `File already exists: ${filePath}. Use a non-empty old_string to edit it.` }
+      return {
+        ok: false,
+        error: `File already exists: ${filePath}. Use a non-empty old_string to edit it.`,
+      }
     }
     try {
       fs.mkdirSync(path.dirname(resolved), { recursive: true })
@@ -48,17 +57,26 @@ function performEdit(filePath: string, oldString: string, newString: string, app
 
   const index = content.indexOf(oldString)
   if (index === -1) {
-    return { ok: false, error: `old_string not found in ${filePath}. Make sure it matches EXACTLY, including whitespace and line breaks. Re-run \`read\` on this file to see the exact content.` }
+    return {
+      ok: false,
+      error: `old_string not found in ${filePath}. Make sure it matches EXACTLY, including whitespace and line breaks. Re-run \`read\` on this file to see the exact content.`,
+    }
   }
 
   const lastIndex = content.lastIndexOf(oldString)
   if (index !== lastIndex) {
-    return { ok: false, error: `old_string appears MULTIPLE times in ${filePath}. Include more surrounding context (2-3 lines before and after) to make it unique.` }
+    return {
+      ok: false,
+      error: `old_string appears MULTIPLE times in ${filePath}. Include more surrounding context (2-3 lines before and after) to make it unique.`,
+    }
   }
 
   const newContent = content.slice(0, index) + newString + content.slice(index + oldString.length)
   if (newContent === content) {
-    return { ok: false, error: `new_string is identical to old_string in ${filePath}. No changes made.` }
+    return {
+      ok: false,
+      error: `new_string is identical to old_string in ${filePath}. No changes made.`,
+    }
   }
 
   try {
@@ -109,11 +127,13 @@ EXAMPLES:
       parameters: {
         file_path: {
           type: 'string',
-          description: 'File path for a single edit (relative to cwd, or absolute). When using batch mode, use the "edits" array instead.',
+          description:
+            'File path for a single edit (relative to cwd, or absolute). When using batch mode, use the "edits" array instead.',
         },
         old_string: {
           type: 'string',
-          description: 'The exact text to replace (single-edit mode). Must match the file EXACTLY. Pass empty string "" to create a new file. You MUST include this field even for new files.',
+          description:
+            'The exact text to replace (single-edit mode). Must match the file EXACTLY. Pass empty string "" to create a new file. You MUST include this field even for new files.',
         },
         new_string: {
           type: 'string',
@@ -121,12 +141,17 @@ EXAMPLES:
         },
         edits: {
           type: 'array',
-          description: 'Array of edits for batch mode. Each entry: { file_path, old_string, new_string }. More efficient than separate tool calls.',
+          description:
+            'Array of edits for batch mode. Each entry: { file_path, old_string, new_string }. More efficient than separate tool calls.',
           items: {
             type: 'object',
             properties: {
               file_path: { type: 'string', description: 'Path to the file' },
-              old_string: { type: 'string', description: 'Text to replace (pass empty string "" to create a new file). Required.' },
+              old_string: {
+                type: 'string',
+                description:
+                  'Text to replace (pass empty string "" to create a new file). Required.',
+              },
               new_string: { type: 'string', description: 'Replacement text' },
             },
           },
@@ -145,8 +170,19 @@ EXAMPLES:
         const fp = typeof input.file_path === 'string' ? input.file_path : ''
         const os = typeof input.old_string === 'string' ? input.old_string : ''
         const ns = typeof input.new_string === 'string' ? input.new_string : ''
-        if (!fp) return { success: false, output: '', error: 'file_path is required (or use edits: [...])' }
-        if (!('old_string' in input)) return { success: false, output: '', error: 'old_string is required — even for new files, you MUST include old_string: "" (empty string). Do NOT omit the field.' }
+        if (!fp)
+          return {
+            success: false,
+            output: '',
+            error: 'file_path is required (or use edits: [...])',
+          }
+        if (!('old_string' in input))
+          return {
+            success: false,
+            output: '',
+            error:
+              'old_string is required — even for new files, you MUST include old_string: "" (empty string). Do NOT omit the field.',
+          }
         edits = [{ file_path: fp, old_string: os, new_string: ns }]
       }
 
@@ -156,7 +192,11 @@ EXAMPLES:
         const resolved = path.resolve(cwd, e.file_path)
         if (!fileGroups.has(resolved)) {
           let originalContent: string | null = null
-          try { originalContent = fs.readFileSync(resolved, 'utf-8') } catch { /* file doesn't exist yet */ }
+          try {
+            originalContent = fs.readFileSync(resolved, 'utf-8')
+          } catch {
+            /* file doesn't exist yet */
+          }
           fileGroups.set(resolved, { edits: [], originalContent })
         }
         fileGroups.get(resolved)!.edits.push(e)
@@ -169,7 +209,8 @@ EXAMPLES:
 
       for (const [resolved, group] of fileGroups) {
         const relPath = path.relative(cwd, resolved).replace(/\\/g, '/')
-        let content = group.originalContent !== null ? group.originalContent.replace(/\r\n/g, '\n') : null
+        let content =
+          group.originalContent !== null ? group.originalContent.replace(/\r\n/g, '\n') : null
 
         // Process in reverse order so positions stay valid
         for (let i = group.edits.length - 1; i >= 0; i--) {
@@ -179,7 +220,10 @@ EXAMPLES:
             // Create mode
             if (content !== null) {
               results.push(`  FAIL ${relPath}: File already exists`)
-              if (!anyFailed) { anyFailed = true; firstError = `File already exists: ${relPath}` }
+              if (!anyFailed) {
+                anyFailed = true
+                firstError = `File already exists: ${relPath}`
+              }
               break
             }
             content = e.new_string
@@ -190,20 +234,29 @@ EXAMPLES:
           // Edit mode
           if (content === null) {
             results.push(`  FAIL ${relPath}: File not found`)
-            if (!anyFailed) { anyFailed = true; firstError = `File not found: ${relPath}` }
+            if (!anyFailed) {
+              anyFailed = true
+              firstError = `File not found: ${relPath}`
+            }
             break
           }
 
           const idx = content.indexOf(e.old_string)
           if (idx === -1) {
             results.push(`  FAIL ${relPath}: old_string not found`)
-            if (!anyFailed) { anyFailed = true; firstError = `old_string not found in ${relPath}` }
+            if (!anyFailed) {
+              anyFailed = true
+              firstError = `old_string not found in ${relPath}`
+            }
             break
           }
           const lastIdx = content.lastIndexOf(e.old_string)
           if (idx !== lastIdx) {
             results.push(`  FAIL ${relPath}: old_string appears MULTIPLE times`)
-            if (!anyFailed) { anyFailed = true; firstError = `old_string appears MULTIPLE times in ${relPath}` }
+            if (!anyFailed) {
+              anyFailed = true
+              firstError = `old_string appears MULTIPLE times in ${relPath}`
+            }
             break
           }
 
@@ -219,12 +272,18 @@ EXAMPLES:
         for (const [filePath, group] of fileGroups) {
           const originalContent = group.originalContent
           if (originalContent === null) {
-            try { fs.unlinkSync(filePath) } catch { /* ok */ }
+            try {
+              fs.unlinkSync(filePath)
+            } catch {
+              /* ok */
+            }
           } else {
             try {
               fs.mkdirSync(path.dirname(filePath), { recursive: true })
               fs.writeFileSync(filePath, originalContent, 'utf-8')
-            } catch { /* ok */ }
+            } catch {
+              /* ok */
+            }
           }
           applier.markRead(filePath)
         }

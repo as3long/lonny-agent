@@ -1,20 +1,20 @@
-import * as fs from 'node:fs'
-import * as path from 'node:path'
-import * as os from 'node:os'
 import { createHash } from 'node:crypto'
-import { LLMProvider, LLMMessage } from './llm.js'
-import { OpenAIProvider } from './providers/openai.js'
+import * as fs from 'node:fs'
+import * as os from 'node:os'
+import * as path from 'node:path'
+import type { Config } from '../config/index.js'
+import { saveTokenUsage } from '../config/tokens.js'
+import { FileReadTracker } from '../diff/apply.js'
+import { ToolRegistry } from '../tools/registry.js'
+import type { ToolCall, ToolResult } from '../tools/types.js'
+import { compact, estimateMessagesTokens, shouldCompact } from './compaction.js'
+import { EventChannels, getGlobalEventBus } from './event-bus.js'
+import type { LLMMessage, LLMProvider } from './llm.js'
+import { buildSystemPrompt } from './prompt-builder.js'
 import { AnthropicProvider } from './providers/anthropic.js'
 import { GoogleProvider } from './providers/google.js'
 import { OllamaProvider } from './providers/ollama.js'
-import { ToolRegistry } from '../tools/registry.js'
-import { ToolCall, ToolResult } from '../tools/types.js'
-import { FileReadTracker } from '../diff/apply.js'
-import { Config } from '../config/index.js'
-import { saveTokenUsage } from '../config/tokens.js'
-import { compact, shouldCompact, estimateMessagesTokens } from './compaction.js'
-import { getGlobalEventBus, EventChannels } from './event-bus.js'
-import { buildSystemPrompt } from './prompt-builder.js'
+import { OpenAIProvider } from './providers/openai.js'
 
 // ── Session persistence ────────────────────────────────────────────────────
 
@@ -153,7 +153,10 @@ function printToolResult(tc: ToolCall, result: ToolResult, output?: SessionOutpu
   } else if (tc.name === 'write_plan') {
     writeOut(`  ${GY}│${RS}  ${GR}✔${RS} ${result.output || tc.name}\n`, output)
   } else if (tc.name === 'search') {
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} search: ${String(tc.input.query || '').slice(0, 80)}\n`, output)
+    writeOut(
+      `  ${GY}│${RS}  ${GR}✔${RS} search: ${String(tc.input.query || '').slice(0, 80)}\n`,
+      output,
+    )
   } else {
     writeOut(`  ${GY}│${RS}  ${GR}✔${RS} ${tc.name}\n`, output)
   }
@@ -166,7 +169,13 @@ interface SingleEditShape {
 }
 
 function isSingleEditShape(v: unknown): v is SingleEditShape {
-  return typeof v === 'object' && v !== null && 'file_path' in v && 'old_string' in v && 'new_string' in v
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    'file_path' in v &&
+    'old_string' in v &&
+    'new_string' in v
+  )
 }
 
 function formatToolInput(tc: ToolCall): string {
@@ -182,7 +191,7 @@ function formatToolInput(tc: ToolCall): string {
     parts.push(typeof tc.input.path === 'string' ? tc.input.path : '.')
   } else if (tc.name === 'bash') {
     const cmd = typeof tc.input.command === 'string' ? tc.input.command : ''
-    parts.push(cmd.length > 80 ? cmd.slice(0, 80) + '\u2026' : cmd)
+    parts.push(cmd.length > 80 ? `${cmd.slice(0, 80)}\u2026` : cmd)
   } else if (tc.name === 'search') {
     if (typeof tc.input.query === 'string') parts.push(tc.input.query.slice(0, 120))
   } else if (tc.name === 'write_plan') {
@@ -198,7 +207,15 @@ function formatToolInput(tc: ToolCall): string {
   return parts.join(' \u2502 ')
 }
 
-function printTokenStats(turnIn: number, turnOut: number, totalIn: number, totalOut: number, turnApi: number, totalApi: number, output?: SessionOutput): void {
+function printTokenStats(
+  turnIn: number,
+  turnOut: number,
+  totalIn: number,
+  totalOut: number,
+  turnApi: number,
+  totalApi: number,
+  output?: SessionOutput,
+): void {
   const total = totalIn + totalOut
   const msg = `  ${GY}┃${RS} ${GY}${BLD}▴${RS}${GY}${turnIn}${RS} ${GY}${BLD}▾${RS}${GY}${turnOut}${RS}  ${GY}total${RS} ${total}  ${GY}calls${RS} ${turnApi}(${totalApi})`
   writeOut(`\n${msg}\n`, output)
@@ -233,7 +250,14 @@ export class Session {
     })
 
     if (config.provider === 'openai') {
-      this.provider = new OpenAIProvider(config.apiKey, config.baseUrl, config.model, config.thinking, config.reasoningEffort, config.enableCache)
+      this.provider = new OpenAIProvider(
+        config.apiKey,
+        config.baseUrl,
+        config.model,
+        config.thinking,
+        config.reasoningEffort,
+        config.enableCache,
+      )
     } else if (config.provider === 'google') {
       this.provider = new GoogleProvider(config.apiKey, config.baseUrl, config.model)
     } else if (config.provider === 'ollama') {
@@ -242,9 +266,7 @@ export class Session {
       this.provider = new AnthropicProvider(config.apiKey, config.baseUrl, config.model)
     }
 
-    this.messages = [
-      { role: 'system', content: buildSystemPrompt(config) },
-    ]
+    this.messages = [{ role: 'system', content: buildSystemPrompt(config) }]
   }
 
   /** Persist the current session to ~/.lonny/sessions/ */
@@ -288,7 +310,11 @@ export class Session {
     session.messages = data.messages
     // Refresh the system prompt only if config actually changed (model, mode, etc.)
     // Compare the saved data vs current config to decide
-    if (data.model !== config.model || data.provider !== config.provider || data.mode !== config.mode) {
+    if (
+      data.model !== config.model ||
+      data.provider !== config.provider ||
+      data.mode !== config.mode
+    ) {
       session.messages[0] = { role: 'system', content: buildSystemPrompt(config) }
     }
     // Restore token stats
@@ -498,9 +524,22 @@ export class Session {
           }
           if (chunk.finish_reason === 'stop' || chunk.finish_reason === 'end_turn') {
             if (toolCalls.length === 0) {
-              printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, this.turnApiCalls, this.totalApiCalls, out)
+              printTokenStats(
+                this.turnInputTokens,
+                this.turnOutputTokens,
+                this.totalInputTokens,
+                this.totalOutputTokens,
+                this.turnApiCalls,
+                this.totalApiCalls,
+                out,
+              )
               writeOut('\n\n', out)
-              saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens, this.turnApiCalls)
+              saveTokenUsage(
+                this.config.cwd,
+                this.turnInputTokens,
+                this.turnOutputTokens,
+                this.turnApiCalls,
+              )
               bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
               this.save()
               return
@@ -509,7 +548,10 @@ export class Session {
         }
       }
 
-      bus.emit(EventChannels.LLM_STREAM_END, { iteration: iterations, toolCallCount: toolCalls.length })
+      bus.emit(EventChannels.LLM_STREAM_END, {
+        iteration: iterations,
+        toolCallCount: toolCalls.length,
+      })
 
       // Close reasoning display if still open (model ended with tool calls, no text)
       if (reasoningOutput) {
@@ -521,10 +563,23 @@ export class Session {
 
       if (toolCalls.length === 0) {
         if (fullResponse) {
-          printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, this.turnApiCalls, this.totalApiCalls, out)
+          printTokenStats(
+            this.turnInputTokens,
+            this.turnOutputTokens,
+            this.totalInputTokens,
+            this.totalOutputTokens,
+            this.turnApiCalls,
+            this.totalApiCalls,
+            out,
+          )
           writeOut('\n\n', out)
         }
-        saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens, this.turnApiCalls)
+        saveTokenUsage(
+          this.config.cwd,
+          this.turnInputTokens,
+          this.turnOutputTokens,
+          this.turnApiCalls,
+        )
         bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
         this.save()
         return
@@ -576,14 +631,24 @@ export class Session {
           this.messages = result.messages
           bus.emit(EventChannels.COMPACTION_TRIGGERED, { before, after: result.newCount })
           if (out) {
-            out.write(`\n  ${GY}┃${RS} ${GY}📦 Compressed context: ${before} → ${result.newCount} messages${RS}\n`)
+            out.write(
+              `\n  ${GY}┃${RS} ${GY}📦 Compressed context: ${before} → ${result.newCount} messages${RS}\n`,
+            )
           }
         }
       }
     }
 
     if (iterations >= maxIterations) {
-      printTokenStats(this.turnInputTokens, this.turnOutputTokens, this.totalInputTokens, this.totalOutputTokens, this.turnApiCalls, this.totalApiCalls, out)
+      printTokenStats(
+        this.turnInputTokens,
+        this.turnOutputTokens,
+        this.totalInputTokens,
+        this.totalOutputTokens,
+        this.turnApiCalls,
+        this.totalApiCalls,
+        out,
+      )
       writeOut('\nAgent reached maximum iterations. Stopping.\n', out)
     }
 

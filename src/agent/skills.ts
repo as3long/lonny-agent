@@ -1,7 +1,7 @@
 import * as fs from 'node:fs'
-import * as path from 'node:path'
 import * as os from 'node:os'
-import { getGlobalEventBus, EventChannels } from './event-bus.js'
+import * as path from 'node:path'
+import { EventChannels, getGlobalEventBus } from './event-bus.js'
 
 /**
  * Skills system — loads custom instructions from `.lonny/skills/` directory.
@@ -78,7 +78,9 @@ export function loadSkills(cwd: string): Skill[] {
 
         // Validate name (lowercase, digits, hyphens)
         if (!/^[a-z0-9-]+$/.test(name)) {
-          console.warn(`[Skills] Skipping "${file}": invalid name "${name}" (use lowercase, digits, hyphens)`)
+          console.warn(
+            `[Skills] Skipping "${file}": invalid name "${name}" (use lowercase, digits, hyphens)`,
+          )
           continue
         }
 

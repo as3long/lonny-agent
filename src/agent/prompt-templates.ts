@@ -1,6 +1,6 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { getGlobalEventBus, EventChannels } from './event-bus.js'
+import { EventChannels, getGlobalEventBus } from './event-bus.js'
 
 /**
  * Prompt Templates — loads reusable prompt snippets from `.lonny/prompts/` directory.
@@ -129,7 +129,10 @@ export function applyTemplate(template: PromptTemplate, args: string[]): string 
 }
 
 /** Find a template by name (case-insensitive) */
-export function findTemplate(templates: PromptTemplate[], name: string): PromptTemplate | undefined {
+export function findTemplate(
+  templates: PromptTemplate[],
+  name: string,
+): PromptTemplate | undefined {
   return templates.find(t => t.name.toLowerCase() === name.toLowerCase())
 }
 

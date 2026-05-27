@@ -1,6 +1,6 @@
 import * as vm from 'node:vm'
-import { Tool, ToolDefinition, ToolResult } from './types.js'
 import { fmtErr } from './errors.js'
+import type { Tool, ToolDefinition, ToolResult } from './types.js'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,7 +35,9 @@ function parsePragma(input: string): { code: string; pragma: ExecPragma } {
         // Validate fields
         for (const key of Object.keys(parsed)) {
           if (!['timeout_ms', 'yield_time_ms', 'max_output_tokens'].includes(key)) {
-            throw new Error(`exec pragma only supports \`timeout_ms\`, \`yield_time_ms\`, and \`max_output_tokens\`; got \`${key}\``)
+            throw new Error(
+              `exec pragma only supports \`timeout_ms\`, \`yield_time_ms\`, and \`max_output_tokens\`; got \`${key}\``,
+            )
           }
         }
         if (parsed.timeout_ms !== undefined) {
@@ -50,7 +52,9 @@ function parsePragma(input: string): { code: string; pragma: ExecPragma } {
         }
         if (parsed.max_output_tokens !== undefined) {
           if (!Number.isSafeInteger(parsed.max_output_tokens) || parsed.max_output_tokens < 0) {
-            throw new Error('exec pragma field `max_output_tokens` must be a non-negative safe integer')
+            throw new Error(
+              'exec pragma field `max_output_tokens` must be a non-negative safe integer',
+            )
           }
         }
         Object.assign(pragma, parsed)
@@ -85,7 +89,8 @@ function renderTsType(param: Record<string, unknown>, depth = 0): string {
     const lines: string[] = ['{']
     if (props) {
       for (const [key, value] of Object.entries(props)) {
-        const isRequired = Array.isArray(param.required) && (param.required as string[]).includes(key)
+        const isRequired =
+          Array.isArray(param.required) && (param.required as string[]).includes(key)
         const opt = isRequired ? '' : '?'
         const desc = value.description ? ` // ${value.description}` : ''
         const valType = renderTsType(value, depth + 1)
@@ -93,7 +98,10 @@ function renderTsType(param: Record<string, unknown>, depth = 0): string {
       }
     }
     if (additionalProps && additionalProps !== false) {
-      const valType = typeof additionalProps === 'object' ? renderTsType(additionalProps as Record<string, unknown>, depth + 1) : 'unknown'
+      const valType =
+        typeof additionalProps === 'object'
+          ? renderTsType(additionalProps as Record<string, unknown>, depth + 1)
+          : 'unknown'
       lines.push(`${indent}[key: string]: ${valType};`)
     }
     lines.push(`${closeIndent}}`)
@@ -106,11 +114,15 @@ function renderTsType(param: Record<string, unknown>, depth = 0): string {
 function renderToolDeclaration(tool: ToolDefinition): string {
   const params = tool.parameters
   const hasParams = params && Object.keys(params).length > 0
-  const paramType = hasParams ? renderTsType({
-    type: 'object',
-    properties: params,
-    required: Object.entries(params).filter(([_, v]) => v.required).map(([k]) => k),
-  } as unknown as Record<string, unknown>) : '{}'
+  const paramType = hasParams
+    ? renderTsType({
+        type: 'object',
+        properties: params,
+        required: Object.entries(params)
+          .filter(([_, v]) => v.required)
+          .map(([k]) => k),
+      } as unknown as Record<string, unknown>)
+    : '{}'
 
   return `${tool.name}(args: ${paramType}): Promise<string>;`
 }
@@ -160,7 +172,8 @@ export function createExecTool(getTools: () => Tool[]): Tool {
       parameters: {
         code: {
           type: 'string',
-          description: 'JavaScript source code to execute. Optionally starts with // @exec: {"timeout_ms": 30000} pragma.',
+          description:
+            'JavaScript source code to execute. Optionally starts with // @exec: {"timeout_ms": 30000} pragma.',
           required: true,
         },
       },
@@ -168,7 +181,11 @@ export function createExecTool(getTools: () => Tool[]): Tool {
     async execute(input: Record<string, unknown>): Promise<ToolResult> {
       const rawCode = input.code as string
       if (!rawCode || typeof rawCode !== 'string') {
-        return { success: false, output: '', error: 'exec expects a `code` string parameter with JavaScript source text.' }
+        return {
+          success: false,
+          output: '',
+          error: 'exec expects a `code` string parameter with JavaScript source text.',
+        }
       }
 
       // Parse pragma
@@ -183,7 +200,11 @@ export function createExecTool(getTools: () => Tool[]): Tool {
       }
 
       if (!code.trim()) {
-        return { success: false, output: '', error: 'exec expects non-empty JavaScript source text.' }
+        return {
+          success: false,
+          output: '',
+          error: 'exec expects non-empty JavaScript source text.',
+        }
       }
 
       // Build context
@@ -244,17 +265,41 @@ export function createExecTool(getTools: () => Tool[]): Tool {
         clearTimeout: clearTimeout.bind(globalThis),
         console: {
           log: (...args: unknown[]) => ctx.output.push(args.map(a => String(a)).join(' ')),
-          error: (...args: unknown[]) => ctx.output.push(`ERROR: ${args.map(a => String(a)).join(' ')}`),
-          warn: (...args: unknown[]) => ctx.output.push(`WARN: ${args.map(a => String(a)).join(' ')}`),
+          error: (...args: unknown[]) =>
+            ctx.output.push(`ERROR: ${args.map(a => String(a)).join(' ')}`),
+          warn: (...args: unknown[]) =>
+            ctx.output.push(`WARN: ${args.map(a => String(a)).join(' ')}`),
           info: (...args: unknown[]) => ctx.output.push(args.map(a => String(a)).join(' ')),
         },
         // Safe globals
-        Array, Object, String, Number, Boolean, Date, Math, JSON, RegExp, Map, Set,
-        Promise, Error, TypeError, RangeError, SyntaxError, ReferenceError,
-        parseInt, parseFloat, isNaN, isFinite, encodeURI, decodeURI,
-        encodeURIComponent, decodeURIComponent,
+        Array,
+        Object,
+        String,
+        Number,
+        Boolean,
+        Date,
+        Math,
+        JSON,
+        RegExp,
+        Map,
+        Set,
+        Promise,
+        Error,
+        TypeError,
+        RangeError,
+        SyntaxError,
+        ReferenceError,
+        parseInt,
+        parseFloat,
+        isNaN,
+        isFinite,
+        encodeURI,
+        decodeURI,
+        encodeURIComponent,
+        decodeURIComponent,
         // TextEncoder/Decoder for buffer handling
-        TextEncoder, TextDecoder,
+        TextEncoder,
+        TextDecoder,
       }
 
       const timeout = pragma.timeout_ms ?? DEFAULT_TIMEOUT_MS
@@ -274,14 +319,18 @@ export function createExecTool(getTools: () => Tool[]): Tool {
 
         let output = ctx.output.join('')
         if (output.length > maxChars) {
-          output = output.slice(0, maxChars) + '\n\n... (output truncated)'
+          output = `${output.slice(0, maxChars)}\n\n... (output truncated)`
         }
 
         return { success: true, output: output || '(exec completed with no output)' }
       } catch (err) {
         const msg = fmtErr(err)
         if (msg.includes('timed out') || msg.includes('timeout')) {
-          return { success: false, output: ctx.output.join(''), error: `exec timed out after ${timeout}ms` }
+          return {
+            success: false,
+            output: ctx.output.join(''),
+            error: `exec timed out after ${timeout}ms`,
+          }
         }
         return {
           success: false,

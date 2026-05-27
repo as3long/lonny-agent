@@ -1,19 +1,43 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { Session, SessionOutput } from '../agent/session.js'
-import { Config } from '../config/index.js'
-import { loadTokenUsage, resetTokenUsage } from '../config/tokens.js'
-import { fetchDeepSeekBalance, isDeepSeekOfficial } from './balance.js'
-import { loadSkills, ensureSkillsDir } from '../agent/skills.js'
-import { loadPromptTemplates, ensurePromptsDir } from '../agent/prompt-templates.js'
-import type { OverlayHandle } from '@earendil-works/pi-tui'
-import { ProcessTerminal, TUI, Box, Text, Editor, Markdown, Container, Loader, CombinedAutocompleteProvider }
-  from '@earendil-works/pi-tui'
-import type { MarkdownTheme, SlashCommand, EditorTheme, SelectListTheme, SelectItem } from '@earendil-works/pi-tui'
-import { colors, RichFooter, LandingScreen, PlansList, TodoPanel, listPlans, loadTodos, plansToItems } from './components.js'
-import { highlightLine } from './highlight.js'
+import type {
+  EditorTheme,
+  MarkdownTheme,
+  OverlayHandle,
+  SelectItem,
+  SelectListTheme,
+  SlashCommand,
+} from '@earendil-works/pi-tui'
+import {
+  Box,
+  CombinedAutocompleteProvider,
+  Container,
+  Editor,
+  Loader,
+  Markdown,
+  ProcessTerminal,
+  Text,
+  TUI,
+} from '@earendil-works/pi-tui'
 import { resetGlobalEventBus } from '../agent/event-bus.js'
+import { ensurePromptsDir, loadPromptTemplates } from '../agent/prompt-templates.js'
+import { Session, type SessionOutput } from '../agent/session.js'
+import { ensureSkillsDir, loadSkills } from '../agent/skills.js'
+import type { Config } from '../config/index.js'
+import { loadTokenUsage, resetTokenUsage } from '../config/tokens.js'
 import { fmtErr } from '../tools/errors.js'
+import { fetchDeepSeekBalance, isDeepSeekOfficial } from './balance.js'
+import {
+  colors,
+  LandingScreen,
+  listPlans,
+  loadTodos,
+  PlansList,
+  plansToItems,
+  RichFooter,
+  TodoPanel,
+} from './components.js'
+import { highlightLine } from './highlight.js'
 export async function startTui(config: Config): Promise<void> {
   let chatContent = ''
   let isRunning = false
@@ -21,12 +45,12 @@ export async function startTui(config: Config): Promise<void> {
 
   // ── Create markdown theme (OpenCode-style, clean colors, with syntax highlighting) ──
   const markdownTheme: MarkdownTheme = {
-    heading: (t) => `\x1b[38;2;0;170;255m\x1b[1m${t}\x1b[0m`,
-    link: (t) => `\x1b[38;2;0;170;255m\x1b[4m${t}\x1b[0m`,
-    linkUrl: (t) => `\x1b[38;2;90;90;90m\x1b[4m${t}\x1b[0m`,
-    code: (t) => `\x1b[38;2;255;180;50m${t}\x1b[0m`,
-    codeBlock: (t) => `\x1b[38;2;200;200;200m${t}\x1b[0m`,
-    codeBlockBorder: (t) => `\x1b[38;2;60;60;60m${t}\x1b[0m`,
+    heading: t => `\x1b[38;2;0;170;255m\x1b[1m${t}\x1b[0m`,
+    link: t => `\x1b[38;2;0;170;255m\x1b[4m${t}\x1b[0m`,
+    linkUrl: t => `\x1b[38;2;90;90;90m\x1b[4m${t}\x1b[0m`,
+    code: t => `\x1b[38;2;255;180;50m${t}\x1b[0m`,
+    codeBlock: t => `\x1b[38;2;200;200;200m${t}\x1b[0m`,
+    codeBlockBorder: t => `\x1b[38;2;60;60;60m${t}\x1b[0m`,
     highlightCode: (code: string, lang?: string) => {
       if (lang && lang.trim()) {
         const lines = code.split('\n')
@@ -35,23 +59,23 @@ export async function startTui(config: Config): Promise<void> {
       return code.split('\n')
     },
     codeBlockIndent: '  ',
-    quote: (t) => `\x1b[38;2;130;130;130m${t}\x1b[0m`,
-    quoteBorder: (t) => `\x1b[38;2;60;60;60m${t}\x1b[0m`,
-    hr: (t) => `\x1b[38;2;60;60;60m${t}\x1b[0m`,
-    listBullet: (t) => `\x1b[38;2;130;130;130m${t}\x1b[0m`,
-    bold: (t) => `\x1b[1m${t}\x1b[0m`,
-    italic: (t) => `\x1b[3m${t}\x1b[0m`,
-    strikethrough: (t) => `\x1b[9m${t}\x1b[0m`,
-    underline: (t) => `\x1b[4m${t}\x1b[0m`,
+    quote: t => `\x1b[38;2;130;130;130m${t}\x1b[0m`,
+    quoteBorder: t => `\x1b[38;2;60;60;60m${t}\x1b[0m`,
+    hr: t => `\x1b[38;2;60;60;60m${t}\x1b[0m`,
+    listBullet: t => `\x1b[38;2;130;130;130m${t}\x1b[0m`,
+    bold: t => `\x1b[1m${t}\x1b[0m`,
+    italic: t => `\x1b[3m${t}\x1b[0m`,
+    strikethrough: t => `\x1b[9m${t}\x1b[0m`,
+    underline: t => `\x1b[4m${t}\x1b[0m`,
   }
 
   // ── Create select list theme ──
   const selectTheme: SelectListTheme = {
-    selectedPrefix: (t) => `\x1b[38;2;255;255;255m\x1b[48;2;0;128;255m ${t}\x1b[0m`,
-    selectedText: (t) => `\x1b[38;2;255;255;255m\x1b[48;2;0;128;255m${t}\x1b[0m`,
-    description: (t) => `\x1b[90m${t}\x1b[0m`,
-    scrollInfo: (t) => `\x1b[90m${t}\x1b[0m`,
-    noMatch: (t) => `\x1b[38;2;255;100;100m${t}\x1b[0m`,
+    selectedPrefix: t => `\x1b[38;2;255;255;255m\x1b[48;2;0;128;255m ${t}\x1b[0m`,
+    selectedText: t => `\x1b[38;2;255;255;255m\x1b[48;2;0;128;255m${t}\x1b[0m`,
+    description: t => `\x1b[90m${t}\x1b[0m`,
+    scrollInfo: t => `\x1b[90m${t}\x1b[0m`,
+    noMatch: t => `\x1b[38;2;255;100;100m${t}\x1b[0m`,
   }
 
   // ── Create editor theme (used by Editor component) ────────────────────
@@ -130,12 +154,11 @@ export async function startTui(config: Config): Promise<void> {
     session.onPlanWritten = planCb
     // Find the last user message from the previous session
     const lastUserMsg = [...session.messages].reverse().find(m => m.role === 'user')
-    const lastQuestion = lastUserMsg && typeof lastUserMsg.content === 'string'
-      ? lastUserMsg.content
-      : null
-    chatContent = '\n' + colors.dim('\u21BA Resumed previous session')
+    const lastQuestion =
+      lastUserMsg && typeof lastUserMsg.content === 'string' ? lastUserMsg.content : null
+    chatContent = `\n${colors.dim('\u21BA Resumed previous session')}`
     if (lastQuestion) {
-      const preview = lastQuestion.length > 80 ? lastQuestion.slice(0, 80) + '\u2026' : lastQuestion
+      const preview = lastQuestion.length > 80 ? `${lastQuestion.slice(0, 80)}\u2026` : lastQuestion
       chatContent += ` \u2014 ${colors.userLabel(preview)}`
     }
     chatContent += '\n\n'
@@ -144,7 +167,6 @@ export async function startTui(config: Config): Promise<void> {
     session = new Session(config, output)
     session.onPlanWritten = planCb
   }
-
   // ── Fetch DeepSeek balance at startup (non-blocking)
   ;(async () => {
     try {
@@ -234,7 +256,9 @@ export async function startTui(config: Config): Promise<void> {
 
     const headerText = new Text(
       ` ${colors.accent('\u25B6')} Plans (${plans.length})  ${colors.dim('Enter=view')}`,
-      1, 0, colors.headerBg
+      1,
+      0,
+      colors.headerBg,
     )
     const container = new Container()
     container.addChild(headerText)
@@ -268,7 +292,9 @@ export async function startTui(config: Config): Promise<void> {
     const todos = loadTodos(plan.fullPath)
     const headerText = new Text(
       ` ${colors.accent('\u25B6')} ${colors.warn(plan.name)}  ${colors.dim('Esc=back')}`,
-      1, 0, colors.headerBg
+      1,
+      0,
+      colors.headerBg,
     )
     const todosText = new Text(`\n  ${todos}\n`, 1, 0)
     const container = new Container()
@@ -298,9 +324,11 @@ export async function startTui(config: Config): Promise<void> {
       return
     }
     const helpContent =
-      colors.accent('\u2501').repeat(20) + '\n' +
+      colors.accent('\u2501').repeat(20) +
+      '\n' +
       ` ${colors.accent('lonny')} ${colors.dim('TUI Help')}\n` +
-      colors.accent('\u2501').repeat(20) + '\n\n' +
+      colors.accent('\u2501').repeat(20) +
+      '\n\n' +
       ` ${colors.dim('Commands:')}\n` +
       ` ${colors.inputPrompt('/mode')} code|plan|ask  ${colors.dim('Switch mode')}\n` +
       `   ${colors.inputPrompt('/model')} <name>    ${colors.dim('Switch model')}\n` +
@@ -332,10 +360,16 @@ export async function startTui(config: Config): Promise<void> {
   function updateFooter(): void {
     const plans = listPlans(config.cwd)
     footer.setAgentStatus(isRunning ? 'running' : 'idle')
-    footer.setMode(session?.config.mode === 'plan' ? 'plan' : session?.config.mode === 'ask' ? 'ask' : 'code')
+    footer.setMode(
+      session?.config.mode === 'plan' ? 'plan' : session?.config.mode === 'ask' ? 'ask' : 'code',
+    )
     footer.setModel(config.model, config.provider)
     const tokenStats = loadTokenUsage(config.cwd)
-    footer.setTokenUsage(tokenStats.totalInputTokens, tokenStats.totalOutputTokens, tokenStats.totalApiCalls)
+    footer.setTokenUsage(
+      tokenStats.totalInputTokens,
+      tokenStats.totalOutputTokens,
+      tokenStats.totalApiCalls,
+    )
     tui.requestRender(true)
   }
 
@@ -432,7 +466,7 @@ export async function startTui(config: Config): Promise<void> {
           chatContent += `\n${colors.accent('\u25B6')} ${colors.warn(`Prompt Templates (${templates.length})`)}\n`
           for (const t of templates) {
             chatContent += `  ${colors.dim('\u2022')} ${colors.inputPrompt(t.name)}`
-            if (t.description) chatContent += ` ${colors.dim('\u2014 ' + t.description)}`
+            if (t.description) chatContent += ` ${colors.dim(`\u2014 ${t.description}`)}`
             chatContent += '\n'
           }
         }
@@ -448,7 +482,7 @@ export async function startTui(config: Config): Promise<void> {
           chatContent += `\n${colors.accent('\u25B6')} ${colors.warn(`Active Skills (${skills.length})`)}\n`
           for (const s of skills) {
             chatContent += `  ${colors.dim('\u2022')} ${colors.inputPrompt(s.name)}`
-            if (s.description) chatContent += ` ${colors.dim('\u2014 ' + s.description)}`
+            if (s.description) chatContent += ` ${colors.dim(`\u2014 ${s.description}`)}`
             chatContent += '\n'
           }
         }
@@ -510,22 +544,25 @@ export async function startTui(config: Config): Promise<void> {
     tui.setShowHardwareCursor(false)
     updateFooter()
 
-    session.chat(trimmed).then(() => {
-      isRunning = false
-      loader.setMessage('')
-      refreshPlans()
-      tui.setShowHardwareCursor(true)
-      updateFooter()
-      refreshBalance()
-    }).catch((err: unknown) => {
-      isRunning = false
-      loader.setMessage('')
-      const errMsg = fmtErr(err)
-      chatContent += `\n${colors.error('\u2716 Error:')} ${errMsg}\n`
-      chatMarkdown.setText(chatContent)
-      tui.setShowHardwareCursor(true)
-      updateFooter()
-    })
+    session
+      .chat(trimmed)
+      .then(() => {
+        isRunning = false
+        loader.setMessage('')
+        refreshPlans()
+        tui.setShowHardwareCursor(true)
+        updateFooter()
+        refreshBalance()
+      })
+      .catch((err: unknown) => {
+        isRunning = false
+        loader.setMessage('')
+        const errMsg = fmtErr(err)
+        chatContent += `\n${colors.error('\u2716 Error:')} ${errMsg}\n`
+        chatMarkdown.setText(chatContent)
+        tui.setShowHardwareCursor(true)
+        updateFooter()
+      })
   }
 
   // Wire up submit on editor (after landing transition)
@@ -557,7 +594,7 @@ export async function startTui(config: Config): Promise<void> {
   }
 
   // ── Input listener ──────────────────────────────────────────────────────
-  tui.addInputListener((data) => {
+  tui.addInputListener(data => {
     // Check if help overlay is active
     if (helpOverlayHandle?.isHidden() === false) {
       if (data === '\x1b' || data === '\x1b[' || data === '?') {

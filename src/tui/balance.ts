@@ -1,7 +1,7 @@
 ﻿/**
  * DeepSeek account balance fetcher.
- * Only used when the configured baseUrl contains "api.deepseek.com". 
-*/
+ * Only used when the configured baseUrl contains "api.deepseek.com".
+ */
 
 import { fmtErr } from '../tools/errors.js'
 
@@ -41,7 +41,7 @@ export async function fetchDeepSeekBalance(apiKey: string): Promise<DeepSeekBala
       }
     }
 
-    const data = await res.json() as {
+    const data = (await res.json()) as {
       is_available: boolean
       balance_infos?: Array<{
         currency: string
@@ -95,4 +95,3 @@ export function isDeepSeekOfficial(baseUrl?: string): boolean {
     return baseUrl.includes('api.deepseek.com')
   }
 }
-

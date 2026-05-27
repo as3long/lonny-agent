@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { bashTool } from '../bash.js'
 
 describe('bash tool', () => {

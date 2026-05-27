@@ -1,6 +1,6 @@
 import * as os from 'node:os'
-import { Config } from '../config/index.js'
-import { loadSkills, formatSkillsForPrompt } from './skills.js'
+import type { Config } from '../config/index.js'
+import { formatSkillsForPrompt, loadSkills } from './skills.js'
 
 /**
  * Build the system prompt for the current configuration.
@@ -52,8 +52,9 @@ RULES:
 ${getToolListForMode(config.mode)}`
 
   // ── Mode-specific instructions ───────────────────────────────────────────
-  const modeInstructions = config.mode === 'plan'
-    ? `You are a planning agent. Your sole job is to investigate the codebase and produce an actionable implementation plan plus a todo list. You NEVER edit source files.
+  const modeInstructions =
+    config.mode === 'plan'
+      ? `You are a planning agent. Your sole job is to investigate the codebase and produce an actionable implementation plan plus a todo list. You NEVER edit source files.
 
 RULES (plan-specific):
 1. Read first: Use read/grep/glob tools to gather all context you need before planning.
@@ -75,8 +76,8 @@ A short, ordered description of the approach. Reference concrete files using \`p
 End your response by telling the user where the plan was saved and asking whether they want to switch to \`code\` mode to execute it. Use exactly: "Switch to code mode to implement this plan? (run \`/mode code\`)"
 
 If the user's request is a question rather than a change request, answer it directly and skip the plan/todo sections.`
-    : config.mode === 'ask'
-    ? `You are a Q&A assistant. You can ONLY use the following tools to search for information:
+      : config.mode === 'ask'
+        ? `You are a Q&A assistant. You can ONLY use the following tools to search for information:
 - \`fetch\`: Fetch content from a URL
 - \`search\`: Search the web using Tavily
 
@@ -86,7 +87,7 @@ RULES (ask-specific):
 1. Use \`fetch\` and \`search\` to find information and answer user questions.
 2. You CANNOT use \`bash\`, \`read\`, \`edit\`, \`write_plan\`, \`glob\`, \`grep\`, \`ls\`, \`find\`, or \`git\`.
 3. If the user wants you to modify code or run commands, explain you are in ask mode and suggest switching to code mode.`
-    : `You are a coding agent optimized for per-call pricing.
+        : `You are a coding agent optimized for per-call pricing.
 
 RULES (code-specific):
 1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into \`edit\`.

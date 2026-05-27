@@ -1,8 +1,10 @@
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
+
 const execAsync = promisify(exec)
-import { Tool, ToolResult } from './types.js'
+
 import { fmtErr } from './errors.js'
+import type { Tool, ToolResult } from './types.js'
 
 export const bashTool: Tool = {
   definition: {

@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { ToolRegistry } from '../registry.js'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { FileReadTracker } from '../../diff/apply.js'
+import { ToolRegistry } from '../registry.js'
 import { makeTempDir } from './helpers.js'
 
 describe('ToolRegistry', () => {
@@ -18,7 +18,12 @@ describe('ToolRegistry', () => {
   })
 
   it('registers tools in code mode', () => {
-    const reg = new ToolRegistry({ cwd: tmpDir, autoApprove: true, applier: new FileReadTracker(), mode: 'code' })
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'code',
+    })
     const defs = reg.getDefinitions()
     const names = defs.map(d => d.name)
     expect(names).toContain('read')
@@ -32,7 +37,12 @@ describe('ToolRegistry', () => {
   })
 
   it('excludes edit in plan mode and includes write_plan', () => {
-    const reg = new ToolRegistry({ cwd: tmpDir, autoApprove: true, applier: new FileReadTracker(), mode: 'plan' })
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'plan',
+    })
     const defs = reg.getDefinitions()
     const names = defs.map(d => d.name)
     expect(names).toContain('read')
@@ -42,7 +52,12 @@ describe('ToolRegistry', () => {
   })
 
   it('setMode adds edit when switching to code', () => {
-    const reg = new ToolRegistry({ cwd: tmpDir, autoApprove: true, applier: new FileReadTracker(), mode: 'plan' })
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'plan',
+    })
     reg.setMode('code')
     const names = reg.getDefinitions().map(d => d.name)
     expect(names).toContain('edit')
@@ -50,7 +65,12 @@ describe('ToolRegistry', () => {
   })
 
   it('setMode removes edit when switching to plan', () => {
-    const reg = new ToolRegistry({ cwd: tmpDir, autoApprove: true, applier: new FileReadTracker(), mode: 'code' })
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'code',
+    })
     reg.setMode('plan')
     const names = reg.getDefinitions().map(d => d.name)
     expect(names).not.toContain('edit')
@@ -58,14 +78,24 @@ describe('ToolRegistry', () => {
   })
 
   it('dispatches to correct tool', async () => {
-    const reg = new ToolRegistry({ cwd: tmpDir, autoApprove: true, applier: new FileReadTracker(), mode: 'code' })
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'code',
+    })
     const result = await reg.dispatch({ id: '1', name: 'ls', input: {} })
     expect(result.success).toBe(true)
     expect(result.output).toContain('a.txt')
   })
 
   it('returns error for unknown tool', async () => {
-    const reg = new ToolRegistry({ cwd: tmpDir, autoApprove: true, applier: new FileReadTracker(), mode: 'code' })
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'code',
+    })
     const result = await reg.dispatch({ id: '1', name: 'nonexistent', input: {} })
     expect(result.success).toBe(false)
     expect(result.error).toContain('Unknown tool')

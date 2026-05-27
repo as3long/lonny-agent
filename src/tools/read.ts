@@ -1,8 +1,8 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import { Tool, ToolResult } from './types.js'
-import { FileReadTracker } from '../diff/apply.js'
+import type { FileReadTracker } from '../diff/apply.js'
 import { fmtErr } from './errors.js'
+import type { Tool, ToolResult } from './types.js'
 
 function formatWithLineNumbers(content: string): string {
   const lines = content.split('\n')
@@ -18,7 +18,8 @@ export function createReadTool(applier: FileReadTracker, cwd: string): Tool {
   return {
     definition: {
       name: 'read',
-      description: 'Read the contents of one or more files. Always read a file before editing it. Each line is prefixed with "<lineNumber>: " for accurate line references; the prefix is a display aid only — do NOT include it in batch_edit patch content.',
+      description:
+        'Read the contents of one or more files. Always read a file before editing it. Each line is prefixed with "<lineNumber>: " for accurate line references; the prefix is a display aid only — do NOT include it in batch_edit patch content.',
       parameters: {
         paths: { type: 'array', description: 'File paths to read', required: true },
       },
@@ -39,7 +40,9 @@ export function createReadTool(applier: FileReadTracker, cwd: string): Tool {
             continue
           }
           if (stat.size > 1_000_000) {
-            results.push(`=== ${filePath} ===\n(error: file too large (>1MB), use bash to read it selectively)`)
+            results.push(
+              `=== ${filePath} ===\n(error: file too large (>1MB), use bash to read it selectively)`,
+            )
             continue
           }
           const content = await fs.readFile(resolved, 'utf-8')

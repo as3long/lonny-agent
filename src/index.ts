@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import * as os from 'node:os'
 import { execSync } from 'node:child_process'
-import { parseArgs } from './cli/index.js'
+import * as os from 'node:os'
 import { runAgent } from './agent/index.js'
+import { parseArgs } from './cli/index.js'
 import { fmtErr } from './tools/errors.js'
 import { startTui } from './tui/index.js'
 
@@ -29,7 +29,9 @@ async function main() {
   const { config, prompt } = parseArgs(process.argv)
 
   if (!config.apiKey) {
-    console.error(`${RE}Error:${RS} API key is required. Set ${BLD}LONNY_API_KEY${RS} env var, ${BLD}~/.lonny/config.json${RS}, or pass ${BLD}--api-key${RS}.`)
+    console.error(
+      `${RE}Error:${RS} API key is required. Set ${BLD}LONNY_API_KEY${RS} env var, ${BLD}~/.lonny/config.json${RS}, or pass ${BLD}--api-key${RS}.`,
+    )
     process.exit(1)
   }
 

@@ -1,7 +1,7 @@
-import * as fs from 'node:fs'
-import * as path from 'node:path'
-import * as os from 'node:os'
 import { createHash } from 'node:crypto'
+import * as fs from 'node:fs'
+import * as os from 'node:os'
+import * as path from 'node:path'
 
 interface TokenStatsData {
   totalInputTokens: number
@@ -64,7 +64,12 @@ export function loadTokenUsage(cwd: string): TokenUsage {
   }
 }
 
-export function saveTokenUsage(cwd: string, inputTokens: number, outputTokens: number, apiCalls: number): TokenUsage {
+export function saveTokenUsage(
+  cwd: string,
+  inputTokens: number,
+  outputTokens: number,
+  apiCalls: number,
+): TokenUsage {
   const dir = getTokenDir()
   ensureDir(dir)
 
@@ -124,23 +129,25 @@ export function listAllTokenUsage(): (TokenUsage & { file: string })[] {
   const dir = getTokenDir()
   try {
     const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'))
-    return files.map(f => {
-      const fullPath = path.join(dir, f)
-      try {
-        const data = JSON.parse(fs.readFileSync(fullPath, 'utf-8')) as TokenStatsData
-        return {
-          totalInputTokens: data.totalInputTokens,
-          totalOutputTokens: data.totalOutputTokens,
-          totalApiCalls: data.totalApiCalls,
-          projectPath: data.projectPath,
-          projectName: data.projectName,
-          updatedAt: data.updatedAt,
-          file: f,
+    return files
+      .map(f => {
+        const fullPath = path.join(dir, f)
+        try {
+          const data = JSON.parse(fs.readFileSync(fullPath, 'utf-8')) as TokenStatsData
+          return {
+            totalInputTokens: data.totalInputTokens,
+            totalOutputTokens: data.totalOutputTokens,
+            totalApiCalls: data.totalApiCalls,
+            projectPath: data.projectPath,
+            projectName: data.projectName,
+            updatedAt: data.updatedAt,
+            file: f,
+          }
+        } catch {
+          return null
         }
-      } catch {
-        return null
-      }
-    }).filter((x): x is TokenUsage & { file: string } => x !== null)
+      })
+      .filter((x): x is TokenUsage & { file: string } => x !== null)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   } catch {
     return []

@@ -1,4 +1,4 @@
-import { ToolDefinition, ToolCall } from '../tools/types.js'
+import type { ToolCall, ToolDefinition } from '../tools/types.js'
 
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -10,10 +10,7 @@ export interface LLMMessage {
 }
 
 export interface LLMProvider {
-  chat(
-    messages: LLMMessage[],
-    tools: ToolDefinition[],
-  ): AsyncGenerator<LLMChunk>
+  chat(messages: LLMMessage[], tools: ToolDefinition[]): AsyncGenerator<LLMChunk>
 }
 
 export interface TokenUsage {

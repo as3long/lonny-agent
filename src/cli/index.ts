@@ -1,4 +1,4 @@
-import { Config, loadConfig } from '../config/index.js'
+import { type Config, loadConfig } from '../config/index.js'
 
 export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
   const args = argv.slice(2)
@@ -45,7 +45,18 @@ export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
     prompt = args[0]
   }
 
-  const config = loadConfig({ apiKey, baseUrl, provider: provider as 'openai' | 'anthropic' | 'google' | 'ollama' | undefined, model, autoApprove, thinking, reasoningEffort, mode, temperature, maxTokens })
+  const config = loadConfig({
+    apiKey,
+    baseUrl,
+    provider: provider as 'openai' | 'anthropic' | 'google' | 'ollama' | undefined,
+    model,
+    autoApprove,
+    thinking,
+    reasoningEffort,
+    mode,
+    temperature,
+    maxTokens,
+  })
 
   return { config, prompt }
 }

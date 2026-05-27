@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages.js'
-import { LLMProvider, LLMMessage, LLMChunk } from '../llm.js'
-import { ToolDefinition } from '../../tools/types.js'
+import type { ToolDefinition } from '../../tools/types.js'
+import type { LLMChunk, LLMMessage, LLMProvider } from '../llm.js'
 
 export class AnthropicProvider implements LLMProvider {
   private client: Anthropic
@@ -12,10 +12,7 @@ export class AnthropicProvider implements LLMProvider {
     this.model = model || 'claude-sonnet-4-20250514'
   }
 
-  async *chat(
-    messages: LLMMessage[],
-    tools: ToolDefinition[],
-  ): AsyncGenerator<LLMChunk> {
+  async *chat(messages: LLMMessage[], tools: ToolDefinition[]): AsyncGenerator<LLMChunk> {
     const anthropicTools: Anthropic.Tool[] = tools.map(t => {
       const properties: Record<string, unknown> = {}
       for (const [key, param] of Object.entries(t.parameters)) {
@@ -123,7 +120,11 @@ export class AnthropicProvider implements LLMProvider {
           currentToolUse = null
         }
       } else if (event.type === 'message_stop') {
-        yield { type: 'complete', finish_reason: 'end_turn', usage: { input_tokens: inputTokens, output_tokens: outputTokens } }
+        yield {
+          type: 'complete',
+          finish_reason: 'end_turn',
+          usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+        }
       } else if (event.type === 'message_delta') {
         if (event.usage) {
           outputTokens = event.usage.output_tokens ?? 0
@@ -140,7 +141,11 @@ export class AnthropicProvider implements LLMProvider {
             }
             currentToolUse = null
           }
-          yield { type: 'complete', finish_reason: event.delta.stop_reason, usage: { input_tokens: inputTokens, output_tokens: outputTokens } }
+          yield {
+            type: 'complete',
+            finish_reason: event.delta.stop_reason,
+            usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+          }
         }
       }
     }
