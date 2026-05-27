@@ -101,7 +101,7 @@ EXAMPLES:
       { file_path: "src/cli/index.ts", old_string: "let mode: string", new_string: "let mode: 'code' | 'plan'" }
     ]
 
-  Create a new file (empty old_string):
+  Create a new file (pass empty string for old_string — do NOT omit the field):
     file_path: "src/new.ts"
     old_string: ""
     new_string: "const x = 1\\nexport { x }"`,
@@ -112,7 +112,7 @@ EXAMPLES:
         },
         old_string: {
           type: 'string',
-          description: 'The exact text to replace (single-edit mode). Must match the file EXACTLY.',
+          description: 'The exact text to replace (single-edit mode). Must match the file EXACTLY. Pass empty string "" to create a new file. You MUST include this field even for new files.',
         },
         new_string: {
           type: 'string',
@@ -125,7 +125,7 @@ EXAMPLES:
             type: 'object',
             properties: {
               file_path: { type: 'string', description: 'Path to the file' },
-              old_string: { type: 'string', description: 'Text to replace' },
+              old_string: { type: 'string', description: 'Text to replace (pass empty string "" to create a new file). Required.' },
               new_string: { type: 'string', description: 'Replacement text' },
             },
           },
@@ -145,7 +145,7 @@ EXAMPLES:
         const os = typeof input.old_string === 'string' ? input.old_string : ''
         const ns = typeof input.new_string === 'string' ? input.new_string : ''
         if (!fp) return { success: false, output: '', error: 'file_path is required (or use edits: [...])' }
-        if (!('old_string' in input)) return { success: false, output: '', error: 'old_string is required (pass empty string to create a new file)' }
+        if (!('old_string' in input)) return { success: false, output: '', error: 'old_string is required — even for new files, you MUST include old_string: "" (empty string). Do NOT omit the field.' }
         edits = [{ file_path: fp, old_string: os, new_string: ns }]
       }
 
