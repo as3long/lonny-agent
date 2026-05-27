@@ -820,11 +820,10 @@ export async function startTui(config: Config): Promise<void> {
   // ── Rich footer bar ──────────────────────────────────
   // NOTE: must be added AFTER the landing screen overlay so it renders on
   // top and is not covered by the centered overlay.
+  const footerWidth = terminal.columns ?? process.stdout.columns ?? 120
   const footerHandle = tui.showOverlay(footer, {
     anchor: 'bottom-left',
-    row: 0,
-    col: 0,
-    width: terminal.columns,
+    width: footerWidth,
     nonCapturing: true,
   })
 
