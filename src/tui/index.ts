@@ -925,33 +925,15 @@ export async function startTui(config: Config): Promise<void> {
     }
   }
 
-  // ── Tool execution display ───────────────────────────────────────────────
-  function renderChatContent(): void {
-    const toolBlock = toolRenderer.render()
-    if (toolBlock) {
-      chatMarkdown.setText(chatContent + '\n' + toolBlock)
-    } else {
-      chatMarkdown.setText(chatContent)
-    }
-  }
-
-  const toolRenderer = new ToolExecutionRenderer(() => {
-    renderChatContent()
-  })
-  toolRenderer.start()
-
-  // Clear tool execution display at the start of each turn
-  const turnStartUnsub = getGlobalEventBus().on(EventChannels.TURN_START, () => {
-    toolRenderer.clear()
-  })
-
   // ── Session output ─────────────────────────────────────────────────────
+  // Tool call/result text flows through output.write naturally, interspersed
+  // with assistant text in the correct order (just like non-TUI mode).
   const output: SessionOutput = {
     write: (text: string) => {
       chatContent += text
-      renderChatContent()
+      chatMarkdown.setText(chatContent)
     },
-    suppressToolOutput: true,
+    suppressToolOutput: false,
   }
 
   // Try to restore a saved session for this directory (MUST be before landing screen setup)
@@ -1172,7 +1154,6 @@ export async function startTui(config: Config): Promise<void> {
         session = new Session(config, output)
         session.onPlanWritten = planCb
         chatContent = ''
-        toolRenderer.clear()
         chatMarkdown.setText('')
         plansList.clearFilter()
         updateHeader()
