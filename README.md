@@ -16,6 +16,8 @@
 - **模板系统**：通过 `.lonny/prompts/` 加载自定义提示模板
 - **计划管理**：`plan` 模式下生成可复用的计划文档，支持查看和筛选
 - **美观的 TUI**：像素字体 Logo、状态栏、折叠式工具输出、实时加载动画
+- **代码质量管道**：内置 Biome 检查、Husky Git hooks、lint-staged 自动格式化
+- **智能压缩**：长对话自动压缩，保留关键上下文和工具调用结果
 
 ## 快速开始
 
@@ -78,7 +80,7 @@ lonny --provider openai --model gpt-4o
 | `--auto-approve` | 自动批准工具执行（无需确认） |
 | `--thinking` | 启用思考模式（仅 Anthropic） |
 | `--reasoning-effort <level>` | 推理强度（仅 OpenAI）：`low`、`medium`、`high` |
-| `--temperature <num>` | 生成温度（0-2） |
+| `--temperature <num>` | 生成温度（0-2），默认 0.3（code）/ 0（plan/ask） |
 | `--max-tokens <num>` | 最大输出 token 数 |
 
 ### 环境变量
@@ -171,6 +173,24 @@ npm run build
 # 运行测试
 npm test
 ```
+
+### 代码质量
+
+项目使用 [Biome](https://biomejs.dev/) 进行代码检查和格式化，通过 [Husky](https://typicode.github.io/husky/) Git hooks 自动执行：
+
+```bash
+# 手动检查和格式化
+npm run check
+npm run check:fix
+
+# 提交前自动检查（通过 lint-staged）
+npm run lint:fix
+npm run format
+```
+
+支持的 Git hooks：
+- **pre-commit**：对暂存的 `.ts`、`.js`、`.mjs` 文件运行 Biome 检查，对 `.json`、`.jsonc` 文件自动格式化
+- **commit-msg**：验证提交信息是否符合 conventional commits 格式（如 `feat:`, `fix:`, `chore:` 等）
 
 ## 许可证
 
