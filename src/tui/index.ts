@@ -804,15 +804,6 @@ export async function startTui(config: Config): Promise<void> {
     session.onPlanWritten = planCb
   }
 
-  // ── Rich footer bar ──────────────────────────────────
-  const footerHandle = tui.showOverlay(footer, {
-    anchor: 'bottom-left',
-    row: 0,
-    col: 0,
-    width: terminal.columns,
-    nonCapturing: true,
-  })
-
   // ── Landing screen (centered overlay with pixel logo) ─────────────────
   const landingScreen = new LandingScreen(config.model, config.provider)
   let landingOverlayHandle: OverlayHandle | null = null
@@ -825,6 +816,17 @@ export async function startTui(config: Config): Promise<void> {
     })
     tui.setFocus(landingScreen)
   }
+
+  // ── Rich footer bar ──────────────────────────────────
+  // NOTE: must be added AFTER the landing screen overlay so it renders on
+  // top and is not covered by the centered overlay.
+  const footerHandle = tui.showOverlay(footer, {
+    anchor: 'bottom-left',
+    row: 0,
+    col: 0,
+    width: terminal.columns,
+    nonCapturing: true,
+  })
 
   // If a session was restored, immediately transition to chat layout
   // (skip the landing screen)
