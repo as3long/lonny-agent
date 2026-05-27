@@ -1267,12 +1267,14 @@ export async function startTui(config: Config): Promise<void> {
 
     isRunning = true
     loader.setMessage('thinking...')
+    tui.setShowHardwareCursor(false)
     updateHeader()
 
     session.chat(trimmed).then(() => {
       isRunning = false
       loader.setMessage('')
       refreshPlans()
+      tui.setShowHardwareCursor(true)
       updateHeader()
     }).catch((err: unknown) => {
       isRunning = false
@@ -1280,6 +1282,7 @@ export async function startTui(config: Config): Promise<void> {
       const errMsg = err instanceof Error ? err.message : String(err)
       chatContent += `\n${colors.error('\u2716 Error:')} ${errMsg}\n`
       chatMarkdown.setText(chatContent)
+      tui.setShowHardwareCursor(true)
       updateHeader()
     })
   }
