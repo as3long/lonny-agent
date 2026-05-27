@@ -126,12 +126,21 @@ export async function startTui(config: Config): Promise<void> {
   // Loader (thinking indicator)
   const loader = new Loader(tui, colors.running, colors.idle, 'thinking...', { intervalMs: 80 })
 
+  // Input area — the editor is shown as a bottom-anchored overlay so the
+  // input always stays at the bottom of the terminal, regardless of how
+  // much chat content has accumulated.
+  let inputOverlayHandle: OverlayHandle | null = null
+
   // Rich footer (cwd | mode | tokens | model | version + command hints)
   const footer = new RichFooter(config.cwd, config.model, config.provider)
 
   // ── Build layout (landing phase) ──
   // In the landing phase, only the footer is shown. The chatBox, editor,
   // and loader are added after the first message (see landingScreen.onSubmit).
+  //
+  // The editor and loader are shown as a bottom-anchored overlay so the
+  // input area always stays at the bottom of the terminal, regardless of
+  // how much chat content has accumulated.
 
   // ── Plan written callback (defined early since it's used by session restore) ──
   const planCb = () => {
@@ -240,8 +249,14 @@ export async function startTui(config: Config): Promise<void> {
   if (restored) {
     footer.setPhase('chat')
     tui.addChild(chatBox)
-    tui.addChild(editor)
     tui.addChild(loader)
+    inputOverlayHandle = tui.showOverlay(editor, {
+      anchor: 'bottom-left',
+      width: terminal.columns ?? process.stdout.columns ?? 120,
+      offsetY: -1,
+      maxHeight: 6,
+      nonCapturing: false,
+    })
     showTodoPanel()
     tui.setFocus(editor)
   }
@@ -591,8 +606,14 @@ export async function startTui(config: Config): Promise<void> {
     // Add chat components to the main TUI
     // (footer is already an overlay anchored to bottom-left, no need to addChild)
     tui.addChild(chatBox)
-    tui.addChild(editor)
     tui.addChild(loader)
+    inputOverlayHandle = tui.showOverlay(editor, {
+      anchor: 'bottom-left',
+      width: terminal.columns ?? process.stdout.columns ?? 120,
+      offsetY: -1,
+      maxHeight: 6,
+      nonCapturing: false,
+    })
 
     showTodoPanel()
 
