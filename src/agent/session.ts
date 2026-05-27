@@ -281,6 +281,7 @@ export class Session {
   turnOutputTokens: number = 0
   turnApiCalls: number = 0
   totalApiCalls: number = 0
+  private stopped: boolean = false
 
   constructor(config: Config, output?: SessionOutput) {
     this.config = config
@@ -373,6 +374,21 @@ export class Session {
     this.registry.setMode(mode)
   }
 
+  /** Stop the current conversation gracefully */
+  stop(): void {
+    this.stopped = true
+  }
+
+  /** Check if the session was stopped */
+  isStopped(): boolean {
+    return this.stopped
+  }
+
+  /** Reset the stopped flag for a new conversation */
+  resetStopped(): void {
+    this.stopped = false
+  }
+
   async chat(userPrompt: string): Promise<void> {
     const bus = getGlobalEventBus()
     const out = this.output
@@ -387,13 +403,25 @@ export class Session {
     let iterations = 0
     const maxIterations = 30
 
+    // Reset stopped flag for new conversation
+    this.resetStopped()
+
     bus.emit(EventChannels.TURN_START, { prompt: userPrompt })
 
+    // Declare toolCalls outside the loop so we can reference it in stop check
+    let toolCalls: ToolCall[] = []
+
     while (iterations < maxIterations) {
+      // Check if stop was requested
+      if (this.isStopped()) {
+        bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: toolCalls.length })
+        this.save()
+        return
+      }
       iterations++
       this.turnApiCalls++
       this.totalApiCalls++
-      const toolCalls: ToolCall[] = []
+      toolCalls = []
       let fullResponse = ''
       let reasoningContent: string | undefined
       let reasoningOutput = false
@@ -494,6 +522,12 @@ export class Session {
       this.messages.push(assistantMsg)
 
       for (const tc of toolCalls) {
+        // Check if stop was requested after each tool call
+        if (this.isStopped()) {
+          bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: toolCalls.length })
+          this.save()
+          return
+        }
         bus.emit(EventChannels.TOOL_CALL, { name: tc.name, input: tc.input, id: tc.id })
         if (!out?.suppressToolOutput) {
           printToolInvocation(tc, out)

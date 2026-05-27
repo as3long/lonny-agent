@@ -710,6 +710,7 @@ export async function startTui(config: Config): Promise<void> {
     { name: 'new', description: 'Start a new session' },
     { name: 'init', description: 'Create .lonny/skills/ & prompts/' },
     { name: 'help', description: 'Show help' },
+    { name: 'stop', description: 'Stop the running agent' },
     { name: 'exit', description: 'Exit' },
     { name: 'filter', description: 'Filter plans', argumentHint: '<query>' },
   ]
@@ -896,6 +897,7 @@ export async function startTui(config: Config): Promise<void> {
       `   ${colors.inputPrompt('/prompts')}        ${colors.dim('List prompt templates')}\n` +
       `   ${colors.inputPrompt('/skills')}         ${colors.dim('List active skills')}\n` +
       `   ${colors.inputPrompt('/init')}           ${colors.dim('Create .lonny/skills/ & prompts/')}\n` +
+      `   ${colors.inputPrompt('/stop')}           ${colors.dim('Stop the running agent')}\n` +
       `   ${colors.inputPrompt('/exit')}           ${colors.dim('Exit')}\n` +
       `   ${colors.inputPrompt('/help')}           ${colors.dim('This help')}\n\n` +
       ` ${colors.dim('Keyboard:')}\n` +
@@ -1052,6 +1054,23 @@ export async function startTui(config: Config): Promise<void> {
         ensurePromptsDir(config.cwd)
         chatContent += `\n${colors.success('\u2714')} Initialized .lonny/skills/ and .lonny/prompts/\n`
         chatMarkdown.setText(chatContent)
+        return
+      }
+
+      if (cmd === 'stop') {
+        if (!isRunning) {
+          chatContent += `\n${colors.dim('Agent is not running.')}\n`
+          chatMarkdown.setText(chatContent)
+          return
+        }
+        // Tell the session to stop gracefully
+        session.stop()
+        chatContent += `\n${colors.warn('\u23F9')} Stopping agent...\n`
+        chatMarkdown.setText(chatContent)
+        isRunning = false
+        loader.setMessage('')
+        tui.setShowHardwareCursor(true)
+        updateHeader()
         return
       }
 
