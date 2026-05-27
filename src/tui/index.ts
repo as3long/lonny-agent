@@ -666,6 +666,108 @@ class PlansList implements Component {
   }
 }
 
+// ── Persistent Todo Side Panel ───────────────────────────────────────
+
+class TodoPanel implements Component {
+  private cwd: string
+  private todos: { text: string; done: boolean }[] = []
+  private planName: string = ''
+  private dirty: boolean = true
+
+  constructor(cwd: string) {
+    this.cwd = cwd
+  }
+
+  refresh(): void {
+    this.dirty = true
+  }
+
+  invalidate(): void {
+    this.dirty = true
+  }
+
+  private load(): void {
+    this.dirty = false
+    const plans = listPlans(this.cwd)
+    if (plans.length === 0) {
+      this.todos = []
+      this.planName = ''
+      return
+    }
+    const plan = plans[0]
+    this.planName = plan.name
+    this.todos = []
+    try {
+      const content = fs.readFileSync(plan.fullPath, 'utf-8')
+      const lines = content.split('\n')
+      let inTodo = false
+      for (const line of lines) {
+        if (line.startsWith('## Todo List')) { inTodo = true; continue }
+        if (inTodo && line.startsWith('## ')) break
+        if (inTodo) {
+          const m = line.trim().match(/^- \[([ x])\]\s+(.+)/)
+          if (m) {
+            this.todos.push({ text: m[2], done: m[1] === 'x' })
+          }
+        }
+      }
+    } catch {
+      // ignore file read errors
+    }
+  }
+
+  private visibleLen(s: string): number {
+    return s.replace(/\x1b\[[0-9;]*m/g, '').length
+  }
+
+  render(width: number): string[] {
+    if (this.dirty) this.load()
+
+    const lines: string[] = []
+
+    // ── Header ──
+    const headerText = ` ${colors.accent('\u25B6')} TODO`
+    const headerPadding = Math.max(0, width - this.visibleLen(headerText))
+    lines.push(colors.bgDark(headerText + ' '.repeat(headerPadding)))
+
+    // ── Divider ──
+    lines.push(colors.separator('\u2500'.repeat(width)))
+
+    if (!this.planName) {
+      lines.push(colors.dim('  (no plan)'))
+      return lines
+    }
+
+    if (this.todos.length === 0) {
+      lines.push(colors.dim('  (no todos)'))
+      return lines
+    }
+
+    // ── Todo items ──
+    const contentWidth = width - 3 // leave room for icon + space
+    for (const todo of this.todos) {
+      const icon = todo.done ? '\u2705' : '\u2B1C'
+      const textStyle = todo.done ? colors.doneTodo : colors.todo
+      let text = todo.text
+      // Truncate text if too long (account for visible width)
+      const maxTextLen = contentWidth - 1 // 1 for space after icon
+      let truncated = text
+      let textVisLen = this.visibleLen(textStyle(text))
+      if (textVisLen > maxTextLen) {
+        // Simple truncation: cut raw text and add ellipsis
+        truncated = text.slice(0, maxTextLen - 1) + '\u2026'
+        textVisLen = maxTextLen
+      }
+      const line = ` ${icon} ${textStyle(truncated)}`
+      const visLen = this.visibleLen(line)
+      const padding = Math.max(0, width - visLen)
+      lines.push(line + ' '.repeat(padding))
+    }
+
+    return lines
+  }
+}
+
 // ── startTui ─────────────────────────────────────────────────────────────
 
 export async function startTui(config: Config): Promise<void> {
@@ -764,6 +866,7 @@ export async function startTui(config: Config): Promise<void> {
   // ── Plan written callback (defined early since it's used by session restore) ──
   const planCb = () => {
     refreshPlans()
+    todoPanel.refresh()
     if (plansOverlayHandle?.isHidden() === false) {
       showPlansOverlay()
     }
@@ -834,6 +937,7 @@ export async function startTui(config: Config): Promise<void> {
     tui.addChild(chatBox)
     tui.addChild(editor)
     tui.addChild(loader)
+    showTodoPanel()
     tui.setFocus(editor)
   }
 
@@ -841,6 +945,25 @@ export async function startTui(config: Config): Promise<void> {
   const plansList = new PlansList([], 15, selectTheme)
   let plansOverlayHandle: OverlayHandle | null = null
   let plansDetailMode = false
+
+  // ── Persistent Todo Side Panel ────────────────────────────────────────
+  const todoPanel = new TodoPanel(config.cwd)
+  let todoPanelHandle: OverlayHandle | null = null
+
+  function showTodoPanel(): void {
+    todoPanel.refresh()
+    const box = new Box(0, 0, colors.bgDark)
+    box.addChild(todoPanel)
+    todoPanelHandle = tui.showOverlay(box, {
+      anchor: 'top-right',
+      offsetY: 2,
+      width: 36,
+      maxHeight: '70%',
+      offsetX: -1,
+      nonCapturing: true,
+      visible: (w: number) => w >= 110,
+    })
+  }
 
   function showPlansOverlay(): void {
     if (plansOverlayHandle?.isHidden() === false) {
@@ -971,6 +1094,7 @@ export async function startTui(config: Config): Promise<void> {
   function refreshPlans(): void {
     const plans = listPlans(config.cwd)
     plansList.refresh(plansToItems(plans))
+    todoPanel.refresh()
     updateHeader()
   }
 
@@ -1154,6 +1278,8 @@ export async function startTui(config: Config): Promise<void> {
     tui.addChild(chatBox)
     tui.addChild(editor)
     tui.addChild(loader)
+
+    showTodoPanel()
 
     // Focus the chat editor
     tui.setFocus(editor)
