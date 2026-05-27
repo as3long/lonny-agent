@@ -63,7 +63,7 @@ describe('compact', () => {
     return {
       role: 'assistant',
       content: null,
-      tool_calls: [{ name, input, id: 'call_1', type: 'tool_use' as const }],
+      tool_calls: [{ name, input, id: 'call_1' }],
     }
   }
 

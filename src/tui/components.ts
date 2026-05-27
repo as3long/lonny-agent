@@ -471,6 +471,7 @@ export class LandingScreen implements Component {
 
 export class PlansList implements Component {
   private selectList: SelectList
+  private allItems: SelectItem[]
   private maxVisible: number
   private theme: SelectListTheme
   onSelectionChange?: (item: SelectItem) => void
