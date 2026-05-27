@@ -7,10 +7,10 @@ import { loadSkills, ensureSkillsDir } from '../agent/skills.js'
 import { loadPromptTemplates, ensurePromptsDir } from '../agent/prompt-templates.js'
 import { getGlobalEventBus, EventChannels } from '../agent/event-bus.js'
 import { PLAN_DIR } from '../tools/write_plan.js'
-import type { Component, Focusable, OverlayHandle } from '@earendil-works/pi-tui'
-import { ProcessTerminal, TUI, Box, Text, Input, Markdown, SelectList, Container, Loader, Spacer, CURSOR_MARKER, visibleWidth }
+import type { Component, OverlayHandle } from '@earendil-works/pi-tui'
+import { ProcessTerminal, TUI, Box, Text, Editor, Markdown, SelectList, Container, Loader, Spacer, CombinedAutocompleteProvider }
   from '@earendil-works/pi-tui'
-import type { SelectItem, SelectListTheme, MarkdownTheme } from '@earendil-works/pi-tui'
+import type { SelectItem, SelectListTheme, MarkdownTheme, SlashCommand, EditorTheme } from '@earendil-works/pi-tui'
 
 // ── ANSI Color Helpers ───────────────────────────────────────────────────────
 
@@ -163,6 +163,383 @@ function plansToItems(plans: PlanEntry[]): SelectItem[] {
   }))
 }
 
+// ── Inline Syntax Highlighting for Code Blocks ──────────────────────────
+
+// Token colors for syntax highlighting (common language patterns)
+const syntaxColors: Record<string, string> = {
+  keyword: '\x1b[38;2;197;134;192m',   // purple — keywords
+  string: '\x1b[38;2;152;195;121m',    // green — strings
+  number: '\x1b[38;2;209;154;102m',    // orange — numbers
+  comment: '\x1b[38;2;90;90;90m',     // gray — comments
+  builtin: '\x1b[38;2;86;156;214m',    // blue — built-in functions/types
+  property: '\x1b[38;2;156;220;254m',  // light blue — properties
+  punctuation: '\x1b[38;2;180;180;180m', // light gray — punctuation
+  operator: '\x1b[38;2;180;180;180m',  // light gray — operators
+  tag: '\x1b[38;2;86;156;214m',       // blue — HTML/JSX tags
+  attr: '\x1b[38;2;152;195;121m',     // green — HTML attributes
+  variable: '\x1b[38;2;156;220;254m',  // light blue — variables/identifiers
+  reset: '\x1b[0m',
+}
+
+// Simplified regex-based syntax highlighter for common languages
+function highlightLine(line: string, lang: string): string {
+  if (!lang) return line
+
+  const langId = lang.toLowerCase().trim()
+
+  // Language-specific highlighting
+  if (['ts', 'typescript', 'js', 'javascript', 'jsx', 'tsx'].includes(langId)) {
+    return highlightTSLine(line)
+  }
+  if (['json', 'jsonc'].includes(langId)) {
+    return highlightJSONLine(line)
+  }
+  if (['html', 'xml', 'svg'].includes(langId)) {
+    return highlightHTMLLine(line)
+  }
+  if (['css', 'scss', 'less'].includes(langId)) {
+    return highlightCSSLine(line)
+  }
+  if (['sh', 'bash', 'shell', 'zsh', 'powershell', 'cmd'].includes(langId)) {
+    return highlightShellLine(line)
+  }
+  if (['py', 'python'].includes(langId)) {
+    return highlightPythonLine(line)
+  }
+  if (['rust', 'rs'].includes(langId)) {
+    return highlightTSLine(line) // Rust syntax is similar to TS for basic tokens
+  }
+  if (['go', 'golang'].includes(langId)) {
+    return highlightTSLine(line) // Go syntax is similar enough
+  }
+  if (['yaml', 'yml'].includes(langId)) {
+    return highlightYAMLLine(line)
+  }
+  if (['diff', 'patch'].includes(langId)) {
+    return highlightDiffLine(line)
+  }
+
+  return line
+}
+
+function highlightTSLine(line: string): string {
+  const c = syntaxColors
+  // Comments first (// and /* */)
+  line = line.replace(/\/\/.*$/g, (m) => `${c.comment}${m}${c.reset}`)
+  line = line.replace(/\/\*[\s\S]*?\*\//g, (m) => `${c.comment}${m}${c.reset}`)
+  // Keywords
+  const keywords = /\b(async|await|const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|new|throw|try|catch|finally|import|export|from|default|class|extends|implements|interface|type|enum|typeof|instanceof|in|of|this|super|yield|static|private|protected|public|readonly|abstract|declare|as|satisfies|null|undefined|true|false|void|never|any|unknown)\b/g
+  line = line.replace(keywords, (m) => `${c.keyword}${m}${c.reset}`)
+  // Strings (single, double, backtick)
+  line = line.replace(/('(?:[^'\\]|\\.)*')/g, (m) => `${c.string}${m}${c.reset}`)
+  line = line.replace(/("(?:[^"\\]|\\.)*")/g, (m) => `${c.string}${m}${c.reset}`)
+  line = line.replace(/(`(?:[^`\\]|\\.)*`)/g, (m) => `${c.string}${m}${c.reset}`)
+  // Numbers
+  line = line.replace(/\b(\d+\.?\d*)\b/g, (m) => `${c.number}${m}${c.reset}`)
+  // Decorators
+  line = line.replace(/^(\s*@\w+)/gm, (m) => `${c.builtin}${m}${c.reset}`)
+  // Built-in types
+  const builtins = /\b(string|number|boolean|symbol|bigint|object|Array|Promise|Map|Set|Record|Partial|Required|Pick|Omit|Exclude|Extract|NonNullable|ReturnType|Parameters|Readonly|console|Error|Date|RegExp)\b/g
+  line = line.replace(builtins, (m) => `${c.builtin}${m}${c.reset}`)
+  return line
+}
+
+function highlightJSONLine(line: string): string {
+  const c = syntaxColors
+  // Keys
+  line = line.replace(/("(?:[^"\\]|\\.)*")\s*:/g, (m) => `${c.property}${m}${c.reset}`)
+  // String values
+  line = line.replace(/:(\s*)("(?:[^"\\]|\\.)*")/g, (_, space, str) => `:${space}${c.string}${str}${c.reset}`)
+  // Numbers
+  line = line.replace(/\b(\d+\.?\d*)\b/g, (m) => `${c.number}${m}${c.reset}`)
+  // Keywords
+  line = line.replace(/\b(true|false|null)\b/g, (m) => `${c.keyword}${m}${c.reset}`)
+  return line
+}
+
+function highlightHTMLLine(line: string): string {
+  const c = syntaxColors
+  // Tags
+  line = line.replace(/(<\/?)([\w-]+)/g, (_, bracket, tag) => `${bracket}${c.tag}${tag}${c.reset}`)
+  // Attributes
+  line = line.replace(/\s(\w[\w-]*)=/g, (m) => ` ${c.attr}${m.trim()}${c.reset}`)
+  // Attribute values
+  line = line.replace(/=("(?:[^"\\]|\\.)*")/g, (m) => `=${c.string}${m.slice(1)}${c.reset}`)
+  // Comments
+  line = line.replace(/<!--[\s\S]*?-->/g, (m) => `${c.comment}${m}${c.reset}`)
+  return line
+}
+
+function highlightCSSLine(line: string): string {
+  const c = syntaxColors
+  // Properties
+  line = line.replace(/([\w-]+)\s*:/g, (m) => `${c.property}${m}${c.reset}`)
+  // Values (colors, numbers)
+  line = line.replace(/(#[0-9a-fA-F]{3,8})/g, (m) => `${c.number}${m}${c.reset}`)
+  line = line.replace(/\b(\d+\.?\d*(px|rem|em|vh|vw|%|s|ms)?)\b/g, (m) => `${c.number}${m}${c.reset}`)
+  // Strings
+  line = line.replace(/('(?:[^'\\]|\\.)*')/g, (m) => `${c.string}${m}${c.reset}`)
+  line = line.replace(/("(?:[^"\\]|\\.)*")/g, (m) => `${c.string}${m}${c.reset}`)
+  // Comments
+  line = line.replace(/\/\*[\s\S]*?\*\//g, (m) => `${c.comment}${m}${c.reset}`)
+  return line
+}
+
+function highlightShellLine(line: string): string {
+  const c = syntaxColors
+  // Comments
+  line = line.replace(/^(\s*#.*)$/gm, (m) => `${c.comment}${m}${c.reset}`)
+  // Commands
+  line = line.replace(/^(>?\s*)([\w./-]+)/gm, (_, prefix, cmd) => `${prefix}${c.builtin}${cmd}${c.reset}`)
+  // Flags
+  line = line.replace(/(--?[\w-]+)/g, (m) => `${c.keyword}${m}${c.reset}`)
+  // Strings
+  line = line.replace(/('(?:[^'\\]|\\.)*')/g, (m) => `${c.string}${m}${c.reset}`)
+  line = line.replace(/("(?:[^"\\]|\\.)*")/g, (m) => `${c.string}${m}${c.reset}`)
+  // Variables
+  line = line.replace(/\$(\w+|\{[\w]+\})/g, (m) => `${c.variable}${m}${c.reset}`)
+  return line
+}
+
+function highlightPythonLine(line: string): string {
+  const c = syntaxColors
+  // Comments
+  line = line.replace(/(#.*)$/g, (m) => `${c.comment}${m}${c.reset}`)
+  // Keywords
+  const keywords = /\b(def|class|if|elif|else|for|while|return|import|from|as|with|try|except|finally|raise|pass|break|continue|yield|lambda|self|None|True|False|and|or|not|in|is|async|await)\b/g
+  line = line.replace(keywords, (m) => `${c.keyword}${m}${c.reset}`)
+  // Strings
+  line = line.replace(/('(?:[^'\\]|\\.)*')/g, (m) => `${c.string}${m}${c.reset}`)
+  line = line.replace(/("(?:[^"\\]|\\.)*")/g, (m) => `${c.string}${m}${c.reset}`)
+  line = line.replace(/("""[\s\S]*?""")/g, (m) => `${c.string}${m}${c.reset}`)
+  line = line.replace(/('''[\s\S]*?''')/g, (m) => `${c.string}${m}${c.reset}`)
+  // Numbers
+  line = line.replace(/\b(\d+\.?\d*)\b/g, (m) => `${c.number}${m}${c.reset}`)
+  // Decorators
+  line = line.replace(/^(\s*@\w+)/gm, (m) => `${c.builtin}${m}${c.reset}`)
+  return line
+}
+
+function highlightYAMLLine(line: string): string {
+  const c = syntaxColors
+  // Keys
+  line = line.replace(/^(\s*)([\w.-]+)\s*:/gm, (_, space, key) => `${space}${c.property}${key}${c.reset}:`)
+  // Comments
+  line = line.replace(/(#.*)$/g, (m) => `${c.comment}${m}${c.reset}`)
+  // String values in quotes
+  line = line.replace(/('(?:[^'\\]|\\.)*')/g, (m) => `${c.string}${m}${c.reset}`)
+  line = line.replace(/("(?:[^"\\]|\\.)*")/g, (m) => `${c.string}${m}${c.reset}`)
+  // Booleans and null
+  line = line.replace(/\b(true|false|null|yes|no|on|off)\b/g, (m) => `${c.keyword}${m}${c.reset}`)
+  return line
+}
+
+function highlightDiffLine(line: string): string {
+  const c = syntaxColors
+  if (line.startsWith('+')) return `\x1b[38;2;0;200;100m${line}${c.reset}`
+  if (line.startsWith('-')) return `\x1b[38;2;255;80;80m${line}${c.reset}`
+  if (line.startsWith('@@')) return `${c.builtin}${line}${c.reset}`
+  if (line.startsWith('diff') || line.startsWith('index') || line.startsWith('---') || line.startsWith('+++')) {
+    return `${c.comment}${line}${c.reset}`
+  }
+  return line
+}
+
+// ── Tool Execution Box (collapsible display via event bus) ──────────────
+
+interface ToolExecutionState {
+  id: string
+  name: string
+  input: string
+  status: 'running' | 'success' | 'error'
+  output?: string
+  error?: string
+  outputLines: number
+}
+
+/**
+ * Renders tool execution boxes as styled text blocks in the chat markdown.
+ * Subscribes to the global event bus for tool:call / tool:result / tool:error events.
+ */
+class ToolExecutionRenderer {
+  private activeTools: ToolExecutionState[] = []
+  private unsubscribers: (() => void)[] = []
+  private onUpdate?: () => void
+  private collapsed: Set<string> = new Set()
+  private MAX_LINES_COLLAPSED = 5
+
+  constructor(onUpdate?: () => void) {
+    this.onUpdate = onUpdate
+  }
+
+  start(): void {
+    const bus = getGlobalEventBus()
+    this.unsubscribers.push(
+      bus.on(EventChannels.TOOL_CALL, (data: unknown) => this.onToolCall(data)),
+      bus.on(EventChannels.TOOL_RESULT, (data: unknown) => this.onToolResult(data)),
+      bus.on(EventChannels.TOOL_ERROR, (data: unknown) => this.onToolError(data)),
+      bus.on(EventChannels.TURN_END, () => this.onTurnEnd()),
+    )
+  }
+
+  stop(): void {
+    for (const unsub of this.unsubscribers) unsub()
+    this.unsubscribers = []
+    this.activeTools = []
+  }
+
+  private onToolCall(data: unknown): void {
+    const d = data as { name: string; input: Record<string, unknown>; id: string }
+    const inputStr = formatToolInputSimple(d)
+    this.activeTools.push({
+      id: d.id,
+      name: d.name,
+      input: inputStr,
+      status: 'running',
+      outputLines: 0,
+    })
+    this.renderAll()
+  }
+
+  private onToolResult(data: unknown): void {
+    const d = data as { name: string; id: string; output: string }
+    const tool = this.activeTools.find(t => t.id === d.id)
+    if (!tool) return
+    tool.status = 'success'
+    tool.output = d.output
+    tool.outputLines = d.output ? d.output.split('\n').length : 0
+    this.renderAll()
+  }
+
+  private onToolError(data: unknown): void {
+    const d = data as { name: string; id: string; error: string }
+    const tool = this.activeTools.find(t => t.id === d.id)
+    if (!tool) return
+    tool.status = 'error'
+    tool.error = d.error
+    tool.outputLines = 1
+    this.renderAll()
+  }
+
+  private onTurnEnd(): void {
+    // Keep tools visible but mark the turn as ended
+    // They'll be cleared on next turn start
+  }
+
+  /** Toggle collapsed state for a tool by index */
+  toggleCollapse(index: number): void {
+    const tool = this.activeTools[index]
+    if (!tool) return
+    const key = tool.id
+    if (this.collapsed.has(key)) {
+      this.collapsed.delete(key)
+    } else {
+      this.collapsed.add(key)
+    }
+    this.renderAll()
+  }
+
+  clear(): void {
+    this.activeTools = []
+    this.renderAll()
+  }
+
+  renderAll(): void {
+    if (this.onUpdate) this.onUpdate()
+  }
+
+  /** Render all active tool executions into a text block */
+  render(): string {
+    if (this.activeTools.length === 0) return ''
+
+    const lines: string[] = []
+
+    for (let i = 0; i < this.activeTools.length; i++) {
+      const t = this.activeTools[i]
+      const isCollapsed = this.collapsed.has(t.id)
+
+      // ── Header line ────────────────────────────────────────────────────
+      let icon: string
+      let statusColor: (s: string) => string
+      switch (t.status) {
+        case 'running':
+          icon = '\u25B6' // ▶
+          statusColor = colors.accent
+          break
+        case 'success':
+          icon = '\u2714' // ✔
+          statusColor = colors.success
+          break
+        case 'error':
+          icon = '\u2716' // ✖
+          statusColor = colors.error
+          break
+      }
+
+      const toggleIcon = isCollapsed ? '\u25BC' : '\u25B2' // ▼/▲
+      const header = ` ${colors.dim(toggleIcon)} ${statusColor(icon)} ${colors.warn(t.name)}${t.input ? ` ${colors.dim(t.input)}` : ''}`
+      lines.push(header)
+
+      // ── Content (output/error) ─────────────────────────────────────────
+      if (t.status === 'error' && t.error) {
+        const errorLines = t.error.split('\n')
+        for (const line of errorLines) {
+          lines.push(`  ${colors.error(line)}`)
+        }
+      } else if (t.status === 'success' && t.output) {
+        const outLines = t.output.split('\n')
+        const showLines = isCollapsed ? outLines.slice(0, this.MAX_LINES_COLLAPSED) : outLines
+        for (const line of showLines) {
+          // Truncate long lines to avoid wrapping issues
+          const truncated = line.length > 200 ? line.slice(0, 200) + '\u2026' : line
+          lines.push(`  ${colors.dim(truncated)}`)
+        }
+        if (isCollapsed && outLines.length > this.MAX_LINES_COLLAPSED) {
+          lines.push(`  ${colors.dim(`\u2026 and ${outLines.length - this.MAX_LINES_COLLAPSED} more lines`)}`)
+        }
+        // Show line count
+        if (outLines.length > 1) {
+          lines.push(`  ${colors.dim(`(${outLines.length} lines)`)}`)
+        }
+      } else if (t.status === 'running') {
+        lines.push(`  ${colors.accent('running...')}`)
+      }
+
+      // Separator between tools
+      if (i < this.activeTools.length - 1) {
+        lines.push(colors.dim('\u2500'.repeat(20)))
+      }
+    }
+
+    return lines.join('\n')
+  }
+}
+
+/** Simple tool input formatter for display */
+function formatToolInputSimple(d: { name: string; input: Record<string, unknown> }): string {
+  const parts: string[] = []
+  if (d.name === 'read' && Array.isArray(d.input.paths)) {
+    parts.push(d.input.paths.join(', '))
+  } else if (d.name === 'glob' && typeof d.input.pattern === 'string') {
+    parts.push(d.input.pattern)
+  } else if (d.name === 'grep') {
+    if (typeof d.input.pattern === 'string') parts.push(`/${d.input.pattern}/`)
+  } else if (d.name === 'bash' && typeof d.input.command === 'string') {
+    const cmd = d.input.command
+    parts.push(cmd.length > 80 ? cmd.slice(0, 80) + '\u2026' : cmd)
+  } else if (d.name === 'edit') {
+    if (Array.isArray(d.input.edits)) {
+      const paths = d.input.edits.map((e: Record<string, unknown>) => e.file_path || '?')
+      parts.push(paths.join(', '))
+    } else if (typeof d.input.file_path === 'string') {
+      parts.push(d.input.file_path)
+    }
+  } else if (d.name === 'write_plan' && typeof d.input.filename === 'string') {
+    parts.push(d.input.filename)
+  }
+  return parts.length > 0 ? parts.join(' \u2502 ') : ''
+}
+
 // ── OpenCode-style Header ────────────────────────────────────────────────
 
 class HeaderBar implements Component {
@@ -232,296 +609,135 @@ class HeaderBar implements Component {
   }
 }
 
-// ── OpenCode-style Footer/Status ─────────────────────────────────────────
+// ── Rich Footer (cwd | mode | tokens | model | version + command hints) ────
 
-class FooterBar implements Component {
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k'
+  return String(n)
+}
+
+class RichFooter implements Component {
+  private cwd: string
+  private mode: string = 'code'
+  private model: string = ''
+  private provider: string = ''
+  private totalInputTokens: number = 0
+  private totalOutputTokens: number = 0
+  private totalApiCalls: number = 0
   private visible = true
+  private phase: 'landing' | 'chat' = 'landing'
+
+  constructor(cwd: string, model: string, provider: string) {
+    this.cwd = cwd
+    this.model = model
+    this.provider = provider
+  }
+
+  setMode(m: string): void { this.mode = m }
+  setModel(model: string, provider: string): void { this.model = model; this.provider = provider }
+  setTokenUsage(inputTokens: number, outputTokens: number, apiCalls: number): void {
+    this.totalInputTokens = inputTokens
+    this.totalOutputTokens = outputTokens
+    this.totalApiCalls = apiCalls
+  }
+  setVisible(v: boolean): void { this.visible = v }
+  setPhase(p: 'landing' | 'chat'): void { this.phase = p }
+
   invalidate(): void {}
   handleInput?(data: string): void {}
 
   render(width: number): string[] {
     if (!this.visible || width < 40) return []
-    const help = [
-      colors.dim('/mode'),
-      colors.dim('/model'),
-      colors.dim('/plans'),
-      colors.dim('/prompts'),
-      colors.dim('/skills'),
-      colors.dim('/help'),
-      colors.dim('?'),
-    ].join(colors.dim(' · '))
-    const line = ` ${colors.dim('?')} ${colors.dim('help')}  ${colors.dim('·')}  ${help}`
-    const padded = line.length < width ? line + ' '.repeat(width - line.length) : line
-    return [colors.statusBg(padded)]
+
+    const { statusBg, statusText, statusAccent, reset } = landingColors
+
+    // Left: working directory
+    const dir = this.cwd.length > 30 ? '...' + this.cwd.slice(-27) : this.cwd
+    const leftPart = statusAccent + '\u25A0' + reset + statusBg + statusText + ' ' + dir + reset
+
+    if (this.phase === 'landing') {
+      // Minimal: cwd | ready | version
+      const centerPart = statusBg + statusText + '  ready  ' + reset
+      const rightPart = statusBg + statusText + 'v' + APP_VERSION + ' ' + reset
+      const line = leftPart + centerPart + rightPart
+      const padded = line.length < width
+        ? line + statusBg + ' '.repeat(width - line.length) + reset
+        : line
+      return [padded]
+    }
+
+    // ── Chat phase: build segments ────────────────────────────────────────
+    const segments: string[] = []
+
+    // Mode tag
+    const modeTag = this.mode === 'plan'
+      ? `\x1b[38;2;255;200;50m${this.mode}\x1b[0m`
+      : `\x1b[38;2;0;200;255m${this.mode}\x1b[0m`
+    segments.push(modeTag)
+
+    // Model/provider
+    if (this.model) {
+      segments.push(`\x1b[38;2;110;110;110m${this.provider}/${this.model}\x1b[0m`)
+    }
+
+    // Token usage
+    const totalTokens = this.totalInputTokens + this.totalOutputTokens
+    if (totalTokens > 0) {
+      const tokenStr = `\u25B4${formatTokens(this.totalInputTokens)} \u25BE${formatTokens(this.totalOutputTokens)}  ${formatTokens(totalTokens)}`
+      segments.push(`\x1b[38;2;110;110;110m${tokenStr}\x1b[0m`)
+      segments.push(`\x1b[38;2;110;110;110m${this.totalApiCalls}c\x1b[0m`)
+    }
+
+    // Build center part from segments
+    const separator = statusBg + ' \x1b[38;2;60;60;60m\u2502\x1b[0m ' + reset
+    const centerContent = statusBg + statusText + '  ' + segments.join(separator) + '  ' + reset
+
+    // Right: version
+    const rightPart = statusBg + statusText + 'v' + APP_VERSION + ' ' + reset
+
+    const line = leftPart + centerContent + rightPart
+
+    // If there's extra space, append command hints
+    const lineLen = line.length - 2 * statusBg.length - reset.length // approximate
+    let result = line
+    if (lineLen < width - 40) {
+      const hints = [
+        '\x1b[38;2;110;110;110m/mode\x1b[0m',
+        '\x1b[38;2;110;110;110m/plans\x1b[0m',
+        '\x1b[38;2;110;110;110m/help\x1b[0m',
+        '\x1b[38;2;110;110;110m?\x1b[0m',
+      ].join(' \x1b[38;2;60;60;60m\u00b7\x1b[0m ')
+      const hintStr = statusBg + statusText + '  ' + hints + '  ' + reset
+      // Only append if it fits
+      const fullLine = line + hintStr
+      // Calculate approximate visible length (strip ANSI)
+      const approxLen = fullLine.replace(/\x1b\[[0-9;]*m/g, '').length
+      if (approxLen <= width) {
+        result = fullLine
+      }
+    }
+
+    const padded = result.length < width
+      ? result + statusBg + ' '.repeat(width - result.length) + reset
+      : result
+
+    return [padded]
   }
 }
 
-// ── Word-wrapping helpers for multi-line input ─────────────────────────
+// ── LandingScreen (pixel logo) ──────────────────────────────────────────
 
-/** Split text into lines that fit within `maxWidth` visible columns. */
-function wordWrap(text: string, maxWidth: number): string[] {
-  if (!text) return ['']
-  const lines: string[] = []
-  let currentLine = ''
-  for (const char of text) {
-    if (char === '\n') {
-      lines.push(currentLine)
-      currentLine = ''
-      continue
-    }
-    if (visibleWidth(currentLine + char) > maxWidth) {
-      lines.push(currentLine)
-      currentLine = char
-    } else {
-      currentLine += char
-    }
-  }
-  lines.push(currentLine)
-  return lines
-}
-
-/** Compute the (lineIndex, column) of `cursor` after word-wrapping. */
-function cursorWrapPosition(
-  text: string,
-  cursor: number,
-  maxWidth: number,
-): { line: number; col: number } {
-  const before = text.slice(0, cursor)
-  const wrapped = wordWrap(before, maxWidth)
-  return { line: wrapped.length - 1, col: visibleWidth(wrapped[wrapped.length - 1]) }
-}
-
-// ── LandingInput (custom styled input for landing screen) ──────────────
-
-class LandingInput implements Component, Focusable {
-  value = ''
-  cursor = 0
-  focused = false
-  private readonly inputHeight = 3 // number of visible text rows
+class LandingScreen implements Component {
   onSubmit?: (value: string) => void
-
-  getValue(): string {
-    return this.value
-  }
-
-  setValue(val: string): void {
-    this.value = val
-    this.cursor = val.length
-  }
-
-  /** Compute the visual width of the input box (used by arrow navigation). */
-  private getInnerWidth(): number {
-    // This approximates the value computed in render() — we derive it here
-    // without access to the terminal width by using a reasonable default.
-    return 56 // boxWidth=60 minus 4 padding
-  }
-
-  /** Move cursor to the visual line above/below using word-wrapping. */
-  private moveCursorVisualLine(direction: -1 | 1): void {
-    if (!this.value) return
-    const maxWidth = this.getInnerWidth()
-    const beforeCursor = this.value.slice(0, this.cursor)
-    const wrappedBefore = wordWrap(beforeCursor, maxWidth)
-    const currentLine = wrappedBefore.length - 1
-    const currentCol = visibleWidth(wrappedBefore[currentLine])
-
-    // Word-wrap the entire value
-    const wrappedAll = wordWrap(this.value, maxWidth)
-
-    if (direction === -1 && currentLine > 0) {
-      // Move up: go to previous visual line, keep same column
-      const targetLine = currentLine - 1
-      const targetLineText = wrappedAll[targetLine]
-      // Calculate cursor position: end of previous line's characters up to currentCol
-      let newCursor = 0
-      for (let i = 0; i < targetLine; i++) {
-        newCursor += wrappedAll[i].length
-      }
-      // Add the column position (trimmed to line length)
-      const targetCol = Math.min(currentCol, visibleWidth(targetLineText))
-      // Need to find the actual character index for this visual column
-      let visualPos = 0
-      let charIdx = 0
-      while (charIdx < targetLineText.length && visualPos < targetCol) {
-        visualPos += visibleWidth(targetLineText[charIdx])
-        charIdx++
-      }
-      newCursor += charIdx
-      this.cursor = newCursor
-    } else if (direction === 1 && currentLine < wrappedAll.length - 1) {
-      // Move down: go to next visual line
-      const targetLine = currentLine + 1
-      const targetLineText = wrappedAll[targetLine]
-      let newCursor = 0
-      for (let i = 0; i < targetLine; i++) {
-        newCursor += wrappedAll[i].length
-      }
-      const targetCol = Math.min(currentCol, visibleWidth(targetLineText))
-      let visualPos = 0
-      let charIdx = 0
-      while (charIdx < targetLineText.length && visualPos < targetCol) {
-        visualPos += visibleWidth(targetLineText[charIdx])
-        charIdx++
-      }
-      newCursor += charIdx
-      this.cursor = newCursor
-    }
-  }
-
-  handleInput(data: string): void {
-    // Submit
-    if (data === '\r' || data === '\n') {
-      if (this.onSubmit) this.onSubmit(this.value)
-      return
-    }
-    // Backspace
-    if (data === '\x7f' || data === '\b') {
-      if (this.cursor > 0) {
-        this.value = this.value.slice(0, this.cursor - 1) + this.value.slice(this.cursor)
-        this.cursor--
-      }
-      return
-    }
-    // Up arrow — move cursor up one visual line
-    if (data === '\x1b[A') {
-      this.moveCursorVisualLine(-1)
-      return
-    }
-    // Down arrow — move cursor down one visual line
-    if (data === '\x1b[B') {
-      this.moveCursorVisualLine(1)
-      return
-    }
-    // Left arrow
-    if (data === '\x1b[D') { if (this.cursor > 0) this.cursor--; return }
-    // Right arrow
-    if (data === '\x1b[C') { if (this.cursor < this.value.length) this.cursor++; return }
-    // Home
-    if (data === '\x1b[H' || data === '\x1b[1~') { this.cursor = 0; return }
-    // End
-    if (data === '\x1b[F' || data === '\x1b[4~') { this.cursor = this.value.length; return }
-    // Delete
-    if (data === '\x1b[3~') {
-      if (this.cursor < this.value.length) {
-        this.value = this.value.slice(0, this.cursor) + this.value.slice(this.cursor + 1)
-      }
-      return
-    }
-    // Regular printable character
-    const hasControl = [...data].some(ch => {
-      const code = ch.charCodeAt(0)
-      return code < 32 || code === 0x7f || (code >= 0x80 && code <= 0x9f)
-    })
-    if (!hasControl) {
-      this.value = this.value.slice(0, this.cursor) + data + this.value.slice(this.cursor)
-      this.cursor += data.length
-    }
-  }
 
   invalidate(): void {}
 
-  render(width: number): string[] {
-    const boxWidth = Math.min(60, width - 4)
-    const leftPad = Math.max(0, Math.floor((width - boxWidth) / 2))
-    const innerWidth = boxWidth - 4 // 2 padding on each side
-
-    const {
-      inputBg, cyanBar, placeholderDim, placeholderQuote,
-      inputText, reset,
-    } = landingColors
-
-    // ── Build top border ─────────────────────────────────────────────────
-    const topBorder = ' '.repeat(leftPad) + inputBg + cyanBar + '\u2501' + reset +
-      inputBg + '\u2501'.repeat(innerWidth) + reset
-    const bottomBorder = ' '.repeat(leftPad) + inputBg + cyanBar + '\u2501' + reset +
-      inputBg + '\u2501'.repeat(innerWidth) + reset
-
-    // ── Word-wrap the value and determine which slice to show ────────────
-    const wrappedAll = wordWrap(this.value, innerWidth)
-    const cursorPos = this.value
-      ? cursorWrapPosition(this.value, this.cursor, innerWidth)
-      : { line: 0, col: 0 }
-
-    // Scroll the visible window so the cursor line is visible.
-    // Show `inputHeight` lines at a time, keeping the cursor line in view.
-    const totalWrapped = wrappedAll.length
-    let scrollOffset = 0
-    if (totalWrapped > this.inputHeight) {
-      // Try to center the cursor line in the window
-      scrollOffset = Math.max(0, Math.min(
-        cursorPos.line - Math.floor(this.inputHeight / 2),
-        totalWrapped - this.inputHeight,
-      ))
-    }
-
-    // Build each visible content line
-    const contentLines: string[] = []
-    for (let i = 0; i < this.inputHeight; i++) {
-      const wrappedIdx = scrollOffset + i
-      const lineText = wrappedIdx < totalWrapped ? wrappedAll[wrappedIdx] : ''
-      const isEmpty = this.value === ''
-
-      let lineContent: string
-
-      if (isEmpty && i === 0 && wrappedIdx === 0) {
-        // Placeholder on the first line when value is empty
-        const placeholder =
-          placeholderDim + 'Ask anything... ' +
-          placeholderQuote + '"Fix a TODO in the codebase"' + reset
-        const cursorMarker = this.focused ? CURSOR_MARKER : ''
-        lineContent = cursorMarker + placeholder
-      } else if (isEmpty) {
-        // Empty additional lines — just background
-        lineContent = ''
-      } else if (this.focused && cursorPos.line === wrappedIdx) {
-        // Cursor is on this visual line
-        const beforeCursor = lineText.slice(0, cursorPos.col)
-        const atCursor = lineText[cursorPos.col] || ' '
-        const afterCursor = lineText.slice(cursorPos.col + 1)
-        const cursorDisplay = `\x1b[7m${atCursor}\x1b[27m`
-        lineContent = inputText + beforeCursor + CURSOR_MARKER + cursorDisplay + afterCursor + reset
-      } else {
-        // Regular line (no cursor)
-        lineContent = lineText ? inputText + lineText + reset : ''
-      }
-
-      // Pad to innerWidth
-      const lineWidth = visibleWidth(lineText || '')
-      const padding = ' '.repeat(Math.max(0, innerWidth - lineWidth))
-
-      const renderedLine = ' '.repeat(leftPad) + inputBg + cyanBar + '\u2502' + reset +
-        inputBg + lineContent + inputBg + padding + reset
-
-      contentLines.push(renderedLine)
-    }
-
-    return [topBorder, ...contentLines, bottomBorder]
-  }
-}
-
-// ── LandingScreen (pixel logo + styled input) ──────────────────────────
-
-class LandingScreen implements Component {
-  private input: LandingInput
-  onSubmit?: (value: string) => void
-
-  constructor(input: LandingInput) {
-    this.input = input
-    this.input.onSubmit = (value: string) => {
-      if (this.onSubmit) this.onSubmit(value)
-    }
-  }
-
-  getInput(): LandingInput {
-    return this.input
-  }
-
-  invalidate(): void {
-    this.input.invalidate()
-  }
-
   handleInput(data: string): void {
-    this.input.handleInput(data)
+    // Any key transitions to chat
+    if (data && this.onSubmit) {
+      this.onSubmit(data)
+    }
   }
 
   render(width: number): string[] {
@@ -539,9 +755,10 @@ class LandingScreen implements Component {
     // ── Blank line ─────────────────────────────────────────────────────
     lines.push('')
 
-    // ── Input box ──────────────────────────────────────────────────────
-    const inputLines = this.input.render(width)
-    lines.push(...inputLines)
+    // ── Prompt text ────────────────────────────────────────────────────
+    const promptText = colors.dim('Type a message and press ') + colors.accent('Enter') + colors.dim(' to start')
+    const promptPad = Math.max(0, Math.floor((width - 40) / 2))
+    lines.push(' '.repeat(promptPad) + promptText)
 
     return lines
   }
@@ -602,49 +819,6 @@ class PlansList implements Component {
   }
 }
 
-// ── StatusBar (bottom bar: cwd | status | version) ─────────────────────
-
-class StatusBar implements Component {
-  private cwd: string
-  private status: string = ''
-  private visible = true
-
-  constructor(cwd: string) {
-    this.cwd = cwd
-  }
-
-  setStatus(s: string): void { this.status = s }
-  setVisible(v: boolean): void { this.visible = v }
-
-  invalidate(): void {}
-  handleInput?(data: string): void {}
-
-  render(width: number): string[] {
-    if (!this.visible || width < 40) return []
-
-    const { statusBg, statusText, statusAccent, reset } = landingColors
-
-    // Left: working directory
-    const dir = this.cwd.length > 30 ? '...' + this.cwd.slice(-27) : this.cwd
-    const leftPart = statusAccent + '\u25A0' + reset + statusBg + statusText + ' ' + dir + reset
-
-    // Center: status message
-    const centerPart = this.status
-      ? statusBg + statusText + '  ' + this.status + '  ' + reset
-      : statusBg + statusText + '  ready  ' + reset
-
-    // Right: version
-    const rightPart = statusBg + statusText + 'v' + APP_VERSION + ' ' + reset
-
-    const line = leftPart + centerPart + rightPart
-    const padded = line.length < width
-      ? line + statusBg + ' '.repeat(width - line.length) + reset
-      : line
-
-    return [padded]
-  }
-}
-
 // ── startTui ─────────────────────────────────────────────────────────────
 
 export async function startTui(config: Config): Promise<void> {
@@ -652,7 +826,7 @@ export async function startTui(config: Config): Promise<void> {
   let isRunning = false
   let session: Session
 
-  // ── Create markdown theme (OpenCode-style, clean colors) ───────────────
+  // ── Create markdown theme (OpenCode-style, clean colors, with syntax highlighting) ──
   const markdownTheme: MarkdownTheme = {
     heading: (t) => `\x1b[38;2;0;170;255m\x1b[1m${t}\x1b[0m`,
     link: (t) => `\x1b[38;2;0;170;255m\x1b[4m${t}\x1b[0m`,
@@ -660,6 +834,14 @@ export async function startTui(config: Config): Promise<void> {
     code: (t) => `\x1b[38;2;255;180;50m${t}\x1b[0m`,
     codeBlock: (t) => `\x1b[38;2;200;200;200m${t}\x1b[0m`,
     codeBlockBorder: (t) => `\x1b[38;2;60;60;60m${t}\x1b[0m`,
+    highlightCode: (code: string, lang?: string) => {
+      if (lang && lang.trim()) {
+        const lines = code.split('\n')
+        return lines.map(line => highlightLine(line, lang))
+      }
+      return code.split('\n')
+    },
+    codeBlockIndent: '  ',
     quote: (t) => `\x1b[38;2;130;130;130m${t}\x1b[0m`,
     quoteBorder: (t) => `\x1b[38;2;60;60;60m${t}\x1b[0m`,
     hr: (t) => `\x1b[38;2;60;60;60m${t}\x1b[0m`,
@@ -677,6 +859,12 @@ export async function startTui(config: Config): Promise<void> {
     description: (t) => `\x1b[90m${t}\x1b[0m`,
     scrollInfo: (t) => `\x1b[90m${t}\x1b[0m`,
     noMatch: (t) => `\x1b[38;2;255;100;100m${t}\x1b[0m`,
+  }
+
+  // ── Create editor theme (used by Editor component) ────────────────────
+  const editorTheme: EditorTheme = {
+    borderColor: (str: string) => colors.accent(str),
+    selectList: selectTheme,
   }
 
   // ── Create terminal and TUI ────────────────────────────────────────────
@@ -697,18 +885,31 @@ export async function startTui(config: Config): Promise<void> {
   const chatBox = new Box(1, 0)
   chatBox.addChild(chatMarkdown)
 
-  // Chat input — created upfront, added to TUI after landing transition
-  const input = new Input()
+  // Chat input — Editor with multi-line support, history, and autocomplete
+  const slashCommands: SlashCommand[] = [
+    { name: 'mode', description: 'Switch mode (code|plan)', argumentHint: 'code|plan' },
+    { name: 'model', description: 'Switch model', argumentHint: '<name>' },
+    { name: 'plans', description: 'Show plans overlay' },
+    { name: 'prompts', description: 'List prompt templates' },
+    { name: 'skills', description: 'List active skills' },
+    { name: 'new', description: 'Start a new session' },
+    { name: 'init', description: 'Create .lonny/skills/ & prompts/' },
+    { name: 'help', description: 'Show help' },
+    { name: 'exit', description: 'Exit' },
+    { name: 'filter', description: 'Filter plans', argumentHint: '<query>' },
+  ]
+  const editor = new Editor(tui, editorTheme)
+  editor.setAutocompleteProvider(new CombinedAutocompleteProvider(slashCommands, config.cwd))
 
   // Loader (thinking indicator)
   const loader = new Loader(tui, colors.running, colors.idle, 'thinking...', { intervalMs: 80 })
 
-  // Bottom footer bar
-  const footer = new FooterBar()
+  // Rich footer (cwd | mode | tokens | model | version + command hints)
+  const footer = new RichFooter(config.cwd, config.model, config.provider)
 
   // ── Build layout (landing phase) ───────────────────────────────────────
   // In the landing phase, only the Spacer (for header overlay offset) and
-  // the header bar are shown. The chatBox, input, loader, and footer are
+  // the header bar are shown. The chatBox, editor, loader, and footer are
   // added after the first message (see landingScreen.onSubmit).
   tui.addChild(new Spacer(1)) // offset for fixed header overlay
 
@@ -720,12 +921,33 @@ export async function startTui(config: Config): Promise<void> {
     }
   }
 
+  // ── Tool execution display ───────────────────────────────────────────────
+  function renderChatContent(): void {
+    const toolBlock = toolRenderer.render()
+    if (toolBlock) {
+      chatMarkdown.setText(chatContent + '\n' + toolBlock)
+    } else {
+      chatMarkdown.setText(chatContent)
+    }
+  }
+
+  const toolRenderer = new ToolExecutionRenderer(() => {
+    renderChatContent()
+  })
+  toolRenderer.start()
+
+  // Clear tool execution display at the start of each turn
+  const turnStartUnsub = getGlobalEventBus().on(EventChannels.TURN_START, () => {
+    toolRenderer.clear()
+  })
+
   // ── Session output ─────────────────────────────────────────────────────
   const output: SessionOutput = {
     write: (text: string) => {
       chatContent += text
-      chatMarkdown.setText(chatContent)
+      renderChatContent()
     },
+    suppressToolOutput: true,
   }
 
   // Try to restore a saved session for this directory (MUST be before landing screen setup)
@@ -752,18 +974,16 @@ export async function startTui(config: Config): Promise<void> {
     session.onPlanWritten = planCb
   }
 
-  // ── Status bar (bottom bar: cwd | status | version) ──────────────────
-  const statusBar = new StatusBar(config.cwd)
-  const statusBarHandle = tui.showOverlay(statusBar, {
+  // ── Rich footer bar ──────────────────────────────────
+  const footerHandle = tui.showOverlay(footer, {
     anchor: 'bottom-left',
     row: 0,
     col: 0,
     nonCapturing: true,
   })
 
-  // ── Landing screen (centered overlay with pixel logo + styled input) ──
-  const landingInput = new LandingInput()
-  const landingScreen = new LandingScreen(landingInput)
+  // ── Landing screen (centered overlay with pixel logo) ─────────────────
+  const landingScreen = new LandingScreen()
   let landingOverlayHandle: OverlayHandle | null = null
   // Only show the landing screen if no session was restored
   if (!restored) {
@@ -772,36 +992,38 @@ export async function startTui(config: Config): Promise<void> {
       width: 70,
       maxHeight: 14,
     })
-    // Focus the landing input so it receives keyboard input and shows the cursor
-    tui.setFocus(landingInput)
+    tui.setFocus(landingScreen)
   }
 
   // If a session was restored, immediately transition to chat layout
   // (skip the landing screen)
   if (restored) {
-    statusBarHandle.hide()
+    footer.setPhase('chat')
     tui.addChild(chatBox)
-    tui.addChild(input)
+    tui.addChild(editor)
     tui.addChild(loader)
     tui.addChild(footer)
-    tui.setFocus(input)
+    tui.setFocus(editor)
   }
 
   // ── Plans overlay components ───────────────────────────────────────────
   const plansList = new PlansList([], 15, selectTheme)
   let plansOverlayHandle: OverlayHandle | null = null
+  let plansDetailMode = false
 
   function showPlansOverlay(): void {
     if (plansOverlayHandle?.isHidden() === false) {
       plansOverlayHandle.hide()
       plansOverlayHandle = null
+      plansDetailMode = false
       return
     }
+    plansDetailMode = false
     const plans = listPlans(config.cwd)
     plansList.refresh(plansToItems(plans))
 
     const headerText = new Text(
-      ` ${colors.accent('\u25B6')} Plans (${plans.length})`,
+      ` ${colors.accent('\u25B6')} Plans (${plans.length})  ${colors.dim('Enter=view')}`,
       1, 0, colors.headerBg
     )
     const container = new Container()
@@ -819,6 +1041,39 @@ export async function startTui(config: Config): Promise<void> {
       anchor: 'right-center',
       width: 45,
       maxHeight: '70%',
+      offsetX: -1,
+    })
+  }
+
+  function showPlanDetail(): void {
+    if (!plansOverlayHandle || plansOverlayHandle.isHidden()) return
+    const sel = plansList.getSelectedItem()
+    if (!sel) return
+
+    plansDetailMode = true
+    const plans = listPlans(config.cwd)
+    const plan = plans.find(p => p.name === sel.value)
+    if (!plan) return
+
+    const todos = loadTodos(plan.fullPath)
+    const headerText = new Text(
+      ` ${colors.accent('\u25B6')} ${colors.warn(plan.name)}  ${colors.dim('Esc=back')}`,
+      1, 0, colors.headerBg
+    )
+    const todosText = new Text(`\n  ${todos}\n`, 1, 0)
+    const container = new Container()
+    container.addChild(headerText)
+    container.addChild(todosText)
+
+    const box = new Box(1, 1, colors.bgDark)
+    box.addChild(container)
+
+    // Hide current and show detail
+    plansOverlayHandle.hide()
+    plansOverlayHandle = tui.showOverlay(box, {
+      anchor: 'right-center',
+      width: 50,
+      maxHeight: '80%',
       offsetX: -1,
     })
   }
@@ -874,6 +1129,10 @@ export async function startTui(config: Config): Promise<void> {
     const tokenStats = loadTokenUsage(config.cwd)
     header.setProjectName(tokenStats.projectName)
     header.setTokenUsage(tokenStats.totalInputTokens, tokenStats.totalOutputTokens, tokenStats.totalApiCalls)
+    // Also update footer with latest state
+    footer.setMode(session?.config.mode === 'plan' ? 'plan' : 'code')
+    footer.setModel(config.model, config.provider)
+    footer.setTokenUsage(tokenStats.totalInputTokens, tokenStats.totalOutputTokens, tokenStats.totalApiCalls)
     tui.requestRender(true)
   }
 
@@ -887,7 +1146,8 @@ export async function startTui(config: Config): Promise<void> {
   function sendMessage(text: string): void {
     if (!text.trim() || isRunning) return
     const trimmed = text.trim()
-    input.setValue('')
+    editor.setText('')
+    editor.addToHistory(trimmed)
 
     if (trimmed.startsWith('/')) {
       const parts = trimmed.slice(1).split(/\s+/)
@@ -908,6 +1168,7 @@ export async function startTui(config: Config): Promise<void> {
         session = new Session(config, output)
         session.onPlanWritten = planCb
         chatContent = ''
+        toolRenderer.clear()
         chatMarkdown.setText('')
         plansList.clearFilter()
         updateHeader()
@@ -1023,34 +1284,30 @@ export async function startTui(config: Config): Promise<void> {
     })
   }
 
-  // Wire up Enter on chat input (after landing transition)
-  input.onSubmit = (value: string) => {
+  // Wire up submit on editor (after landing transition)
+  editor.onSubmit = (value: string) => {
     sendMessage(value)
   }
 
   // ── Landing screen transition ────────────────────────────────────────────
-  // When the user submits from the landing screen, hide the overlay, add
-  // the chat components to the main TUI, and process the message.
-  landingScreen.onSubmit = (value: string) => {
-    if (!value.trim() || isRunning) return
+  // When the user presses any key on the landing screen, transition to the
+  // full chat layout (editor + chat area).
+  landingScreen.onSubmit = () => {
+    if (isRunning) return
 
-    // Hide the landing overlay — this also restores focus to the previous
-    // target (the Spacer), but we immediately set focus to the chat input.
+    // Hide the landing overlay
     if (landingOverlayHandle) landingOverlayHandle.hide()
-    statusBarHandle.hide()
+    footer.setPhase('chat')
 
     // Add chat components to the main TUI
     tui.addChild(chatBox)
-    tui.addChild(input)
+    tui.addChild(editor)
     tui.addChild(loader)
     tui.addChild(footer)
 
-    // Focus the chat input
-    tui.setFocus(input)
+    // Focus the chat editor
+    tui.setFocus(editor)
     tui.requestRender(true)
-
-    // Process the message through the normal flow
-    sendMessage(value)
   }
 
   // ── Input listener ───────────────────────────────────────────────────────
@@ -1066,9 +1323,23 @@ export async function startTui(config: Config): Promise<void> {
 
     // Check if plans overlay is active
     if (plansOverlayHandle?.isHidden() === false) {
-      if (data === '\x1b' || data === '\x1b[' || data === '/') {
-        plansOverlayHandle.hide()
-        plansOverlayHandle = null
+      if (data === '\x1b' || data === '\x1b[') {
+        if (plansDetailMode) {
+          // Go back to plan list
+          plansOverlayHandle.hide()
+          plansOverlayHandle = null
+          plansDetailMode = false
+          showPlansOverlay()
+        } else {
+          plansOverlayHandle.hide()
+          plansOverlayHandle = null
+        }
+        return { consume: true }
+      }
+      if (data === '\r' && !plansDetailMode) {
+        // Enter: view plan detail
+        showPlanDetail()
+        return { consume: true }
       }
       if (data === '\x1b[A') {
         const plans = listPlans(config.cwd)

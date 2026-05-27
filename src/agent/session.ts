@@ -78,6 +78,8 @@ function thinkBottomBorder(): string {
 
 export interface SessionOutput {
   write: (text: string) => void
+  /** When true, tool invocation/result formatting is skipped (TUI handles it via event bus) */
+  suppressToolOutput?: boolean
 }
 
 function writeOut(text: string, output?: SessionOutput): void {
@@ -493,14 +495,18 @@ export class Session {
 
       for (const tc of toolCalls) {
         bus.emit(EventChannels.TOOL_CALL, { name: tc.name, input: tc.input, id: tc.id })
-        printToolInvocation(tc, out)
+        if (!out?.suppressToolOutput) {
+          printToolInvocation(tc, out)
+        }
         const result: ToolResult = await this.registry.dispatch(tc)
         if (result.success) {
-          bus.emit(EventChannels.TOOL_RESULT, { name: tc.name, id: tc.id })
+          bus.emit(EventChannels.TOOL_RESULT, { name: tc.name, id: tc.id, output: result.output })
         } else {
           bus.emit(EventChannels.TOOL_ERROR, { name: tc.name, id: tc.id, error: result.error })
         }
-        printToolResult(tc, result, out)
+        if (!out?.suppressToolOutput) {
+          printToolResult(tc, result, out)
+        }
 
         const resultMsg: LLMMessage = {
           role: 'tool',
