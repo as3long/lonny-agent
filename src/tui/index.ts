@@ -641,6 +641,22 @@ export async function startTui(config: Config): Promise<void> {
     chatMarkdown.setText('')
   }
 
+  // Enter alternate screen buffer so there's no terminal scrollback.
+  // This keeps overlay-anchored components (header/footer) fixed in place
+  // instead of scrolling away when content exceeds terminal height.
+  const origStop = tui.stop.bind(tui)
+  tui.stop = () => {
+    process.stdout.write('\x1b[?1049l') // Exit alternate screen buffer
+    origStop()
+  }
+  // Cleanup handler ensures we always exit the alt screen on unexpected exits
+  const cleanup = () => {
+    process.stdout.write('\x1b[?1049l')
+  }
+  process.on('exit', cleanup)
+  process.on('SIGINT', () => { cleanup(); process.exit(0) })
+  process.on('SIGTERM', () => { cleanup(); process.exit(0) })
+  process.stdout.write('\x1b[?1049h') // Enter alternate screen buffer
   tui.start()
 
   // Keep alive
