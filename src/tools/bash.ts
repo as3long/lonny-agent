@@ -2,6 +2,7 @@ import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 const execAsync = promisify(exec)
 import { Tool, ToolResult } from './types.js'
+import { fmtErr } from './errors.js'
 
 export const bashTool: Tool = {
   definition: {
@@ -29,7 +30,7 @@ export const bashTool: Tool = {
       })
       return { success: true, output: stdout || '(no output)' }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = fmtErr(err)
       return { success: false, output: '', error: `Command failed: ${msg}` }
     }
   },

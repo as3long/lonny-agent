@@ -13,6 +13,7 @@ import type { MarkdownTheme, SlashCommand, EditorTheme, SelectListTheme, SelectI
 import { colors, RichFooter, LandingScreen, PlansList, TodoPanel, listPlans, loadTodos, plansToItems } from './components.js'
 import { highlightLine } from './highlight.js'
 import { resetGlobalEventBus } from '../agent/event-bus.js'
+import { fmtErr } from '../tools/errors.js'
 export async function startTui(config: Config): Promise<void> {
   let chatContent = ''
   let isRunning = false
@@ -519,7 +520,7 @@ export async function startTui(config: Config): Promise<void> {
     }).catch((err: unknown) => {
       isRunning = false
       loader.setMessage('')
-      const errMsg = err instanceof Error ? err.message : String(err)
+      const errMsg = fmtErr(err)
       chatContent += `\n${colors.error('\u2716 Error:')} ${errMsg}\n`
       chatMarkdown.setText(chatContent)
       tui.setShowHardwareCursor(true)

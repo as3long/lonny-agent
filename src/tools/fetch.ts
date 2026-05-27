@@ -1,4 +1,5 @@
 import { Tool, ToolResult } from './types.js'
+import { fmtErr } from './errors.js'
 
 export const fetchTool: Tool = {
   definition: {
@@ -46,7 +47,7 @@ export const fetchTool: Tool = {
       if (err instanceof Error && err.name === 'AbortError') {
         return { success: false, output: '', error: `Request timed out after ${timeout}ms` }
       }
-      return { success: false, output: '', error: `Fetch failed: ${err instanceof Error ? err.message : String(err)}` }
+      return { success: false, output: '', error: `Fetch failed: ${fmtErr(err)}` }
     }
   },
 }

@@ -1,4 +1,5 @@
 import { Tool, ToolDefinition, ToolCall, ToolResult } from './types.js'
+import { fmtErr } from './errors.js'
 import { createReadTool } from './read.js'
 import { createGrepTool } from './grep.js'
 import { createLsTool } from './ls.js'
@@ -171,7 +172,7 @@ export class ToolRegistry {
       return {
         success: false,
         output: '',
-        error: `Tool "${call.name}" threw: ${err instanceof Error ? err.message : String(err)}`,
+        error: `Tool "${call.name}" threw: ${fmtErr(err)}`,
       }
     }
   }

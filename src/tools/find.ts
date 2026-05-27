@@ -1,4 +1,5 @@
 import { Tool, ToolDefinition } from './types.js'
+import { fmtErr } from './errors.js'
 
 export const createFindTool = (cwd: string): Tool => {
   const definition: ToolDefinition = {
@@ -42,7 +43,7 @@ export const createFindTool = (cwd: string): Tool => {
 
       return { success: true, output: lines.join('\n') }
     } catch (err) {
-      return { success: false, output: '', error: `find failed: ${err instanceof Error ? err.message : String(err)}` }
+      return { success: false, output: '', error: `find failed: ${fmtErr(err)}` }
     }
   }
 

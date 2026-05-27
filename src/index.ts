@@ -3,6 +3,7 @@ import * as os from 'node:os'
 import { execSync } from 'node:child_process'
 import { parseArgs } from './cli/index.js'
 import { runAgent } from './agent/index.js'
+import { fmtErr } from './tools/errors.js'
 import { startTui } from './tui/index.js'
 
 const RE = '\x1b[31m'
@@ -40,7 +41,7 @@ async function main() {
 }
 
 main().catch(err => {
-  const msg = err instanceof Error ? err.message : String(err)
+  const msg = fmtErr(err)
   console.error(`\n${RE}Fatal error:${RS} ${msg}`)
   process.exit(1)
 })

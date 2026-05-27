@@ -3,6 +3,8 @@
  * Only used when the configured baseUrl contains "api.deepseek.com". 
 */
 
+import { fmtErr } from '../tools/errors.js'
+
 export interface DeepSeekBalance {
   isAvailable: boolean
   /** Formatted display string, e.g. "CNY 110.00" */
@@ -73,7 +75,7 @@ export async function fetchDeepSeekBalance(apiKey: string): Promise<DeepSeekBala
       },
     }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
+    const msg = fmtErr(err)
     return {
       isAvailable: false,
       display: '',

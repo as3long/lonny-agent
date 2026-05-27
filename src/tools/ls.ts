@@ -1,6 +1,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { Tool, ToolResult } from './types.js'
+import { fmtErr } from './errors.js'
 
 export function createLsTool(cwd: string): Tool {
   return {
@@ -29,7 +30,7 @@ export function createLsTool(cwd: string): Tool {
         return {
           success: false,
           output: '',
-          error: `Failed to list directory: ${err instanceof Error ? err.message : String(err)}`,
+          error: `Failed to list directory: ${fmtErr(err)}`,
         }
       }
     },

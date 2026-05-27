@@ -2,6 +2,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import * as os from 'node:os'
 import { Tool, ToolResult } from './types.js'
+import { fmtErr } from './errors.js'
 
 interface TavilyConfig {
   tavilyApiKey?: string
@@ -120,7 +121,7 @@ export const searchTool: Tool = {
       if (err instanceof Error && err.name === 'AbortError') {
         return { success: false, output: '', error: 'Tavily search timed out after 30s' }
       }
-      return { success: false, output: '', error: `Search failed: ${err instanceof Error ? err.message : String(err)}` }
+      return { success: false, output: '', error: `Search failed: ${fmtErr(err)}` }
     }
   },
 }

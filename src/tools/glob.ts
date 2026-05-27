@@ -1,5 +1,6 @@
 import { glob } from 'node:fs/promises'
 import { Tool, ToolResult } from './types.js'
+import { fmtErr } from './errors.js'
 
 export const globTool: Tool = {
   definition: {
@@ -30,7 +31,7 @@ export const globTool: Tool = {
       return {
         success: false,
         output: '',
-        error: `Glob failed: ${err instanceof Error ? err.message : String(err)}`,
+        error: `Glob failed: ${fmtErr(err)}`,
       }
     }
   },

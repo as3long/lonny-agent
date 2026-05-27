@@ -1,6 +1,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { Tool, ToolResult } from './types.js'
+import { fmtErr } from './errors.js'
 
 /** Directory where plans are stored, relative to project root */
 export const PLAN_DIR = '.lonny'
@@ -68,7 +69,7 @@ export function createWritePlanTool(cwd: string, onPlanWritten?: (display: strin
         return {
           success: false,
           output: '',
-          error: `Failed to write plan: ${err instanceof Error ? err.message : String(err)}`,
+          error: `Failed to write plan: ${fmtErr(err)}`,
         }
       }
     },

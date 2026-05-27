@@ -1,5 +1,6 @@
 import * as vm from 'node:vm'
 import { Tool, ToolDefinition, ToolResult } from './types.js'
+import { fmtErr } from './errors.js'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,7 +55,7 @@ function parsePragma(input: string): { code: string; pragma: ExecPragma } {
         }
         Object.assign(pragma, parsed)
       } catch (err) {
-        throw new Error(`exec pragma parse error: ${err instanceof Error ? err.message : String(err)}`)
+        throw new Error(`exec pragma parse error: ${fmtErr(err)}`)
       }
     }
     return { code: lines.slice(1).join('\n').trim(), pragma }
@@ -178,7 +179,7 @@ export function createExecTool(getTools: () => Tool[]): Tool {
         code = parsed.code
         pragma = parsed.pragma
       } catch (err) {
-        return { success: false, output: '', error: err instanceof Error ? err.message : String(err) }
+        return { success: false, output: '', error: fmtErr(err) }
       }
 
       if (!code.trim()) {
@@ -278,7 +279,7 @@ export function createExecTool(getTools: () => Tool[]): Tool {
 
         return { success: true, output: output || '(exec completed with no output)' }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+        const msg = fmtErr(err)
         if (msg.includes('timed out') || msg.includes('timeout')) {
           return { success: false, output: ctx.output.join(''), error: `exec timed out after ${timeout}ms` }
         }

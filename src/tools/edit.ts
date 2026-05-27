@@ -2,6 +2,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { Tool, ToolResult } from './types.js'
 import { FileReadTracker } from '../diff/apply.js'
+import { fmtErr } from './errors.js'
 
 interface SingleEdit {
   file_path: string
@@ -21,7 +22,7 @@ function performEdit(filePath: string, oldString: string, newString: string, app
       fs.mkdirSync(path.dirname(resolved), { recursive: true })
       fs.writeFileSync(resolved, newString, 'utf-8')
     } catch (err) {
-      return { ok: false, error: `Failed to create ${filePath}: ${err instanceof Error ? err.message : String(err)}` }
+      return { ok: false, error: `Failed to create ${filePath}: ${fmtErr(err)}` }
     }
     applier.markRead(resolved)
     const added = newString.split('\n').length
@@ -63,7 +64,7 @@ function performEdit(filePath: string, oldString: string, newString: string, app
   try {
     fs.writeFileSync(resolved, newContent, 'utf-8')
   } catch (err) {
-    return { ok: false, error: `Failed to write ${filePath}: ${err instanceof Error ? err.message : String(err)}` }
+    return { ok: false, error: `Failed to write ${filePath}: ${fmtErr(err)}` }
   }
 
   applier.markRead(resolved)
@@ -247,7 +248,7 @@ EXAMPLES:
           return {
             success: false,
             output: '',
-            error: `Failed to write ${path.relative(cwd, resolved).replace(/\\/g, '/')}: ${err instanceof Error ? err.message : String(err)}`,
+            error: `Failed to write ${path.relative(cwd, resolved).replace(/\\/g, '/')}: ${fmtErr(err)}`,
           }
         }
         applier.markRead(resolved)

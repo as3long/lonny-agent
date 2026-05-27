@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { Tool, ToolResult } from './types.js'
 import { FileReadTracker } from '../diff/apply.js'
+import { fmtErr } from './errors.js'
 
 function formatWithLineNumbers(content: string): string {
   const lines = content.split('\n')
@@ -45,7 +46,7 @@ export function createReadTool(applier: FileReadTracker, cwd: string): Tool {
           applier.markRead(resolved)
           results.push(`=== ${filePath} ===\n${formatWithLineNumbers(content)}`)
         } catch (err) {
-          results.push(`=== ${filePath} ===\n(error: ${err instanceof Error ? err.message : String(err)})`)
+          results.push(`=== ${filePath} ===\n(error: ${fmtErr(err)})`)
         }
       }
 

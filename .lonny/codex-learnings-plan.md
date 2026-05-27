@@ -42,3 +42,4 @@ After analyzing the [openai/codex](https://github.com/openai/codex) repository, 
 - [x] **Learning 1**: Update system prompt in `src/agent/session.ts` to mention exec
 - [x] **Learning 2**: Add TypeScript type declaration generation for tools
 - [x] **Learning 2**: Include type declarations in exec tool description
+- [x] **Learning 2**: Add AGENTS.md with project instructions for AI agents

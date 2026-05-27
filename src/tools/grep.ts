@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { Tool, ToolResult } from './types.js'
+import { fmtErr } from './errors.js'
 
 function hasRg(): boolean {
   try {
@@ -115,7 +116,7 @@ export function createGrepTool(cwd: string): Tool {
           .join('\n')
         return { success: true, output }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+        const msg = fmtErr(err)
         if (useRg && msg.includes('exit code 1')) {
           return { success: true, output: 'No matches found.' }
         }
