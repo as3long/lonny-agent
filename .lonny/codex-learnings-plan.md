@@ -256,7 +256,7 @@ npx husky init  # 创建 .husky/pre-commit
 | 优先级 | 项目 | 工作量 | 影响 |
 |--------|------|--------|------|
 | P0 | Biome + Husky + lint-staged | 小 | 高 |
-| P0 | CLAUDE.md | 小 | 高 |
+| P0 | AGENT.md | 小 | 高 |
 | P0 | 测试改进 | 中 | 高 |
 | P0 | 提交规范 | 小 | 中 |
 | P1 | Feature Flag | 中 | 高 |
@@ -277,8 +277,15 @@ npx husky init  # 创建 .husky/pre-commit
   - [x] 在 package.json 中添加脚本
   - [x] 运行 `biome check --fix` 格式化现有代码
 - [x] **P0: 创建 AGENT.md**
-- [ ] **P0: 补充核心模块测试**
-- [ ] **P0: 建立 Conventional Commits 规范**
+- [x] **P0: 补充核心模块测试**
+  - [x] event-bus.test.ts (10 tests: emit/on, unsubscribe, error handling, singleton)
+  - [x] compaction.test.ts (11 tests: token estimation, compaction trigger, tool-call safety)
+  - [x] skills.test.ts (9 tests: loading, frontmatter parsing, validation, formatting)
+  - [x] tokens.test.ts (5 tests: save/load, accumulation, reset, list)
+  - [x] 总计 114 个测试全部通过
+- [x] **P0: 建立 Conventional Commits 规范**
+  - [x] 创建 .husky/commit-msg hook 校验提交格式
+  - [x] 在 AGENT.md 中约定提交规范
 - [ ] **P1: 实现 Feature Flag 系统**
 - [ ] **P1: 改进工具系统**
 - [ ] **P1: 改进构建流水线**

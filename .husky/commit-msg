@@ -1,0 +1,18 @@
+#!/bin/sh
+# Validate Conventional Commits format
+COMMIT_MSG=$(cat "$1")
+if ! echo "$COMMIT_MSG" | grep -qE "^(feat|fix|docs|chore|refactor|test|style|perf|ci|build|revert)\(?.+\)?: .+|^(feat|fix|docs|chore|refactor|test|style|perf|ci|build|revert): .+|^(Merge .+)" ; then
+  echo ""
+  echo "  ❌ Invalid commit message format."
+  echo "  Must follow Conventional Commits:"
+  echo "    <type>: <description>"
+  echo ""
+  echo "  Types: feat, fix, docs, chore, refactor, test, style, perf, ci, build, revert"
+  echo ""
+  echo "  Examples:"
+  echo "    feat: add Tavily web search tool"
+  echo "    fix: handle CRLF line endings in edit tool"
+  echo "    chore: add Biome + husky code quality pipeline"
+  echo ""
+  exit 1
+fi
