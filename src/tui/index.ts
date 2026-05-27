@@ -22,7 +22,7 @@ function safeBg(text: string, bg: string): string {
 const colors = {
   bgDark: (text: string) => safeBg(text, '48;2;30;30;30'),
   bgDim: (text: string) => safeBg(text, '48;2;25;25;25'),
-  headerBg: (text: string) => safeBg(text, '48;2;127;219;255'),
+  headerBg: (text: string) => safeBg(text, '48;2;170;170;170'),
   separator: (text: string) => `\x1b[38;2;60;60;60m${text}\x1b[0m`,
   statusBg: (text: string) => safeBg(text, '48;2;25;25;35'),
   running: (text: string) => `\x1b[38;2;0;255;100m${text}\x1b[0m`,
