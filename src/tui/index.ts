@@ -869,7 +869,7 @@ export async function startTui(config: Config): Promise<void> {
 
   // ── Create terminal and TUI ────────────────────────────────────────────
   const terminal = new ProcessTerminal()
-  const tui = new TUI(terminal, true)
+  const tui = new TUI(terminal, false)
   tui.setClearOnShrink(true)
   terminal.setTitle(`lonny ${config.model} ${config.provider}`)
 
