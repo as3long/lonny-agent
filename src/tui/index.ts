@@ -7,10 +7,10 @@ import { fetchDeepSeekBalance, isDeepSeekOfficial } from './balance.js'
 import { loadSkills, ensureSkillsDir } from '../agent/skills.js'
 import { loadPromptTemplates, ensurePromptsDir } from '../agent/prompt-templates.js'
 import type { OverlayHandle } from '@earendil-works/pi-tui'
-import { ProcessTerminal, TUI, Box, Text, Editor, Markdown, Container, Loader, Spacer, CombinedAutocompleteProvider }
+import { ProcessTerminal, TUI, Box, Text, Editor, Markdown, Container, Loader, CombinedAutocompleteProvider }
   from '@earendil-works/pi-tui'
 import type { MarkdownTheme, SlashCommand, EditorTheme, SelectListTheme, SelectItem } from '@earendil-works/pi-tui'
-import { colors, HeaderBar, RichFooter, LandingScreen, PlansList, TodoPanel, listPlans, loadTodos, plansToItems } from './components.js'
+import { colors, RichFooter, LandingScreen, PlansList, TodoPanel, listPlans, loadTodos, plansToItems } from './components.js'
 import { highlightLine } from './highlight.js'
 export async function startTui(config: Config): Promise<void> {
   let chatContent = ''
@@ -64,11 +64,7 @@ export async function startTui(config: Config): Promise<void> {
   tui.setClearOnShrink(true)
   terminal.setTitle(`lonny ${config.model} ${config.provider}`)
 
-  // ── Create components (OpenCode-style layout) ──────────────────────────
-
-  // Top header bar
-  const header = new HeaderBar(config.model, config.provider)
-  tui.showOverlay(header, { anchor: 'top-left', row: 0, col: 0, nonCapturing: true })
+  // ── Create components ──────────────────────────────────────────────────
 
   // Chat area (full width, no side panel) — created upfront but only added
   // to the TUI after the landing screen transitions to chat mode.
@@ -100,10 +96,8 @@ export async function startTui(config: Config): Promise<void> {
   const footer = new RichFooter(config.cwd, config.model, config.provider)
 
   // ── Build layout (landing phase) ──
-  // In the landing phase, only the Spacer (for header overlay offset) and
-  // the header bar are shown. The chatBox, editor, loader, and footer are
-  // added after the first message (see landingScreen.onSubmit).
-  tui.addChild(new Spacer(1)) // offset for fixed header overlay
+  // In the landing phase, only the footer is shown. The chatBox, editor,
+  // and loader are added after the first message (see landingScreen.onSubmit).
 
   // ── Plan written callback (defined early since it's used by session restore) ──
   const planCb = () => {
@@ -333,20 +327,12 @@ export async function startTui(config: Config): Promise<void> {
   }
 
   // ── Update helpers ──────────────────────────────────────────────────────
-  function updateHeader(): void {
+  function updateFooter(): void {
     const plans = listPlans(config.cwd)
-    header.setMode(session?.config.mode === 'plan' ? 'plan' : session?.config.mode === 'ask' ? 'ask' : 'code')
-    header.setAgentStatus(isRunning ? 'running' : 'idle')
-    header.setPlanCount(plans.length)
-    const sel = plansList.getSelectedItem()
-    header.setPlanName(sel ? sel.label : '')
-    // Load persisted token stats (cumulative across all sessions for this project)
-    const tokenStats = loadTokenUsage(config.cwd)
-    header.setProjectName(tokenStats.projectName)
-    header.setTokenUsage(tokenStats.totalInputTokens, tokenStats.totalOutputTokens, tokenStats.totalApiCalls)
-    // Also update footer with latest state
+    footer.setAgentStatus(isRunning ? 'running' : 'idle')
     footer.setMode(session?.config.mode === 'plan' ? 'plan' : session?.config.mode === 'ask' ? 'ask' : 'code')
     footer.setModel(config.model, config.provider)
+    const tokenStats = loadTokenUsage(config.cwd)
     footer.setTokenUsage(tokenStats.totalInputTokens, tokenStats.totalOutputTokens, tokenStats.totalApiCalls)
     tui.requestRender(true)
   }
@@ -355,7 +341,7 @@ export async function startTui(config: Config): Promise<void> {
     const plans = listPlans(config.cwd)
     plansList.refresh(plansToItems(plans))
     todoPanel.refresh()
-    updateHeader()
+    updateFooter()
   }
 
   async function refreshBalance(): Promise<void> {
@@ -403,7 +389,7 @@ export async function startTui(config: Config): Promise<void> {
         chatContent = ''
         chatMarkdown.setText('')
         plansList.clearFilter()
-        updateHeader()
+        updateFooter()
         return
       }
 
@@ -412,7 +398,7 @@ export async function startTui(config: Config): Promise<void> {
           session.setMode(arg)
           chatContent += `\n${colors.warn('\u21E8')} Switched to ${arg === 'ask' ? colors.success(arg) : colors.warn(arg)} mode\n`
           chatMarkdown.setText(chatContent)
-          updateHeader()
+          updateFooter()
         } else {
           chatContent += `\n${colors.error('\u2716')} Usage: ${colors.inputPrompt('/mode code|plan|ask')}  (current: ${session.config.mode})\n`
           chatMarkdown.setText(chatContent)
@@ -427,7 +413,7 @@ export async function startTui(config: Config): Promise<void> {
           session.setMode(session.config.mode) // triggers rebuild
           chatContent += `\n${colors.warn('\u21E8')} Model switched to ${colors.warn(arg)}\n`
           chatMarkdown.setText(chatContent)
-          updateHeader()
+          updateFooter()
         } else {
           chatContent += `\n${colors.inputPrompt('Current model:')} ${colors.dim(session.config.model)}\n`
           chatMarkdown.setText(chatContent)
@@ -504,7 +490,7 @@ export async function startTui(config: Config): Promise<void> {
         isRunning = false
         loader.setMessage('')
         tui.setShowHardwareCursor(true)
-        updateHeader()
+        updateFooter()
         return
       }
 
@@ -519,14 +505,14 @@ export async function startTui(config: Config): Promise<void> {
     isRunning = true
     loader.setMessage('thinking...')
     tui.setShowHardwareCursor(false)
-    updateHeader()
+    updateFooter()
 
     session.chat(trimmed).then(() => {
       isRunning = false
       loader.setMessage('')
       refreshPlans()
       tui.setShowHardwareCursor(true)
-      updateHeader()
+      updateFooter()
       refreshBalance()
     }).catch((err: unknown) => {
       isRunning = false
@@ -535,7 +521,7 @@ export async function startTui(config: Config): Promise<void> {
       chatContent += `\n${colors.error('\u2716 Error:')} ${errMsg}\n`
       chatMarkdown.setText(chatContent)
       tui.setShowHardwareCursor(true)
-      updateHeader()
+      updateFooter()
     })
   }
 
@@ -605,7 +591,7 @@ export async function startTui(config: Config): Promise<void> {
           const idx = sel ? plans.findIndex(p => p.name === sel.value) : -1
           const nextIdx = idx <= 0 ? plans.length - 1 : idx - 1
           plansList.setSelectedIndex(nextIdx)
-          updateHeader()
+          updateFooter()
         }
         return { consume: true }
       }
@@ -616,7 +602,7 @@ export async function startTui(config: Config): Promise<void> {
           const idx = sel ? plans.findIndex(p => p.name === sel.value) : -1
           const nextIdx = idx === -1 ? 0 : (idx + 1) % plans.length
           plansList.setSelectedIndex(nextIdx)
-          updateHeader()
+          updateFooter()
         }
         return { consume: true }
       }
@@ -641,22 +627,6 @@ export async function startTui(config: Config): Promise<void> {
     chatMarkdown.setText('')
   }
 
-  // Enter alternate screen buffer so there's no terminal scrollback.
-  // This keeps overlay-anchored components (header/footer) fixed in place
-  // instead of scrolling away when content exceeds terminal height.
-  const origStop = tui.stop.bind(tui)
-  tui.stop = () => {
-    process.stdout.write('\x1b[?1049l') // Exit alternate screen buffer
-    origStop()
-  }
-  // Cleanup handler ensures we always exit the alt screen on unexpected exits
-  const cleanup = () => {
-    process.stdout.write('\x1b[?1049l')
-  }
-  process.on('exit', cleanup)
-  process.on('SIGINT', () => { cleanup(); process.exit(0) })
-  process.on('SIGTERM', () => { cleanup(); process.exit(0) })
-  process.stdout.write('\x1b[?1049h') // Enter alternate screen buffer
   tui.start()
 
   // Keep alive

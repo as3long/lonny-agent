@@ -247,6 +247,7 @@ export class RichFooter implements Component {
   private balance: string = ''
   private visible = true
   private phase: 'landing' | 'chat' = 'landing'
+  private agentStatus: 'running' | 'idle' = 'idle'
 
   constructor(cwd: string, model: string, provider: string) {
     this.cwd = cwd
@@ -264,6 +265,7 @@ export class RichFooter implements Component {
   setVisible(v: boolean): void { this.visible = v }
   setPhase(p: 'landing' | 'chat'): void { this.phase = p }
   setBalance(b: string): void { this.balance = b }
+  setAgentStatus(s: 'running' | 'idle'): void { this.agentStatus = s }
 
   invalidate(): void {}
   handleInput?(data: string): void {}
@@ -316,6 +318,15 @@ export class RichFooter implements Component {
 
     // ── Chat phase: build segments ────────────────────────────────────────
     const segments: string[] = []
+
+    // Status dot
+    const statusDot = this.agentStatus === 'running'
+      ? `\x1b[38;2;0;255;100m\u25CF\x1b[0m`
+      : `\x1b[38;2;150;150;150m\u25CB\x1b[0m`
+    const statusLabel = this.agentStatus === 'running'
+      ? `\x1b[38;2;0;255;100mrunning\x1b[0m`
+      : `\x1b[38;2;150;150;150midle\x1b[0m`
+    segments.push(`${statusDot} ${statusLabel}`)
 
     // Mode tag
     const modeTag = this.mode === 'plan'
