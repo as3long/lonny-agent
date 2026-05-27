@@ -6,7 +6,7 @@
 
 ## 功能特性
 
-- **双模式操作**：`code` 模式直接编辑代码文件，`plan` 模式生成可执行的计划文档
+- **三模式操作**：`code` 模式直接编辑代码文件，`plan` 模式生成可执行的计划文档，`ask` 模式仅限问答和网络搜索
 - **多模型支持**：兼容 Anthropic（Claude）、OpenAI（GPT）、Google（Gemini）、Ollama（本地模型）
 - **批量编辑**：单次调用支持多文件、多位置的批量编辑，优化按调用付费的成本
 - **语法高亮**：内置代码块语法高亮（TypeScript、Python、Rust、Go、Shell 等十余种语言）
@@ -47,7 +47,8 @@ export LONNY_API_KEY=sk-proj-...
   "provider": "anthropic",
   "model": "claude-sonnet-4-20250514",
   "apiKey": "sk-ant-...",
-  "thinking": true
+  "thinking": true,
+  "tavilyApiKey": "tvly-..."
 }
 ```
 
@@ -73,7 +74,7 @@ lonny --provider openai --model gpt-4o
 | `--model <name>` | 模型名称 |
 | `--api-key <key>` | API 密钥 |
 | `--base-url <url>` | 自定义 API 地址（兼容 OpenAI 格式） |
-| `--mode <code\|plan>` | 模式：`code`（编辑代码）或 `plan`（制定计划） |
+| `--mode <code\|plan\|ask>` | 模式：`code`（编辑代码）、`plan`（制定计划）、`ask`（问答搜索） |
 | `--auto-approve` | 自动批准工具执行（无需确认） |
 | `--thinking` | 启用思考模式（仅 Anthropic） |
 | `--reasoning-effort <level>` | 推理强度（仅 OpenAI）：`low`、`medium`、`high` |
@@ -95,7 +96,7 @@ lonny --provider openai --model gpt-4o
 
 | 命令 | 说明 |
 |------|------|
-| `/mode code\|plan` | 切换模式（代码编辑/计划制定） |
+| `/mode code\|plan\|ask` | 切换模式（代码编辑/计划制定/问答搜索） |
 | `/model <name>` | 切换模型 |
 | `/plans` | 查看计划列表 |
 | `/prompts` | 查看提示模板列表 |
@@ -135,17 +136,21 @@ lonny --provider openai --model gpt-4o
 
 lonny 为 AI 模型提供了以下工具：
 
-| 工具 | 说明 |
-|------|------|
-| `read` | 读取文件内容 |
-| `glob` | 使用 glob 模式搜索文件 |
-| `grep` | 在文件中搜索文本 |
-| `ls` | 列出目录内容 |
-| `bash` | 执行 shell 命令 |
-| `find` | 按名称搜索文件 |
-| `git` | 执行只读 Git 操作 |
-| `edit` | 编辑文件（code 模式） |
-| `write_plan` | 编写计划文档（plan 模式） |
+| 工具 | 说明 | 可用模式 |
+|------|------|----------|
+| `read` | 读取文件内容 | code, plan |
+| `glob` | 使用 glob 模式搜索文件 | code, plan |
+| `grep` | 在文件中搜索文本 | code, plan |
+| `ls` | 列出目录内容 | code, plan |
+| `bash` | 执行 shell 命令 | code, plan |
+| `find` | 按名称搜索文件 | code, plan |
+| `git` | 执行只读 Git 操作 | code, plan |
+| `edit` | 编辑文件 | code |
+| `write_plan` | 编写计划文档 | plan |
+| `fetch` | 获取 URL 内容 | code, plan, ask |
+| `search` | 联网搜索（Tavily API） | code, plan, ask |
+
+> **注意**：`search` 工具需要配置 Tavily API 密钥。在 `~/.lonny/config.json` 中添加 `"tavilyApiKey": "tvly-..."` 即可启用。
 
 ## 开发
 
