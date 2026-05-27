@@ -5,7 +5,6 @@ import { Config } from '../config/index.js'
 import { loadTokenUsage, resetTokenUsage } from '../config/tokens.js'
 import { loadSkills, ensureSkillsDir } from '../agent/skills.js'
 import { loadPromptTemplates, ensurePromptsDir } from '../agent/prompt-templates.js'
-import { getGlobalEventBus, EventChannels } from '../agent/event-bus.js'
 import { PLAN_DIR } from '../tools/write_plan.js'
 import type { Component, OverlayHandle } from '@earendil-works/pi-tui'
 import { ProcessTerminal, TUI, Box, Text, Editor, Markdown, SelectList, Container, Loader, Spacer, CombinedAutocompleteProvider }
@@ -23,7 +22,7 @@ function safeBg(text: string, bg: string): string {
 const colors = {
   bgDark: (text: string) => safeBg(text, '48;2;30;30;30'),
   bgDim: (text: string) => safeBg(text, '48;2;25;25;25'),
-  headerBg: (text: string) => safeBg(text, '48;2;25;25;35'),
+  headerBg: (text: string) => safeBg(text, '48;2;127;219;255'),
   separator: (text: string) => `\x1b[38;2;60;60;60m${text}\x1b[0m`,
   statusBg: (text: string) => safeBg(text, '48;2;25;25;35'),
   running: (text: string) => `\x1b[38;2;0;255;100m${text}\x1b[0m`,
@@ -345,205 +344,6 @@ function highlightDiffLine(line: string): string {
   return line
 }
 
-// ── Tool Execution Box (collapsible display via event bus) ──────────────
-
-interface ToolExecutionState {
-  id: string
-  name: string
-  input: string
-  status: 'running' | 'success' | 'error'
-  output?: string
-  error?: string
-  outputLines: number
-}
-
-/**
- * Renders tool execution boxes as styled text blocks in the chat markdown.
- * Subscribes to the global event bus for tool:call / tool:result / tool:error events.
- */
-class ToolExecutionRenderer {
-  private activeTools: ToolExecutionState[] = []
-  private unsubscribers: (() => void)[] = []
-  private onUpdate?: () => void
-  private collapsed: Set<string> = new Set()
-  private MAX_LINES_COLLAPSED = 5
-
-  constructor(onUpdate?: () => void) {
-    this.onUpdate = onUpdate
-  }
-
-  start(): void {
-    const bus = getGlobalEventBus()
-    this.unsubscribers.push(
-      bus.on(EventChannels.TOOL_CALL, (data: unknown) => this.onToolCall(data)),
-      bus.on(EventChannels.TOOL_RESULT, (data: unknown) => this.onToolResult(data)),
-      bus.on(EventChannels.TOOL_ERROR, (data: unknown) => this.onToolError(data)),
-      bus.on(EventChannels.TURN_END, () => this.onTurnEnd()),
-    )
-  }
-
-  stop(): void {
-    for (const unsub of this.unsubscribers) unsub()
-    this.unsubscribers = []
-    this.activeTools = []
-  }
-
-  private onToolCall(data: unknown): void {
-    const d = data as { name: string; input: Record<string, unknown>; id: string }
-    const inputStr = formatToolInputSimple(d)
-    this.activeTools.push({
-      id: d.id,
-      name: d.name,
-      input: inputStr,
-      status: 'running',
-      outputLines: 0,
-    })
-    this.collapsed.add(d.id)
-    this.renderAll()
-  }
-
-  private onToolResult(data: unknown): void {
-    const d = data as { name: string; id: string; output: string }
-    const tool = this.activeTools.find(t => t.id === d.id)
-    if (!tool) return
-    tool.status = 'success'
-    tool.output = d.output
-    tool.outputLines = d.output ? d.output.split('\n').length : 0
-    this.renderAll()
-  }
-
-  private onToolError(data: unknown): void {
-    const d = data as { name: string; id: string; error: string }
-    const tool = this.activeTools.find(t => t.id === d.id)
-    if (!tool) return
-    tool.status = 'error'
-    tool.error = d.error
-    tool.outputLines = 1
-    this.renderAll()
-  }
-
-  private onTurnEnd(): void {
-    // Clear tools when the turn ends so the tool block doesn't
-    // stay at the bottom of the chat. Tools are only shown as a
-    // live execution indicator during the turn.
-    this.activeTools = []
-    this.renderAll()
-  }
-
-  /** Toggle collapsed state for a tool by index */
-  toggleCollapse(index: number): void {
-    const tool = this.activeTools[index]
-    if (!tool) return
-    const key = tool.id
-    if (this.collapsed.has(key)) {
-      this.collapsed.delete(key)
-    } else {
-      this.collapsed.add(key)
-    }
-    this.renderAll()
-  }
-
-  clear(): void {
-    this.activeTools = []
-    this.renderAll()
-  }
-
-  renderAll(): void {
-    if (this.onUpdate) this.onUpdate()
-  }
-
-  /** Render all active tool executions into a text block */
-  render(): string {
-    if (this.activeTools.length === 0) return ''
-
-    const lines: string[] = []
-
-    for (let i = 0; i < this.activeTools.length; i++) {
-      const t = this.activeTools[i]
-      const isCollapsed = this.collapsed.has(t.id)
-
-      // ── Header line ────────────────────────────────────────────────────
-      let icon: string
-      let statusColor: (s: string) => string
-      switch (t.status) {
-        case 'running':
-          icon = '\u25B6' // ▶
-          statusColor = colors.accent
-          break
-        case 'success':
-          icon = '\u2714' // ✔
-          statusColor = colors.success
-          break
-        case 'error':
-          icon = '\u2716' // ✖
-          statusColor = colors.error
-          break
-      }
-
-      const toggleIcon = isCollapsed ? '\u25BC' : '\u25B2' // ▼/▲
-      const header = ` ${colors.dim(toggleIcon)} ${statusColor(icon)} ${colors.warn(t.name)}${t.input ? ` ${colors.dim(t.input)}` : ''}`
-      lines.push(header)
-
-      // ── Content (output/error) ─────────────────────────────────────────
-      if (t.status === 'error' && t.error) {
-        const errorLines = t.error.split('\n')
-        for (const line of errorLines) {
-          lines.push(`  ${colors.error(line)}`)
-        }
-      } else if (t.status === 'success' && t.output) {
-        const outLines = t.output.split('\n')
-        const showLines = isCollapsed ? outLines.slice(0, this.MAX_LINES_COLLAPSED) : outLines
-        for (const line of showLines) {
-          // Truncate long lines to avoid wrapping issues
-          const truncated = line.length > 200 ? line.slice(0, 200) + '\u2026' : line
-          lines.push(`  ${colors.dim(truncated)}`)
-        }
-        if (isCollapsed && outLines.length > this.MAX_LINES_COLLAPSED) {
-          lines.push(`  ${colors.dim(`\u2026 and ${outLines.length - this.MAX_LINES_COLLAPSED} more lines`)}`)
-        }
-        // Show line count
-        if (outLines.length > 1) {
-          lines.push(`  ${colors.dim(`(${outLines.length} lines)`)}`)
-        }
-      } else if (t.status === 'running') {
-        lines.push(`  ${colors.accent('running...')}`)
-      }
-
-      // Separator between tools
-      if (i < this.activeTools.length - 1) {
-        lines.push(colors.dim('\u2500'.repeat(20)))
-      }
-    }
-
-    return lines.join('\n')
-  }
-}
-
-/** Simple tool input formatter for display */
-function formatToolInputSimple(d: { name: string; input: Record<string, unknown> }): string {
-  const parts: string[] = []
-  if (d.name === 'read' && Array.isArray(d.input.paths)) {
-    parts.push(d.input.paths.join(', '))
-  } else if (d.name === 'glob' && typeof d.input.pattern === 'string') {
-    parts.push(d.input.pattern)
-  } else if (d.name === 'grep') {
-    if (typeof d.input.pattern === 'string') parts.push(`/${d.input.pattern}/`)
-  } else if (d.name === 'bash' && typeof d.input.command === 'string') {
-    const cmd = d.input.command
-    parts.push(cmd.length > 80 ? cmd.slice(0, 80) + '\u2026' : cmd)
-  } else if (d.name === 'edit') {
-    if (Array.isArray(d.input.edits)) {
-      const paths = d.input.edits.map((e: Record<string, unknown>) => e.file_path || '?')
-      parts.push(paths.join(', '))
-    } else if (typeof d.input.file_path === 'string') {
-      parts.push(d.input.file_path)
-    }
-  } else if (d.name === 'write_plan' && typeof d.input.filename === 'string') {
-    parts.push(d.input.filename)
-  }
-  return parts.length > 0 ? parts.join(' \u2502 ') : ''
-}
-
 // ── OpenCode-style Header ────────────────────────────────────────────────
 
 class HeaderBar implements Component {
@@ -580,6 +380,10 @@ class HeaderBar implements Component {
   invalidate(): void {}
   handleInput?(data: string): void {}
 
+  private visibleLen(s: string): number {
+    return s.replace(/\x1b\[[0-9;]*m/g, '').length
+  }
+
   render(width: number): string[] {
     const appName = colors.accent('\u2588 lonny')
     const statusDot = this.agentStatus === 'running'
@@ -608,7 +412,8 @@ class HeaderBar implements Component {
     }
 
     const line = ` ${appName}  ${colors.dim('·')}  ${rightPart}`
-    const padded = line.length < width ? line + ' '.repeat(width - line.length) : line
+    const visLen = this.visibleLen(line)
+    const padded = visLen < width ? line + ' '.repeat(width - visLen) : line
     return [colors.headerBg(padded), colors.dim('\u2500'.repeat(width))]
   }
 }
@@ -651,6 +456,10 @@ class RichFooter implements Component {
   invalidate(): void {}
   handleInput?(data: string): void {}
 
+  private visibleLen(s: string): number {
+    return s.replace(/\x1b\[[0-9;]*m/g, '').length
+  }
+
   render(width: number): string[] {
     if (!this.visible || width < 40) return []
 
@@ -665,8 +474,9 @@ class RichFooter implements Component {
       const centerPart = statusBg + statusText + '  ready  ' + reset
       const rightPart = statusBg + statusText + 'v' + APP_VERSION + ' ' + reset
       const line = leftPart + centerPart + rightPart
-      const padded = line.length < width
-        ? line + statusBg + ' '.repeat(width - line.length) + reset
+      const visLen = this.visibleLen(line)
+      const padded = visLen < width
+        ? line + statusBg + ' '.repeat(width - visLen) + reset
         : line
       return [padded]
     }
@@ -722,8 +532,9 @@ class RichFooter implements Component {
       }
     }
 
-    const padded = result.length < width
-      ? result + statusBg + ' '.repeat(width - result.length) + reset
+    const visLen = this.visibleLen(result)
+    const padded = visLen < width
+      ? result + statusBg + ' '.repeat(width - visLen) + reset
       : result
 
     return [padded]
@@ -1185,7 +996,6 @@ export async function startTui(config: Config): Promise<void> {
           chatContent += `\n${colors.inputPrompt('Current model:')} ${colors.dim(session.config.model)}\n`
           chatMarkdown.setText(chatContent)
         }
-        getGlobalEventBus().emit(EventChannels.MODEL_CHANGE, { model: arg })
         return
       }
 
