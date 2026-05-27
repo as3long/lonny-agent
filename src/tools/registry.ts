@@ -6,6 +6,8 @@ import { bashTool } from './bash.js'
 import { createEditTool } from './edit.js'
 import { createWritePlanTool } from './write_plan.js'
 import { globTool } from './glob.js'
+import { createFindTool } from './find.js'
+import { createGitTool } from './git.js'
 import { FileReadTracker } from '../diff/apply.js'
 
 export interface ToolContext {
@@ -16,21 +18,39 @@ export interface ToolContext {
   onPlanWritten?: (display: string) => void
 }
 
+export interface ToolPlugin {
+  name: string
+  description: string
+  create: (context: ToolContext) => Tool
+}
+
+/**
+ * Extensible ToolRegistry with plugin support.
+ * Inspired by pi's extension system for dynamic tool registration.
+ */
 export class ToolRegistry {
   private tools: Map<string, Tool> = new Map()
   private context: ToolContext
+  private plugins: Map<string, ToolPlugin> = new Map()
 
   constructor(context: ToolContext) {
     this.context = context
-    this.register(createReadTool(context.applier, context.cwd))
+    this.registerBuiltins()
+  }
+
+  /** Register all built-in tools */
+  private registerBuiltins(): void {
+    this.register(createReadTool(this.context.applier, this.context.cwd))
     this.register(globTool)
-    this.register(createGrepTool(context.cwd))
-    this.register(createLsTool(context.cwd))
+    this.register(createGrepTool(this.context.cwd))
+    this.register(createLsTool(this.context.cwd))
     this.register(bashTool)
-    if (context.mode === 'code') {
-      this.register(createEditTool(context.applier, context.cwd))
+    this.register(createFindTool(this.context.cwd))
+    this.register(createGitTool(this.context.cwd))
+    if (this.context.mode === 'code') {
+      this.register(createEditTool(this.context.applier, this.context.cwd))
     } else {
-      this.register(createWritePlanTool(context.cwd, context.onPlanWritten))
+      this.register(createWritePlanTool(this.context.cwd, this.context.onPlanWritten))
     }
   }
 
@@ -49,8 +69,36 @@ export class ToolRegistry {
     this.context.mode = mode
   }
 
-  private register(tool: Tool): void {
+  /** Register a single tool */
+  register(tool: Tool): void {
     this.tools.set(tool.definition.name, tool)
+  }
+
+  /** Register a tool plugin (lazy creation pattern) */
+  registerPlugin(plugin: ToolPlugin): void {
+    this.plugins.set(plugin.name, plugin)
+    // Activate immediately
+    try {
+      const tool = plugin.create(this.context)
+      this.register(tool)
+    } catch (err) {
+      console.error(`Failed to activate plugin "${plugin.name}": ${err}`)
+    }
+  }
+
+  /** Unregister a tool by name */
+  unregister(name: string): boolean {
+    return this.tools.delete(name)
+  }
+
+  /** Check if a tool is registered */
+  has(name: string): boolean {
+    return this.tools.has(name)
+  }
+
+  /** List all registered tool names */
+  listTools(): string[] {
+    return Array.from(this.tools.keys())
   }
 
   getDefinitions(): ToolDefinition[] {

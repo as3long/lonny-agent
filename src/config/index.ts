@@ -6,13 +6,15 @@ export interface Config {
   apiKey: string
   baseUrl?: string
   mode: 'code' | 'plan'
-  provider: 'openai' | 'anthropic'
+  provider: 'openai' | 'anthropic' | 'google' | 'ollama'
   model: string
   cwd: string
   autoApprove: boolean
   thinking?: boolean
   reasoningEffort?: string
   enableCache?: boolean
+  temperature?: number
+  maxTokens?: number
 }
 
 interface JsonConfig {
@@ -23,6 +25,8 @@ interface JsonConfig {
   thinking?: boolean
   reasoningEffort?: string
   enableCache?: boolean
+  temperature?: number
+  maxTokens?: number
 }
 
 let cachedJsonConfig: JsonConfig | null = null
@@ -59,7 +63,7 @@ export function loadConfig(options: Partial<Config>): Config {
   return {
     apiKey: options.apiKey || process.env.LONNY_API_KEY || jsonConfig.apiKey || '',
     baseUrl,
-    provider: (options.provider || process.env.LONNY_PROVIDER || jsonConfig.provider || 'anthropic') as 'openai' | 'anthropic',
+    provider: (options.provider || process.env.LONNY_PROVIDER || jsonConfig.provider || 'anthropic') as 'openai' | 'anthropic' | 'google' | 'ollama',
     mode: options.mode || 'code',
     model,
     cwd: options.cwd || process.cwd(),
@@ -67,5 +71,7 @@ export function loadConfig(options: Partial<Config>): Config {
     thinking: options.thinking ?? jsonConfig.thinking,
     reasoningEffort: options.reasoningEffort || jsonConfig.reasoningEffort,
     enableCache,
+    temperature: options.temperature ?? jsonConfig.temperature,
+    maxTokens: options.maxTokens ?? jsonConfig.maxTokens,
   }
 }

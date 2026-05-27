@@ -5,11 +5,14 @@ import { createHash } from 'node:crypto'
 import { LLMProvider, LLMMessage } from './llm.js'
 import { OpenAIProvider } from './providers/openai.js'
 import { AnthropicProvider } from './providers/anthropic.js'
+import { GoogleProvider } from './providers/google.js'
+import { OllamaProvider } from './providers/ollama.js'
 import { ToolRegistry } from '../tools/registry.js'
 import { ToolCall, ToolResult } from '../tools/types.js'
 import { FileReadTracker } from '../diff/apply.js'
 import { Config } from '../config/index.js'
 import { saveTokenUsage } from '../config/tokens.js'
+import { compact, shouldCompact, estimateMessagesTokens } from './compaction.js'
 import type { ToolContext } from '../tools/registry.js'
 
 // ── Session persistence ────────────────────────────────────────────────────
@@ -283,6 +286,10 @@ export class Session {
 
     if (config.provider === 'openai') {
       this.provider = new OpenAIProvider(config.apiKey, config.baseUrl, config.model, config.thinking, config.reasoningEffort, config.enableCache)
+    } else if (config.provider === 'google') {
+      this.provider = new GoogleProvider(config.apiKey, config.baseUrl, config.model)
+    } else if (config.provider === 'ollama') {
+      this.provider = new OllamaProvider(config.apiKey, config.baseUrl, config.model)
     } else {
       this.provider = new AnthropicProvider(config.apiKey, config.baseUrl, config.model)
     }
@@ -479,6 +486,18 @@ export class Session {
           name: tc.name,
         }
         this.messages.push(resultMsg)
+      }
+
+      // Check if compaction is needed
+      if (shouldCompact(this.messages)) {
+        const before = this.messages.length
+        const result = compact(this.messages)
+        if (result.compressed) {
+          this.messages = result.messages
+          if (out) {
+            out.write(`\n  ${GY}┃${RS} ${GY}📦 Compressed context: ${before} → ${result.newCount} messages${RS}\n`)
+          }
+        }
       }
     }
 

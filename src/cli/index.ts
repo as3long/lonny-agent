@@ -11,6 +11,8 @@ export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
   let thinking: boolean | undefined
   let reasoningEffort: string | undefined
   let mode: 'code' | 'plan' | undefined
+  let temperature: number | undefined
+  let maxTokens: number | undefined
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
@@ -32,6 +34,10 @@ export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
       reasoningEffort = args[++i]
     } else if (arg === '--mode') {
       mode = args[++i] as 'code' | 'plan'
+    } else if (arg === '--temperature') {
+      temperature = parseFloat(args[++i])
+    } else if (arg === '--max-tokens') {
+      maxTokens = parseInt(args[++i], 10)
     }
   }
 
@@ -39,7 +45,7 @@ export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
     prompt = args[0]
   }
 
-  const config = loadConfig({ apiKey, baseUrl, provider: provider as 'openai' | 'anthropic' | undefined, model, autoApprove, thinking, reasoningEffort, mode })
+  const config = loadConfig({ apiKey, baseUrl, provider: provider as 'openai' | 'anthropic' | 'google' | 'ollama' | undefined, model, autoApprove, thinking, reasoningEffort, mode, temperature, maxTokens })
 
   return { config, prompt }
 }
