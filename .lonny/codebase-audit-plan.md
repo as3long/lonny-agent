@@ -54,15 +54,15 @@ No tests for `components.ts`, `index.ts`, `balance.ts`, or `highlight.ts`. `diff
 
 ## Todo List
 
-- [ ] **Fix 1**: In `src/tui/index.ts:648-651`, swap the order in `tui.stop` override — call `origStop()` first, then write `\x1b[?1049l` to exit alt screen buffer.
-- [ ] **Fix 2**: In `src/agent/session.ts`, filter the `sharedRules` tool list based on `config.mode` — for ask mode, only list `fetch` and `search`.
-- [ ] **Fix 3**: Extract `visibleLen()` to a shared utility (e.g., `src/tui/utils.ts`) and import it in `RichFooter`, `LandingScreen`, and `TodoPanel`.
-- [ ] **Fix 4**: Cache the Tavily API key in a module-level variable in `src/tools/search.ts`.
-- [ ] **Fix 5**: Call `resetGlobalEventBus()` when `/new` clears a session in `src/tui/index.ts:399`.
-- [ ] **Fix 6**: Improve token estimation in `src/agent/compaction.ts` — at minimum add a comment noting the CJK limitation; optionally use a tiktoken-style estimator for better accuracy.
-- [ ] **Fix 7**: In `src/agent/session.ts:386-388`, only rebuild the system prompt if config actually changed (model, mode, etc.).
-- [ ] **Fix 8**: In `src/agent/providers/google.ts:123`, move the API key from URL query to an `x-goog-api-key` header.
-- [ ] **Fix 9**: In `src/agent/providers/openai.ts:84`, create a proper typed interface for the create params instead of `as any`.
-- [ ] **Fix 10**: Call `save()` after `setMode()` to persist the updated system prompt immediately.
-- [ ] **Fix 11**: In `src/agent/session.ts:297`, simplify Windows shell instructions.
-- [ ] **Fix 12**: Add unit tests for `src/tui/components.ts`, `src/tui/balance.ts`, and `src/diff/apply.ts`.
+- [x] **Fix 1**: Alt screen exit order — already fixed by the remove-header-alt-screen plan (alt screen code was removed entirely).
+- [x] **Fix 2**: In `src/agent/session.ts`, filter the `sharedRules` tool list based on `config.mode` — for ask mode, only list `fetch` and `search`.
+- [x] **Fix 3**: Extract `visibleLen()` to a shared utility (`src/tui/utils.ts`) and import it in `RichFooter`, `LandingScreen`, and `TodoPanel`.
+- [x] **Fix 4**: Cache the Tavily API key in a module-level variable in `src/tools/search.ts`.
+- [x] **Fix 5**: Call `resetGlobalEventBus()` when `/new` clears a session in `src/tui/index.ts`.
+- [x] **Fix 6**: Improve token estimation in `src/agent/compaction.ts` — added detailed CJK limitation comment.
+- [x] **Fix 7**: In `src/agent/session.ts:386-388`, only rebuild the system prompt if config actually changed (model, mode, etc.).
+- [x] **Fix 8**: In `src/agent/providers/google.ts`, move the API key from URL query to `x-goog-api-key` header.
+- [x] **Fix 9**: In `src/agent/providers/openai.ts`, create a proper typed interface for the create params instead of `as any`.
+- [x] **Fix 10**: Call `save()` after `setMode()` to persist the updated system prompt immediately.
+- [x] **Fix 11**: In `src/agent/session.ts`, simplify Windows shell instructions — say "Use PowerShell" instead of listing Unix commands.
+- [x] **Fix 12**: Add unit tests for `src/tui/components.ts`, `src/tui/balance.ts`, and `src/diff/apply.ts`.

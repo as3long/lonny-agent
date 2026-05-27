@@ -217,15 +217,15 @@ function buildSystemPrompt(config: Config): string {
   const skills = loadSkills(cwd)
   const skillsSection = formatSkillsForPrompt(skills)
 
-  // ── Shared rules (identical across modes; stable prefix for caching) ─────
-  const sharedRules = `
-RULES:
-1. Read first: Use read/grep/glob tools to gather all context you need before making any edits.
-2. Be thorough: Explore the relevant parts of the codebase.
-3. COST OPTIMIZATION (CRITICAL): Each API call costs money. You MUST maximize work per call. Use \`read(paths: [...])\` to read multiple files at once. Use \`edit(edits: [...])\` to edit multiple files at once. Do NOT do sequential single-file reads or single-edit calls.
-4. Prefer batch edits (\`edits: [...]\`) over single edits when modifying multiple spots in the same file.
-
-Available tools:
+  // ── Mode-specific tool list ───────────────────────────────────────────
+  function getToolListForMode(mode: string): string {
+    if (mode === 'ask') {
+      return `Available tools:
+- \`fetch\`: Fetch content from a URL
+- \`search\`: Search the web using Tavily (query: string, search_depth?: string, include_answer?: boolean, max_results?: number, topic?: string, days?: number)
+`
+    }
+    return `Available tools:
 - \`read\`: Read file contents (paths: string[])
 - \`glob\`: Find files by glob pattern (pattern: string)
 - \`grep\`: Search file content by regex (pattern: string, include?: string, path?: string)
@@ -237,6 +237,17 @@ Available tools:
 - \`git\`: Run read-only git commands (command: string)
 - \`search\`: Search the web using Tavily (query: string, search_depth?: string, include_answer?: boolean, max_results?: number, topic?: string, days?: number)
 `
+  }
+
+  // ── Shared rules (identical across modes; stable prefix for caching) ─────
+  const sharedRules = `
+RULES:
+1. Read first: Use read/grep/glob tools to gather all context you need before making any edits.
+2. Be thorough: Explore the relevant parts of the codebase.
+3. COST OPTIMIZATION (CRITICAL): Each API call costs money. You MUST maximize work per call. Use \`read(paths: [...])\` to read multiple files at once. Use \`edit(edits: [...])\` to edit multiple files at once. Do NOT do sequential single-file reads or single-edit calls.
+4. Prefer batch edits (\`edits: [...]\`) over single edits when modifying multiple spots in the same file.
+
+${getToolListForMode(config.mode)}`
 
   // ── Mode-specific instructions ───────────────────────────────────────────
   const modeInstructions = config.mode === 'plan'
@@ -293,8 +304,8 @@ RULES (code-specific):
 - Working directory: ${cwd}
 - OS: ${isWindows ? 'Windows' : 'Linux/macOS'}
 - Available shell commands: ${isWindows ? 'PowerShell (cmd is also available but PowerShell is preferred)' : 'bash'}
-${isWindows ? '- CRITICAL: Use ONLY Windows commands (PowerShell/cmd) in the \`bash\` tool. Do NOT use Unix/Linux commands like \`cat\`, \`ls\`, \`grep\`, \`which\`, \`chmod\`, \`mv\`, \`cp\`, \`rm\`, \`touch\`, \`mkdir\`, \`uname\`, etc.' : ''}
-${isWindows ? '  - Use \`type\` instead of \`cat\`, \`dir\` instead of \`ls\`, \`where\` instead of \`which\`' : ''}`
+${isWindows ? '  - Use PowerShell. Do NOT use Unix commands like `cat`, `ls`, `grep`, `which`, `chmod`, `mv`, `cp`, `rm`, `touch`, `mkdir`, `uname`, etc.' : ''}
+${isWindows ? '  - Use `type` instead of `cat`, `dir` instead of `ls`, `where` instead of `which`' : ''}`
 
   return `${modeInstructions}
 
@@ -384,8 +395,11 @@ export class Session {
     const session = new Session(config, output)
     // Restore messages (replace the default system prompt with the saved one)
     session.messages = data.messages
-    // Refresh the system prompt in case config changed (e.g. model)
-    session.messages[0] = { role: 'system', content: buildSystemPrompt(config) }
+    // Refresh the system prompt only if config actually changed (model, mode, etc.)
+    // Compare the saved data vs current config to decide
+    if (data.model !== config.model || data.provider !== config.provider || data.mode !== config.mode) {
+      session.messages[0] = { role: 'system', content: buildSystemPrompt(config) }
+    }
     // Restore token stats
     session.totalInputTokens = data.totalInputTokens
     session.totalOutputTokens = data.totalOutputTokens
@@ -407,6 +421,7 @@ export class Session {
     this.config.mode = mode
     this.messages[0] = { role: 'system', content: buildSystemPrompt(this.config) }
     this.registry.setMode(mode)
+    this.save()
   }
 
   /** Stop the current conversation gracefully */

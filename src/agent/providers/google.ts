@@ -120,10 +120,13 @@ export class GoogleProvider implements LLMProvider {
     }
 
     // Make streaming API call
-    const url = `${this.baseUrl}/models/${this.model}:streamGenerateContent?key=${this.apiKey}&alt=sse`
+    const url = `${this.baseUrl}/models/${this.model}:streamGenerateContent?alt=sse`
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': this.apiKey,
+      },
       body: JSON.stringify(body),
     })
 

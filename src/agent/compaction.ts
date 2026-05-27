@@ -8,7 +8,11 @@ import { LLMMessage } from './llm.js'
 const DEFAULT_MAX_TOKENS = 128_000
 const COMPACTION_THRESHOLD = 0.75 // compact when usage exceeds 75% of budget
 
-/** Rough token estimation (4 chars ~= 1 token) */
+/** Rough token estimation (4 chars ~= 1 token).
+ * NOTE: This is a very rough approximation. CJK characters (Chinese, Japanese,
+ * Korean) can be 2-3 tokens each, and JSON/tool_call content is also denser.
+ * For a 128K token budget, this may cause over- or under-compaction.
+ * Consider using tiktoken or a similar tokenizer for better accuracy. */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
 }

@@ -12,6 +12,7 @@ import { ProcessTerminal, TUI, Box, Text, Editor, Markdown, Container, Loader, C
 import type { MarkdownTheme, SlashCommand, EditorTheme, SelectListTheme, SelectItem } from '@earendil-works/pi-tui'
 import { colors, RichFooter, LandingScreen, PlansList, TodoPanel, listPlans, loadTodos, plansToItems } from './components.js'
 import { highlightLine } from './highlight.js'
+import { resetGlobalEventBus } from '../agent/event-bus.js'
 export async function startTui(config: Config): Promise<void> {
   let chatContent = ''
   let isRunning = false
@@ -384,6 +385,7 @@ export async function startTui(config: Config): Promise<void> {
       if (cmd === 'new') {
         Session.clearSavedSession(config.cwd)
         resetTokenUsage(config.cwd)
+        resetGlobalEventBus()
         session = new Session(config, output)
         session.onPlanWritten = planCb
         chatContent = ''

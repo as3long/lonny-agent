@@ -4,6 +4,18 @@ import type { ChatCompletionMessageParam, ChatCompletionTool, ChatCompletionChun
 import { LLMProvider, LLMMessage, LLMChunk } from '../llm.js'
 import { ToolDefinition, ToolCall } from '../../tools/types.js'
 
+// Extended create params for non-standard OpenAI-compatible providers
+interface ExtendedCreateParams {
+  model: string
+  messages: ChatCompletionMessageParam[]
+  tools?: ChatCompletionTool[]
+  stream: boolean
+  stream_options?: { include_usage: boolean }
+  thinking?: { type: string }
+  reasoning_effort?: string
+  enable_cache?: boolean
+}
+
 export class OpenAIProvider implements LLMProvider {
   private client: OpenAI
   private model: string
@@ -81,7 +93,7 @@ export class OpenAIProvider implements LLMProvider {
       }
     })
 
-    const stream: Stream<ChatCompletionChunk> = await (this.client.chat.completions.create as any)({
+    const stream: Stream<ChatCompletionChunk> = await (this.client.chat.completions.create as (params: ExtendedCreateParams) => Promise<Stream<ChatCompletionChunk>>)({
       model: this.model,
       messages: openAIMessages,
       tools: openAIFormattedTools.length > 0 ? openAIFormattedTools : undefined,

@@ -7,14 +7,20 @@ interface TavilyConfig {
   tavilyApiKey?: string
 }
 
+// ── Tavily API key cache ──────────────────────────────────────────────────
+let _cachedApiKey: string | undefined = undefined
+
 function loadTavilyApiKey(): string | undefined {
+  if (_cachedApiKey !== undefined) return _cachedApiKey
   const configPath = path.join(os.homedir(), '.lonny', 'config.json')
   try {
     const raw = fs.readFileSync(configPath, 'utf-8')
     const config = JSON.parse(raw) as TavilyConfig
-    return config.tavilyApiKey || process.env.TAVILY_API_KEY || undefined
+    _cachedApiKey = config.tavilyApiKey || process.env.TAVILY_API_KEY || undefined
+    return _cachedApiKey
   } catch {
-    return process.env.TAVILY_API_KEY || undefined
+    _cachedApiKey = process.env.TAVILY_API_KEY || undefined
+    return _cachedApiKey
   }
 }
 
