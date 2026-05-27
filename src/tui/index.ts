@@ -398,6 +398,7 @@ class ToolExecutionRenderer {
       status: 'running',
       outputLines: 0,
     })
+    this.collapsed.add(d.id)
     this.renderAll()
   }
 
