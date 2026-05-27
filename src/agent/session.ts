@@ -153,6 +153,8 @@ function printToolResult(tc: ToolCall, result: ToolResult, output?: SessionOutpu
     }
   } else if (tc.name === 'write_plan') {
     writeOut(`  ${GY}│${RS}  ${GR}✔${RS} ${result.output || tc.name}\n`, output)
+  } else if (tc.name === 'search') {
+    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} search: ${String(tc.input.query || '').slice(0, 80)}\n`, output)
   } else {
     writeOut(`  ${GY}│${RS}  ${GR}✔${RS} ${tc.name}\n`, output)
   }
@@ -182,6 +184,8 @@ function formatToolInput(tc: ToolCall): string {
   } else if (tc.name === 'bash') {
     const cmd = typeof tc.input.command === 'string' ? tc.input.command : ''
     parts.push(cmd.length > 80 ? cmd.slice(0, 80) + '\u2026' : cmd)
+  } else if (tc.name === 'search') {
+    if (typeof tc.input.query === 'string') parts.push(tc.input.query.slice(0, 120))
   } else if (tc.name === 'write_plan') {
     if (typeof tc.input.filename === 'string') parts.push(tc.input.filename)
   } else if (tc.name === 'edit') {
@@ -230,7 +234,9 @@ Available tools:
 - \`edit\`: Replace exact text in files — single (file_path+old_string+new_string) or batch (edits:[...])
 - \`write_plan\`: Save plan markdown into .lonny/ folder (plan mode only)
 - \`find\`: Find files by name pattern (pattern: string, path?: string, maxResults?: number)
-- \`git\`: Run read-only git commands (command: string)`
+- \`git\`: Run read-only git commands (command: string)
+- \`search\`: Search the web using Tavily (query: string, search_depth?: string, include_answer?: boolean, max_results?: number, topic?: string, days?: number)
+`
 
   // ── Mode-specific instructions ───────────────────────────────────────────
   const modeInstructions = config.mode === 'plan'
@@ -266,7 +272,8 @@ RULES (code-specific):
 5. When copying old_string from \`read\` output, include 2-3 lines of context BEFORE and AFTER the target change to make the string unique in the file.
 6. On Windows, files may use CRLF (\\r\\n) line endings, but the \`edit\` tool normalizes them to LF (\\n). Always use \`\\n\` (not \`\\r\\n\`) in old_string/new_string.
 7. Prefer batch edits (\`edits: [...]\`) over single edits when modifying multiple spots in the same file — the tool processes them in reverse order so positions stay valid.
-8. COST OPTIMIZATION (CRITICAL): Each API call costs money. You have a hard limit of ~5 API calls per task.`
+8. COST OPTIMIZATION (CRITICAL): Each API call costs money. You have a hard limit of ~5 API calls per task.
+9. TODO LIST MAINTENANCE: After completing a task item, update the corresponding plan file in \`.lonny/\` by checking off the TODO item (change \`- [ ]\` to \`- [x]\`). Use \`read\` to find the plan file, then \`edit\` to update the checkbox.`
 
   // ── Environment section (dynamic content — put LAST for prefix caching) ──
   const envSection = `Environment:

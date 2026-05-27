@@ -1100,11 +1100,12 @@ export async function startTui(config: Config): Promise<void> {
 
   // ── Input handling ──────────────────────────────────────────────────────
   function sendMessage(text: string): void {
-    if (!text.trim() || isRunning) return
     const trimmed = text.trim()
+    if (!trimmed) return
     editor.setText('')
     editor.addToHistory(trimmed)
 
+    // Allow slash commands even when agent is running (critical for /stop)
     if (trimmed.startsWith('/')) {
       const parts = trimmed.slice(1).split(/\s+/)
       const cmd = parts[0]
@@ -1235,6 +1236,9 @@ export async function startTui(config: Config): Promise<void> {
       chatMarkdown.setText(chatContent)
       return
     }
+
+    // Block regular messages when agent is already running
+    if (isRunning) return
 
     isRunning = true
     loader.setMessage('thinking...')
