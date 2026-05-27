@@ -86,6 +86,14 @@ export async function startTui(config: Config): Promise<void> {
 
   // ── Create terminal and TUI ────────────────────────────────────────────
   const terminal = new ProcessTerminal()
+  // Patch terminal.write to suppress alternate screen buffer sequences.
+  // Without this, pi-tui disables the terminal's native scrollback/scrollbar,
+  // making it impossible to scroll through past conversation history.
+  const origWrite = terminal.write.bind(terminal)
+  terminal.write = (data: string) => {
+    const filtered = data.replace(/\x1b\[\?1049[hl]/g, '')
+    if (filtered) origWrite(filtered)
+  }
   const tui = new TUI(terminal, false)
   tui.setClearOnShrink(true)
   terminal.setTitle(`lonny ${config.model} ${config.provider}`)
