@@ -423,8 +423,11 @@ class ToolExecutionRenderer {
   }
 
   private onTurnEnd(): void {
-    // Keep tools visible but mark the turn as ended
-    // They'll be cleared on next turn start
+    // Clear tools when the turn ends so the tool block doesn't
+    // stay at the bottom of the chat. Tools are only shown as a
+    // live execution indicator during the turn.
+    this.activeTools = []
+    this.renderAll()
   }
 
   /** Toggle collapsed state for a tool by index */
