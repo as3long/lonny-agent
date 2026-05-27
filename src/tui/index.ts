@@ -800,7 +800,6 @@ export async function startTui(config: Config): Promise<void> {
     tui.addChild(chatBox)
     tui.addChild(editor)
     tui.addChild(loader)
-    tui.addChild(footer)
     tui.setFocus(editor)
   }
 
@@ -1117,10 +1116,10 @@ export async function startTui(config: Config): Promise<void> {
     footer.setPhase('chat')
 
     // Add chat components to the main TUI
+    // (footer is already an overlay anchored to bottom-left, no need to addChild)
     tui.addChild(chatBox)
     tui.addChild(editor)
     tui.addChild(loader)
-    tui.addChild(footer)
 
     // Focus the chat editor
     tui.setFocus(editor)
