@@ -96,6 +96,11 @@ export interface SessionOutput {
   write: (text: string) => void
   /** When true, tool invocation/result formatting is skipped (TUI handles it via event bus) */
   suppressToolOutput?: boolean
+  /**
+   * When autoApprove is false, called before dispatching write-type tool calls.
+   * Return true to allow execution, false to reject. Tools are batched — one confirmation per turn.
+   */
+  confirmTool?: (toolCalls: ToolCall[]) => Promise<boolean>
 }
 
 function writeOut(text: string, output?: SessionOutput): void {
@@ -181,7 +186,7 @@ function isSingleEditShape(v: unknown): v is SingleEditShape {
   )
 }
 
-function formatToolInput(tc: ToolCall): string {
+export function formatToolInput(tc: ToolCall): string {
   const parts: string[] = []
   if (tc.name === 'read' && Array.isArray(tc.input.paths)) {
     parts.push(tc.input.paths.join(', '))
@@ -611,6 +616,28 @@ export class Session {
         reasoning_content: reasoningContent,
       }
       this.messages.push(assistantMsg)
+
+      // ── User confirmation for write-type tool calls ──
+      if (!this.config.autoApprove && this.output?.confirmTool && toolCalls.length > 0) {
+        const writeTools = ['edit', 'bash', 'write_plan', 'exec', 'install_skill']
+        const needsConfirm = toolCalls.filter(tc => writeTools.includes(tc.name))
+        if (needsConfirm.length > 0) {
+          const approved = await this.output.confirmTool(toolCalls)
+          if (!approved) {
+            // User rejected — inject feedback so the LLM can try a different approach
+            const rejectMsg: LLMMessage = {
+              role: 'tool',
+              content:
+                'USER_REJECTED: The user declined to execute the requested tool calls. Try a different approach.',
+              tool_call_id: toolCalls[0].id,
+              name: 'user_feedback',
+            }
+            this.messages.push(rejectMsg)
+            bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: toolCalls.length })
+            continue
+          }
+        }
+      }
 
       for (const tc of toolCalls) {
         // Check if stop was requested after each tool call

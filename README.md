@@ -43,6 +43,7 @@ npm install -g lonny-agent
   "model": "deepseek-v4-flash",
   "baseUrl": "https://api.deepseek.com",
   "apiKey": "sk-...",
+  "autoApprove": false,
   "tavilyApiKey": "tvly-..."
 }
 ```

@@ -21,7 +21,7 @@ import {
 } from '@earendil-works/pi-tui'
 import { resetGlobalEventBus } from '../agent/event-bus.js'
 import { ensurePromptsDir, loadPromptTemplates } from '../agent/prompt-templates.js'
-import { Session, type SessionOutput } from '../agent/session.js'
+import { formatToolInput, Session, type SessionOutput } from '../agent/session.js'
 import { ensureSkillsDir, loadSkills } from '../agent/skills.js'
 import type { Config } from '../config/index.js'
 import { loadTokenUsage, resetTokenUsage } from '../config/tokens.js'
@@ -154,12 +154,50 @@ export async function startTui(config: Config): Promise<void> {
   // ── Session output ────────────────────────────────────────────────────
   // Tool call/result text flows through output.write naturally, interspersed
   // with assistant text in the correct order (just like non-TUI mode).
+  // ── Tool confirmation state ──
+  let pendingConfirmResolve: ((approved: boolean) => void) | null = null
+
+  function handleConfirmInput(data: string): boolean {
+    if (!pendingConfirmResolve) return false
+    const key = data.trim().toLowerCase()
+    if (key === 'y' || key === 'yes') {
+      pendingConfirmResolve(true)
+      pendingConfirmResolve = null
+      chatContent += 'y\n'
+      chatMarkdown.setText(chatContent)
+      tui.requestRender(true)
+      return true
+    } else if (key === 'n' || key === 'no' || key === '\r' || key === '') {
+      pendingConfirmResolve(false)
+      pendingConfirmResolve = null
+      chatContent += 'N\n'
+      chatMarkdown.setText(chatContent)
+      tui.requestRender(true)
+      return true
+    }
+    return false
+  }
+
   const output: SessionOutput = {
     write: (text: string) => {
       chatContent += text
       chatMarkdown.setText(chatContent)
     },
     suppressToolOutput: false,
+    confirmTool: async toolCalls => {
+      chatContent += `\n  ${colors.warn('Allow these tool calls?')}\n`
+      for (const tc of toolCalls) {
+        const detail = formatToolInput(tc)
+        chatContent += `  ${colors.dim('\u2022')} ${colors.accent(tc.name)}${detail ? ` ${colors.dim(detail)}` : ''}\n`
+      }
+      chatContent += `  ${colors.inputPrompt('(y/N)')} `
+      chatMarkdown.setText(chatContent)
+      tui.requestRender(true)
+
+      return new Promise(resolve => {
+        pendingConfirmResolve = resolve
+      })
+    },
   }
 
   // Try to restore a saved session for this directory (MUST be before landing screen setup)
@@ -627,6 +665,11 @@ export async function startTui(config: Config): Promise<void> {
 
   // ── Input listener ──────────────────────────────────────────────────────
   tui.addInputListener(data => {
+    // Check if tool confirmation is pending (consume all input until resolved)
+    if (pendingConfirmResolve) {
+      return { consume: handleConfirmInput(data) }
+    }
+
     // Check if help overlay is active
     if (helpOverlayHandle?.isHidden() === false) {
       if (data === '\x1b' || data === '\x1b[' || data === '?') {

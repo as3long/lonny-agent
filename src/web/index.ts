@@ -4,7 +4,7 @@ import * as path from 'node:path'
 import * as url from 'node:url'
 import { type WebSocket, WebSocketServer } from 'ws'
 import { resetGlobalEventBus } from '../agent/event-bus.js'
-import { Session } from '../agent/session.js'
+import { Session, type SessionOutput } from '../agent/session.js'
 import type { Config } from '../config/index.js'
 import { fmtErr } from '../tools/errors.js'
 import { fetchDeepSeekBalance, isDeepSeekOfficial } from '../tui/balance.js'
@@ -97,7 +97,8 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
 
     // Track output to forward to WebSocket
     // Strip ANSI codes since they are meaningless in the browser
-    const output = {
+    let pendingConfirm: ((approved: boolean) => void) | null = null
+    const output: SessionOutput = {
       write: (text: string) => {
         const clean = stripAnsi(text)
         if (clean) {
@@ -105,6 +106,21 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
         }
       },
       suppressToolOutput: true, // EventBus handles tool call display
+      confirmTool: async toolCalls => {
+        ws.send(
+          JSON.stringify({
+            type: 'tool_confirm_request',
+            toolCalls: toolCalls.map(tc => ({
+              name: tc.name,
+              input: tc.input,
+              id: tc.id,
+            })),
+          }),
+        )
+        return new Promise<boolean>(resolve => {
+          pendingConfirm = resolve
+        })
+      },
     }
 
     // Re-create session with output
@@ -239,6 +255,11 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
             const errMsg = fmtErr(err)
             ws.send(JSON.stringify({ type: 'error', message: errMsg }))
             ws.send(JSON.stringify({ type: 'done', reason: 'error' }))
+          }
+        } else if (msg.type === 'tool_confirm_response') {
+          if (pendingConfirm) {
+            pendingConfirm(msg.approved === true)
+            pendingConfirm = null
           }
         } else if (msg.type === 'ping') {
           ws.send(JSON.stringify({ type: 'pong' }))

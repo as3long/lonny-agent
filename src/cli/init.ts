@@ -77,6 +77,7 @@ interface JsonConfig {
   model?: string
   thinking?: boolean
   reasoningEffort?: string
+  autoApprove?: boolean
   enableCache?: boolean
   strictTools?: boolean
   temperature?: number
@@ -291,6 +292,13 @@ export async function runInit(): Promise<void> {
       existing.tavilyApiKey,
     )
 
+    // ── Step 9: Auto-approve tool calls ──
+    const autoApprove = await askConfirm(
+      rl,
+      'Auto-approve tool calls? (no confirmation prompts)',
+      existing.autoApprove ?? false,
+    )
+
     // ── Build config ──
     const config: JsonConfig = {
       apiKey: apiKey || undefined,
@@ -302,6 +310,7 @@ export async function runInit(): Promise<void> {
       temperature: temperature !== undefined ? Number(temperature.toFixed(2)) : undefined,
       maxTokens: maxTokens !== undefined ? Math.floor(maxTokens) : undefined,
       tavilyApiKey: tavilyApiKey || undefined,
+      autoApprove: autoApprove || undefined,
       enableCache: existing.enableCache,
       strictTools: existing.strictTools,
     }

@@ -26,6 +26,7 @@ interface JsonConfig {
   model?: string
   thinking?: boolean
   reasoningEffort?: string
+  autoApprove?: boolean
   enableCache?: boolean
   strictTools?: boolean
   temperature?: number
@@ -79,7 +80,7 @@ export function loadConfig(options?: {
     mode: options?.mode || 'code',
     model,
     cwd: options?.cwd || process.cwd(),
-    autoApprove: options?.autoApprove ?? false,
+    autoApprove: options?.autoApprove ?? jsonConfig.autoApprove ?? false,
     thinking: jsonConfig.thinking,
     reasoningEffort: jsonConfig.reasoningEffort,
     enableCache,
