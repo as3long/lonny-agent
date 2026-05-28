@@ -285,6 +285,8 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
             ws.send(JSON.stringify({ type: 'error', message: errMsg }))
             ws.send(JSON.stringify({ type: 'done', reason: 'error' }))
           }
+          // Always refresh plan data after a turn (catches plans created via bash/write_plan)
+          sendPlanData()
         } else if (msg.type === 'load_plan') {
           const planName = String(msg.planName || '')
           const planEntries = listPlans(config.cwd)
