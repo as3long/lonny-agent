@@ -52,6 +52,12 @@
     return new Date().toLocaleTimeString()
   }
 
+  function formatTokenCount(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1) + 'M'
+    if (n >= 1000) return (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + 'K'
+    return String(n)
+  }
+
   function setInputEnabled(enabled) {
     chatInput.disabled = !enabled
     sendBtn.disabled = !enabled
@@ -227,9 +233,9 @@
     messagesEl.appendChild(div)
     scrollToBottom()
 
-    // Update status bar
-    tokenIn.textContent = String(totalIn)
-    tokenOut.textContent = String(totalOut)
+    // Update status bar (use formatted values)
+    tokenIn.textContent = formatTokenCount(totalIn)
+    tokenOut.textContent = formatTokenCount(totalOut)
     tokenCalls.textContent = `(${totalApi})`
   }
 
@@ -306,10 +312,10 @@
         currentProvider = msg.provider || ''
         modeDisplay.textContent = currentMode
         modelDisplay.textContent = `${currentProvider}/${currentModel}`
-        // Sync token stats from session
+        // Sync token stats from session (formatted)
         if (msg.totalIn !== undefined) {
-          tokenIn.textContent = String(msg.totalIn || 0)
-          tokenOut.textContent = String(msg.totalOut || 0)
+          tokenIn.textContent = formatTokenCount(msg.totalIn || 0)
+          tokenOut.textContent = formatTokenCount(msg.totalOut || 0)
           tokenCalls.textContent = `(${msg.totalApi || 0})`
         }
         break
