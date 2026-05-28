@@ -255,7 +255,7 @@
   function addToolCall(name, input, id) {
     const container = streamingMsgEl || messagesEl.querySelector('.message:last-child')
     const div = document.createElement('div')
-    div.className = 'tool-call executing'
+    div.className = id ? 'tool-call executing' : 'tool-call'
     div.dataset.toolId = id || ''
     const inputStr = typeof input === 'object' ? JSON.stringify(input).slice(0, 120) : String(input)
     div.innerHTML = `<span class="tool-name">${escapeHtml(name)}</span> <span class="tool-input">${escapeHtml(inputStr)}</span>`
