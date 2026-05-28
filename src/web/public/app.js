@@ -391,12 +391,70 @@
       e.preventDefault()
       sendMessage()
     }
+    // Tab to select hint item
+    if (e.key === 'Tab' && !slashHint.classList.contains('hidden')) {
+      e.preventDefault()
+      const selected = slashHint.querySelector('.slash-hint-item.selected')
+      if (selected) {
+        const cmd = selected.dataset.cmd
+        chatInput.value = '/' + cmd
+        hideSlashHint()
+        chatInput.focus()
+      }
+    }
+    if (e.key === 'Escape') {
+      hideSlashHint()
+    }
   })
 
-  // Auto-resize textarea
+  // Slash command hint
+  const slashHint = document.getElementById('slash-hint')
+
+  function showSlashHint() {
+    slashHint.classList.remove('hidden')
+    // Select first item by default
+    const items = slashHint.querySelectorAll('.slash-hint-item')
+    items.forEach((item, i) => {
+      item.classList.toggle('selected', i === 0)
+    })
+  }
+
+  function hideSlashHint() {
+    slashHint.classList.add('hidden')
+  }
+
+  // Click to select a hint item
+  slashHint.addEventListener('click', e => {
+    const item = e.target.closest('.slash-hint-item')
+    if (item) {
+      const cmd = item.dataset.cmd
+      chatInput.value = '/' + cmd
+      hideSlashHint()
+      chatInput.focus()
+    }
+  })
+
+  // Hover to change selection
+  slashHint.addEventListener('mouseover', e => {
+    const item = e.target.closest('.slash-hint-item')
+    if (item) {
+      slashHint.querySelectorAll('.slash-hint-item').forEach(el => el.classList.remove('selected'))
+      item.classList.add('selected')
+    }
+  })
+
+  // Show/hide hint based on input content
   chatInput.addEventListener('input', () => {
     chatInput.style.height = 'auto'
     chatInput.style.height = Math.min(chatInput.scrollHeight, 150) + 'px'
+
+    const text = chatInput.value
+    // Show hint only when the text starts with / and is only the / (no other chars yet)
+    if (text === '/') {
+      showSlashHint()
+    } else if (!text.startsWith('/') || text.includes(' ')) {
+      hideSlashHint()
+    }
   })
 
   // ── Heartbeat (keep connection alive) ──

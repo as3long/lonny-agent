@@ -249,6 +249,61 @@ body {
   align-items: flex-end;
 }
 
+.input-container {
+  flex: 1;
+  position: relative;
+}
+
+/* ── Slash Command Hint ─────────────────────────────────────── */
+.slash-hint {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+  z-index: 100;
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.3);
+}
+
+.slash-hint-header {
+  padding: 4px 12px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+
+.slash-hint-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  transition: background 0.15s;
+}
+
+.slash-hint-item:hover,
+.slash-hint-item.selected {
+  background: rgba(0, 170, 255, 0.12);
+}
+
+.slash-hint-item .hint-arg {
+  color: var(--warning);
+}
+
+.slash-hint-item .hint-desc {
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  margin-left: 6px;
+}
+
 #chat-input {
   flex: 1;
   background: var(--input-bg);
@@ -262,6 +317,7 @@ body {
   outline: none;
   line-height: 1.5;
   transition: border-color 0.2s;
+  width: 100%;
 }
 
 #chat-input:focus {

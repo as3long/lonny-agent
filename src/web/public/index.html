@@ -33,7 +33,16 @@
   <!-- Input Area -->
   <footer id="input-area">
     <div class="input-wrapper">
-      <textarea id="chat-input" rows="3" placeholder="Type a message... (use /help for commands)"></textarea>
+      <div class="input-container">
+        <div id="slash-hint" class="slash-hint hidden">
+          <div class="slash-hint-header">Commands</div>
+          <div class="slash-hint-item" data-cmd="mode code|plan|ask">/mode <span class="hint-arg">code|plan|ask</span> <span class="hint-desc">Switch mode</span></div>
+          <div class="slash-hint-item" data-cmd="model ">/model <span class="hint-arg">&lt;name&gt;</span> <span class="hint-desc">Switch model</span></div>
+          <div class="slash-hint-item" data-cmd="new">/new <span class="hint-desc">Start a new session</span></div>
+          <div class="slash-hint-item" data-cmd="help">/help <span class="hint-desc">Show this help</span></div>
+        </div>
+        <textarea id="chat-input" rows="3" placeholder="Type a message... (type / for commands)"></textarea>
+      </div>
       <button id="send-btn" title="Send">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/>
