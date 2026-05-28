@@ -197,7 +197,7 @@
     }
     thinkingText += text
     const content = thinkingEl.querySelector('.thinking-content')
-    content.textContent = thinkingText
+    content.innerHTML = renderMarkdown(thinkingText)
     scrollToBottom()
   }
 
