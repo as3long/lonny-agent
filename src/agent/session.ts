@@ -107,6 +107,9 @@ function writeOut(text: string, output?: SessionOutput): void {
 }
 
 function printUserMessage(prompt: string, output?: SessionOutput): void {
+  // When suppressToolOutput is true (Web UI mode), the frontend already
+  // displays the user message, so skip sending it as a chunk.
+  if (output?.suppressToolOutput) return
   const line = `  ${GY}┃${RS} ${BLD}${CY}You${RS}`
   writeOut(`\n${line}  ${prompt}\n\n`, output)
 }
@@ -214,6 +217,8 @@ function printTokenStats(
   totalApi: number,
   output?: SessionOutput,
 ): void {
+  // Skip in Web UI mode — frontend gets token info via EventBus
+  if (output?.suppressToolOutput) return
   const total = totalIn + totalOut
   const msg = `  ${GY}┃${RS} ${GY}${BLD}▴${RS}${GY}${turnIn}${RS} ${GY}${BLD}▾${RS}${GY}${turnOut}${RS}  ${GY}total${RS} ${total}  ${GY}calls${RS} ${turnApi}(${totalApi})`
   writeOut(`\n${msg}\n`, output)
@@ -400,113 +405,123 @@ export class Session {
       for await (const chunk of stream) {
         if (chunk.reasoning_content) {
           reasoningContent = chunk.reasoning_content
+          // Emit thinking via EventBus for Web UI
+          bus.emit(EventChannels.THINKING, { text: chunk.reasoning_content })
           // Stream reasoning content in real-time (only when no text in same chunk)
           if (!chunk.text) {
             if (!reasoningOutput) {
-              writeOut(thinkTopBorder(), out)
               reasoningOutput = true
               reasoningLineStart = true
-            }
-            // Track column position on current line for wrapping
-            let thinkCol = 0
-            // Handle newlines in streamed content - add left border on each new line
-            // Also manually wrap long lines so wrapped lines keep the │ prefix.
-            let remaining = chunk.reasoning_content
-            const maxContentWidth = termWidth() - THINK_PREFIX_WIDTH
-            while (remaining.length > 0) {
-              if (reasoningLineStart) {
-                writeOut(`  ${GY}│${RS}${TH}`, out)
-                reasoningLineStart = false
-                thinkCol = 0
+              if (!out?.suppressToolOutput) {
+                writeOut(thinkTopBorder(), out)
               }
-              const nlIdx = remaining.indexOf('\n')
-              if (nlIdx === -1) {
-                // No newline — write as much as fits on current line, wrap if needed
-                while (remaining.length > 0) {
-                  const segWidth = visibleWidth(remaining)
-                  const avail = maxContentWidth - thinkCol
-                  if (segWidth <= avail) {
-                    // Fits entirely on current line
-                    writeOut(remaining, out)
-                    thinkCol += segWidth
-                    remaining = ''
-                  } else if (avail <= 0) {
-                    // Current line is full, wrap to next
-                    writeOut(`${RS}\n`, out)
-                    writeOut(`  ${GY}│${RS}${TH}`, out)
-                    thinkCol = 0
-                  } else {
-                    // Write first part that fits, then wrap
-                    // Find character boundary that fits within avail
-                    let cut = avail
-                    while (cut > 0 && visibleWidth(remaining.slice(0, cut)) > avail) cut--
-                    if (cut <= 0) cut = 1
-                    writeOut(remaining.slice(0, cut), out)
-                    writeOut(`${RS}\n`, out)
-                    writeOut(`  ${GY}│${RS}${TH}`, out)
-                    thinkCol = 0
-                    remaining = remaining.slice(cut)
-                  }
+            }
+            // Terminal display with box drawing (skip in Web UI mode, handled by EventBus)
+            if (!out?.suppressToolOutput) {
+              // Track column position on current line for wrapping
+              let thinkCol = 0
+              // Handle newlines in streamed content - add left border on each new line
+              // Also manually wrap long lines so wrapped lines keep the │ prefix.
+              let remaining = chunk.reasoning_content
+              const maxContentWidth = termWidth() - THINK_PREFIX_WIDTH
+              while (remaining.length > 0) {
+                if (reasoningLineStart) {
+                  writeOut(`  ${GY}│${RS}${TH}`, out)
+                  reasoningLineStart = false
+                  thinkCol = 0
                 }
-              } else {
-                // Has newline — process the segment up to newline
-                const segment = remaining.slice(0, nlIdx)
-                const segWidth = visibleWidth(segment)
-                const avail = maxContentWidth - thinkCol
-                if (segWidth <= avail) {
-                  // Segment fits on current line
-                  writeOut(segment, out)
-                  writeOut(`${RS}\n`, out)
-                  reasoningLineStart = true
-                  thinkCol = 0
-                } else {
-                  // Segment too long — write what fits, wrap, then rest
-                  let rest = segment
-                  // Write remainder of current line
-                  if (avail > 0) {
-                    let cut = avail
-                    while (cut > 0 && visibleWidth(rest.slice(0, cut)) > avail) cut--
-                    if (cut <= 0) cut = 1
-                    writeOut(rest.slice(0, cut), out)
-                    rest = rest.slice(cut)
-                  }
-                  writeOut(`${RS}\n`, out)
-                  reasoningLineStart = true
-                  thinkCol = 0
-                  // Write rest of segment on continuation line(s)
-                  if (rest.length > 0) {
-                    writeOut(`  ${GY}│${RS}${TH}`, out)
-                    reasoningLineStart = false
-                    while (rest.length > 0) {
-                      const rw = visibleWidth(rest)
-                      if (rw <= maxContentWidth) {
-                        writeOut(rest, out)
-                        thinkCol = rw
-                        rest = ''
-                      } else {
-                        let cut = maxContentWidth
-                        while (cut > 0 && visibleWidth(rest.slice(0, cut)) > maxContentWidth) cut--
-                        if (cut <= 0) cut = 1
-                        writeOut(rest.slice(0, cut), out)
-                        writeOut(`${RS}\n`, out)
-                        writeOut(`  ${GY}│${RS}${TH}`, out)
-                        rest = rest.slice(cut)
-                      }
+                const nlIdx = remaining.indexOf('\n')
+                if (nlIdx === -1) {
+                  // No newline — write as much as fits on current line, wrap if needed
+                  while (remaining.length > 0) {
+                    const segWidth = visibleWidth(remaining)
+                    const avail = maxContentWidth - thinkCol
+                    if (segWidth <= avail) {
+                      // Fits entirely on current line
+                      writeOut(remaining, out)
+                      thinkCol += segWidth
+                      remaining = ''
+                    } else if (avail <= 0) {
+                      // Current line is full, wrap to next
+                      writeOut(`${RS}\n`, out)
+                      writeOut(`  ${GY}│${RS}${TH}`, out)
+                      thinkCol = 0
+                    } else {
+                      // Write first part that fits, then wrap
+                      // Find character boundary that fits within avail
+                      let cut = avail
+                      while (cut > 0 && visibleWidth(remaining.slice(0, cut)) > avail) cut--
+                      if (cut <= 0) cut = 1
+                      writeOut(remaining.slice(0, cut), out)
+                      writeOut(`${RS}\n`, out)
+                      writeOut(`  ${GY}│${RS}${TH}`, out)
+                      thinkCol = 0
+                      remaining = remaining.slice(cut)
                     }
                   }
-                  writeOut(`${RS}\n`, out)
-                  reasoningLineStart = true
-                  thinkCol = 0
+                } else {
+                  // Has newline — process the segment up to newline
+                  const segment = remaining.slice(0, nlIdx)
+                  const segWidth = visibleWidth(segment)
+                  const avail = maxContentWidth - thinkCol
+                  if (segWidth <= avail) {
+                    // Segment fits on current line
+                    writeOut(segment, out)
+                    writeOut(`${RS}\n`, out)
+                    reasoningLineStart = true
+                    thinkCol = 0
+                  } else {
+                    // Segment too long — write what fits, wrap, then rest
+                    let rest = segment
+                    // Write remainder of current line
+                    if (avail > 0) {
+                      let cut = avail
+                      while (cut > 0 && visibleWidth(rest.slice(0, cut)) > avail) cut--
+                      if (cut <= 0) cut = 1
+                      writeOut(rest.slice(0, cut), out)
+                      rest = rest.slice(cut)
+                    }
+                    writeOut(`${RS}\n`, out)
+                    reasoningLineStart = true
+                    thinkCol = 0
+                    // Write rest of segment on continuation line(s)
+                    if (rest.length > 0) {
+                      writeOut(`  ${GY}│${RS}${TH}`, out)
+                      reasoningLineStart = false
+                      while (rest.length > 0) {
+                        const rw = visibleWidth(rest)
+                        if (rw <= maxContentWidth) {
+                          writeOut(rest, out)
+                          thinkCol = rw
+                          rest = ''
+                        } else {
+                          let cut = maxContentWidth
+                          while (cut > 0 && visibleWidth(rest.slice(0, cut)) > maxContentWidth)
+                            cut--
+                          if (cut <= 0) cut = 1
+                          writeOut(rest.slice(0, cut), out)
+                          writeOut(`${RS}\n`, out)
+                          writeOut(`  ${GY}│${RS}${TH}`, out)
+                          rest = rest.slice(cut)
+                        }
+                      }
+                    }
+                    writeOut(`${RS}\n`, out)
+                    reasoningLineStart = true
+                    thinkCol = 0
+                  }
+                  remaining = remaining.slice(nlIdx + 1)
                 }
-                remaining = remaining.slice(nlIdx + 1)
               }
             }
           }
         }
         if (chunk.type === 'text' && chunk.text) {
           if (reasoningOutput) {
-            writeOut(`${RS}\n`, out)
-            writeOut(thinkBottomBorder(), out)
+            if (!out?.suppressToolOutput) {
+              writeOut(`${RS}\n`, out)
+              writeOut(thinkBottomBorder(), out)
+            }
             reasoningOutput = false
             reasoningLineStart = false
           }
@@ -554,8 +569,10 @@ export class Session {
 
       // Close reasoning display if still open (model ended with tool calls, no text)
       if (reasoningOutput) {
-        writeOut(`${RS}\n`, out)
-        writeOut(thinkBottomBorder(), out)
+        if (!out?.suppressToolOutput) {
+          writeOut(`${RS}\n`, out)
+          writeOut(thinkBottomBorder(), out)
+        }
         reasoningOutput = false
         reasoningLineStart = false
       }
@@ -629,7 +646,7 @@ export class Session {
         if (result.compressed) {
           this.messages = result.messages
           bus.emit(EventChannels.COMPACTION_TRIGGERED, { before, after: result.newCount })
-          if (out) {
+          if (out && !out.suppressToolOutput) {
             out.write(
               `\n  ${GY}┃${RS} ${GY}📦 Compressed context: ${before} → ${result.newCount} messages${RS}\n`,
             )

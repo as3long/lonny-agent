@@ -59,6 +59,11 @@ export function startSessionBridge(
     send({ type: 'turn_end', iterations: d.iterations, toolCallCount: d.toolCallCount })
   })
 
+  const unsubThinking = bus.on(EventChannels.THINKING, data => {
+    const d = data as { text: string }
+    send({ type: 'thinking', text: d.text })
+  })
+
   const unsubCompaction = bus.on(EventChannels.COMPACTION_TRIGGERED, data => {
     const d = data as { before: number; after: number }
     send({ type: 'compaction', before: d.before, after: d.after })
@@ -143,6 +148,7 @@ export function startSessionBridge(
       unsubToolResult()
       unsubToolError()
       unsubTurnEnd()
+      unsubThinking()
       unsubCompaction()
     },
     sendMessage: async (text: string) => {
