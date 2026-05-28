@@ -26,6 +26,8 @@ export class OpenAIProvider implements LLMProvider {
   private thinking?: boolean
   private reasoningEffort?: string
   private enableCache: boolean
+  /** Enable DeepSeek-style strict mode for tool definitions */
+  private strictTools: boolean
 
   constructor(
     apiKey: string,
@@ -34,12 +36,15 @@ export class OpenAIProvider implements LLMProvider {
     thinking?: boolean,
     reasoningEffort?: string,
     enableCache?: boolean,
+    strictTools?: boolean,
   ) {
     this.client = new OpenAI({ apiKey, baseURL })
     this.model = model || 'gpt-4o'
     this.thinking = thinking
     this.reasoningEffort = reasoningEffort
     this.enableCache = enableCache ?? false
+    // Auto-enable strict mode when using DeepSeek beta endpoint
+    this.strictTools = strictTools ?? (baseURL ? /beta/i.test(baseURL) : false)
   }
 
   async *chat(messages: LLMMessage[], tools: ToolDefinition[]): AsyncGenerator<LLMChunk> {
@@ -49,17 +54,25 @@ export class OpenAIProvider implements LLMProvider {
         const { required: _, ...rest } = param
         properties[key] = rest
       }
+
+      const required = Object.entries(t.parameters)
+        .filter(([, v]) => v.required)
+        .map(([k]) => k)
+
+      // In strict mode, all properties must be required
+      const strictRequired = this.strictTools ? Object.keys(t.parameters) : required
+
       return {
         type: 'function' as const,
         function: {
           name: t.name,
           description: t.description,
+          ...(this.strictTools ? { strict: true } : {}),
           parameters: {
             type: 'object',
             properties,
-            required: Object.entries(t.parameters)
-              .filter(([, v]) => v.required)
-              .map(([k]) => k),
+            required: strictRequired,
+            ...(this.strictTools ? { additionalProperties: false } : {}),
           },
         },
       }

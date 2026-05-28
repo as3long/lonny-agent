@@ -62,6 +62,9 @@ EXAMPLES:
     },
     async execute(input): Promise<ToolResult> {
       // ── Auto-correction: detect common misuse patterns ────────────────
+      // ── Debug: log raw input for diagnosing failures ─────────────
+      const rawInput = JSON.parse(JSON.stringify(input))
+
       // Pattern 0: input is an array (edits passed directly instead of wrapped)
       if (Array.isArray(input)) {
         input = { edits: input }
@@ -111,7 +114,7 @@ EXAMPLES:
           return {
             success: false,
             output: '',
-            error: `edit requires an "edits" array. Received keys: [${keys.join(', ')}].
+            error: `edit requires an "edits" array. Received: ${JSON.stringify(rawInput)}
 
 CORRECT USAGE:
   edit({ edits: [{ file_path: "src/file.ts", old_string: "old content", new_string: "new content" }] })
@@ -130,7 +133,11 @@ CREATE NEW FILE:
 
       const edits = input.edits as SingleEdit[]
       if (edits.length === 0) {
-        return { success: false, output: '', error: 'edits array is empty' }
+        return {
+          success: false,
+          output: '',
+          error: `edits array is empty. Received: ${JSON.stringify(rawInput)}`,
+        }
       }
 
       const fileGroups = new Map<string, { edits: SingleEdit[]; originalContent: string | null }>()
@@ -163,10 +170,15 @@ CREATE NEW FILE:
 
           if (e.old_string === '') {
             if (content !== null) {
-              results.push(`  FAIL ${relPath}: File already exists`)
+              const diag = JSON.stringify({
+                file_path: e.file_path,
+                old_string: '',
+                new_string: e.new_string,
+              })
+              results.push(`  FAIL ${relPath}: File already exists — ${diag}`)
               if (!anyFailed) {
                 anyFailed = true
-                firstError = `File already exists: ${relPath}`
+                firstError = `File already exists: ${relPath} — ${diag}`
               }
               break
             }
@@ -176,29 +188,44 @@ CREATE NEW FILE:
           }
 
           if (content === null) {
-            results.push(`  FAIL ${relPath}: File not found`)
+            const diag = JSON.stringify({
+              file_path: e.file_path,
+              old_string: e.old_string,
+              new_string: e.new_string,
+            })
+            results.push(`  FAIL ${relPath}: File not found — ${diag}`)
             if (!anyFailed) {
               anyFailed = true
-              firstError = `File not found: ${relPath}`
+              firstError = `File not found: ${relPath} — ${diag}`
             }
             break
           }
 
           const idx = content.indexOf(e.old_string)
           if (idx === -1) {
-            results.push(`  FAIL ${relPath}: old_string not found`)
+            const diag = JSON.stringify({
+              file_path: e.file_path,
+              old_string: e.old_string,
+              new_string: e.new_string,
+            })
+            results.push(`  FAIL ${relPath}: old_string not found — ${diag}`)
             if (!anyFailed) {
               anyFailed = true
-              firstError = `old_string not found in ${relPath}`
+              firstError = `old_string not found in ${relPath} — ${diag}`
             }
             break
           }
           const lastIdx = content.lastIndexOf(e.old_string)
           if (idx !== lastIdx) {
-            results.push(`  FAIL ${relPath}: old_string appears MULTIPLE times`)
+            const diag = JSON.stringify({
+              file_path: e.file_path,
+              old_string: e.old_string,
+              new_string: e.new_string,
+            })
+            results.push(`  FAIL ${relPath}: old_string appears MULTIPLE times — ${diag}`)
             if (!anyFailed) {
               anyFailed = true
-              firstError = `old_string appears MULTIPLE times in ${relPath}`
+              firstError = `old_string appears MULTIPLE times in ${relPath} — ${diag}`
             }
             break
           }
@@ -248,7 +275,7 @@ CREATE NEW FILE:
           return {
             success: false,
             output: '',
-            error: `Failed to write ${path.relative(cwd, resolved).replace(/\\/g, '/')}: ${fmtErr(err)}`,
+            error: `Failed to write ${path.relative(cwd, resolved).replace(/\\/g, '/')}: ${fmtErr(err)}. Input: ${JSON.stringify(rawInput)}`,
           }
         }
         applier.markRead(resolved)

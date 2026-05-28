@@ -13,6 +13,7 @@ export interface Config {
   thinking?: boolean
   reasoningEffort?: string
   enableCache?: boolean
+  strictTools?: boolean
   temperature?: number
   maxTokens?: number
   tavilyApiKey?: string
@@ -26,6 +27,7 @@ interface JsonConfig {
   thinking?: boolean
   reasoningEffort?: string
   enableCache?: boolean
+  strictTools?: boolean
   temperature?: number
   maxTokens?: number
   tavilyApiKey?: string
@@ -78,6 +80,7 @@ export function loadConfig(options: Partial<Config>): Config {
     thinking: options.thinking ?? jsonConfig.thinking,
     reasoningEffort: options.reasoningEffort || jsonConfig.reasoningEffort,
     enableCache,
+    strictTools: options.strictTools ?? jsonConfig.strictTools,
     temperature: options.temperature ?? jsonConfig.temperature,
     maxTokens: options.maxTokens ?? jsonConfig.maxTokens,
     tavilyApiKey: jsonConfig.tavilyApiKey,

@@ -255,6 +255,7 @@ export class Session {
         config.thinking,
         config.reasoningEffort,
         config.enableCache,
+        config.strictTools,
       )
     } else if (config.provider === 'google') {
       this.provider = new GoogleProvider(config.apiKey, config.baseUrl, config.model)
