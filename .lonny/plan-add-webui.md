@@ -77,3 +77,12 @@ lonny --web  →  HTTP 服务器 (Node.js http模块)
 - [x] 7. **修改 `src/index.ts`** — 添加 `--web` 模式分支，启动 Web 服务器
 - [x] 8. **修改 `package.json`** — 添加 `ws` 依赖
 - [x] 9. **更新 README.md** — 添加 Web UI 使用说明
+
+### Post-implementation fixes:
+- [x] 添加 THINKING_END 事件通道，修复 thinking 块关闭逻辑
+- [x] thinking 块插入到 message 内部（而非外部）
+- [x] thinking 块完成后保留在 DOM 中（标记为 done），不消失
+- [x] tool-call / tool-result 使用不同 CSS 类，视觉分离
+- [x] 每个 LLM 迭代触发独立的 TURN_START/TURN_END，工具调用分布到各自消息流中
+- [x] TOKEN_STATS 事件通道，token 统计同步到前端
+- [x] 斜杠命令提示面板（/mode /model /new /help）
