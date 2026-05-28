@@ -9,7 +9,9 @@
   const statusIndicator = document.getElementById('status-indicator')
   const modeDisplay = document.getElementById('mode-display')
   const modelDisplay = document.getElementById('model-display')
-  const tokenDisplay = document.getElementById('token-display')
+  const tokenIn = document.getElementById('token-in')
+  const tokenOut = document.getElementById('token-out')
+  const tokenCalls = document.getElementById('token-calls')
   const connectionOverlay = document.getElementById('connection-overlay')
   const chatContainer = document.getElementById('chat-container')
 
@@ -219,15 +221,16 @@
   }
 
   function addTokenStats(turnIn, turnOut, totalIn, totalOut, turnApi, totalApi) {
-    const total = totalIn + totalOut
     const div = document.createElement('div')
     div.className = 'token-stats-bar'
-    div.textContent = `▴${turnIn} ▾${turnOut}  total ${total}  calls ${turnApi}(${totalApi})`
+    div.textContent = `▴${turnIn} ▾${turnOut}  total ${totalIn + totalOut}  calls ${turnApi}(${totalApi})`
     messagesEl.appendChild(div)
     scrollToBottom()
 
     // Update status bar
-    tokenDisplay.textContent = `${total} tokens`
+    tokenIn.textContent = String(totalIn)
+    tokenOut.textContent = String(totalOut)
+    tokenCalls.textContent = `(${totalApi})`
   }
 
   function addErrorMessage(text) {
@@ -305,8 +308,9 @@
         modelDisplay.textContent = `${currentProvider}/${currentModel}`
         // Sync token stats from session
         if (msg.totalIn !== undefined) {
-          const total = (msg.totalIn || 0) + (msg.totalOut || 0)
-          tokenDisplay.textContent = `${total} tokens`
+          tokenIn.textContent = String(msg.totalIn || 0)
+          tokenOut.textContent = String(msg.totalOut || 0)
+          tokenCalls.textContent = `(${msg.totalApi || 0})`
         }
         break
 

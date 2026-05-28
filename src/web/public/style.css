@@ -75,7 +75,11 @@ html, body {
 }
 
 .model-name { color: var(--text-secondary); font-size: 12px; }
-.token-stats { color: var(--text-dim); font-size: 12px; }
+.token-stats { color: var(--text-dim); font-size: 12px; display: flex; align-items: center; gap: 2px; }
+.token-in { color: var(--accent-dim); }
+.token-out { color: var(--success); }
+.token-sep { color: var(--text-dim); margin: 0 1px; }
+.token-calls { color: var(--text-secondary); margin-left: 4px; }
 
 /* ── Chat Container ──────────────────────────────────────────── */
 #chat-container {
