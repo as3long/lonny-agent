@@ -195,7 +195,13 @@ body {
 }
 
 .message-body li {
-  margin: 0.1em 0;
+  margin: 0.05em 0;
+}
+
+/* Neutralize <p> inside <li> (marked wraps list items in <p> when there are blank lines) */
+.message-body li > p {
+  margin: 0;
+  display: inline;
 }
 
 .message-body blockquote {
@@ -338,7 +344,8 @@ body {
 .thinking-content :last-child { margin-bottom: 0; }
 .thinking-content p { margin: 0.2em 0; }
 .thinking-content ul, .thinking-content ol { margin: 0.2em 0; padding-left: 1.5em; }
-.thinking-content li { margin: 0.1em 0; }
+.thinking-content li { margin: 0.05em 0; }
+.thinking-content li > p { margin: 0; display: inline; }
 .thinking-content code {
   font-family: var(--font-mono);
   font-size: 0.9em;
