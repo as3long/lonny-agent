@@ -1,6 +1,7 @@
 {
   "name": "lonny-agent",
   "version": "0.1.0",
+  "license": "MIT",
   "description": "Per-call optimized coding agent with two-phase batch editing",
   "type": "module",
   "bin": {
