@@ -26,6 +26,7 @@ export function buildSystemPrompt(config: Config): string {
 - \`search\`: Search the web using Tavily (query: string, search_depth?: string, include_answer?: boolean, max_results?: number, topic?: string, days?: number)
 `
     }
+    const planOnly = mode === 'plan'
     return `Available tools:
 - \`read\`: Read file contents (paths: string[])
 - \`glob\`: Find files by glob pattern (pattern: string)
@@ -33,8 +34,7 @@ export function buildSystemPrompt(config: Config): string {
 - \`ls\`: List directory (path?: string)
 - \`bash\`: Execute a shell command
 - \`edit\`: Replace text in files — call with {"edits": [{"file_path", "old_string", "new_string"}]} (array required)
-- \`write_plan\`: Save plan markdown into .lonny/ folder (plan mode only)
-- \`install_skill\`: Install an npm package as a skill — fetches package info from npm, runs npm install, and creates a .lonny/skills/ file with usage instructions for the AI
+${planOnly ? '- `write_plan`: Save plan/todo markdown into .lonny/ folder\n' : ''}- \`install_skill\`: Install an npm package as a skill — fetches package info from npm, runs npm install, and creates a .lonny/skills/ file with usage instructions for the AI
 - \`find\`: Find files by name pattern (pattern: string, path?: string, maxResults?: number)
 - \`git\`: Run read-only git commands (command: string)
 - \`search\`: Search the web using Tavily (query: string, search_depth?: string, include_answer?: boolean, max_results?: number, topic?: string, days?: number)
@@ -61,9 +61,10 @@ RULES (plan-specific):
 1. Read first: Use read/grep/glob tools to gather all context you need before planning.
 2. You CANNOT edit source files — you have no code edit tools. Only read and analyze.
 3. Use \`bash\` for read-only commands only.
-4. ALWAYS persist the final plan to the \`.lonny/\` folder using \`write_plan\`.
+4. You MUST persist the final plan AND todo list to a file in \`.lonny/\` using \`write_plan\`. The \`write_plan\` content MUST include both ## Plan and ## Todo List sections.
+5. You MUST also include the todo list in your text response to the user (not just in the file).
 
-OUTPUT FORMAT (always respond in this structure once you have enough context):
+OUTPUT FORMAT (you MUST include both in write_plan AND in your response text):
 
 ## Plan
 A short, ordered description of the approach. Reference concrete files using \`path:line\` where helpful.
