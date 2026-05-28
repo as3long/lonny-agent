@@ -549,6 +549,18 @@
         updatePlansAndTodos()
         break
 
+      case 'balance_update':
+        if (msg.webBalance) {
+          balanceDisplay.textContent = '余额：' + msg.webBalance
+          balanceDisplay.style.display = ''
+          balanceSep.style.display = ''
+        } else if (msg.balance) {
+          balanceDisplay.textContent = '余额：' + msg.balance
+          balanceDisplay.style.display = ''
+          balanceSep.style.display = ''
+        }
+        break
+
       case 'token_stats':
         addTokenStats(msg.turnIn, msg.turnOut, msg.totalIn, msg.totalOut, msg.turnApi, msg.totalApi)
         break

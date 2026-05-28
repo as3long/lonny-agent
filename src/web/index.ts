@@ -98,6 +98,29 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
     // Track output to forward to WebSocket
     // Strip ANSI codes since they are meaningless in the browser
     let pendingConfirm: ((approved: boolean) => void) | null = null
+    let lastBalanceFetch = 0
+
+    // Fetch DeepSeek balance and send to client (if 5+ min since last fetch)
+    async function fetchAndSendBalance(): Promise<void> {
+      const now = Date.now()
+      if (now - lastBalanceFetch < 5 * 60 * 1000) return
+      if (!isDeepSeekOfficial(config.baseUrl) || !config.apiKey) return
+      try {
+        const balance = await fetchDeepSeekBalance(config.apiKey)
+        if (balance.isAvailable && balance.display) {
+          lastBalanceFetch = now
+          ws.send(
+            JSON.stringify({
+              type: 'balance_update',
+              balance: balance.display,
+              webBalance: balance.webDisplay,
+            }),
+          )
+        }
+      } catch {
+        // Silently ignore balance fetch errors
+      }
+    }
     const output: SessionOutput = {
       write: (text: string) => {
         const clean = stripAnsi(text)
@@ -254,6 +277,8 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
           // Send to session
           try {
             await sessionWithOutput.chat(text)
+            // Refresh balance after turn if 5+ min since last fetch
+            await fetchAndSendBalance()
             ws.send(JSON.stringify({ type: 'done', reason: 'stop' }))
           } catch (err) {
             const errMsg = fmtErr(err)
@@ -304,6 +329,7 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
       try {
         if (isDeepSeekOfficial(config.baseUrl) && config.apiKey) {
           const balance = await fetchDeepSeekBalance(config.apiKey)
+          lastBalanceFetch = Date.now()
           if (balance.isAvailable && balance.display) {
             balanceDisplay = balance.display
             webBalanceDisplay = balance.webDisplay
