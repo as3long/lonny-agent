@@ -675,7 +675,6 @@ export class Session {
     }
 
     saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens, this.turnApiCalls)
-    bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
     this.save()
   }
 }
