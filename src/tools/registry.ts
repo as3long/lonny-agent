@@ -123,21 +123,20 @@ export class ToolRegistry {
     this.register(globTool)
     this.register(createGrepTool(this.context.cwd))
     this.register(createLsTool(this.context.cwd))
-    this.register(bashTool)
     this.register(createFindTool(this.context.cwd))
-    this.register(createGitTool(this.context.cwd))
     this.register(fetchTool)
     this.register(searchTool)
-    this.register(createInstallSkillTool(this.context.cwd))
-    if (this.context.mode === 'code') {
-      this.register(createEditTool(this.context.applier, this.context.cwd))
-    } else {
-      this.register(createWritePlanTool(this.context.cwd, this.context.onPlanWritten))
-    }
 
-    // Register exec tool (only in code mode, where multi-step orchestration is useful)
     if (this.context.mode === 'code') {
+      // Code mode: full toolset including write operations
+      this.register(bashTool)
+      this.register(createGitTool(this.context.cwd))
+      this.register(createInstallSkillTool(this.context.cwd))
+      this.register(createEditTool(this.context.applier, this.context.cwd))
       this.registerExecTool()
+    } else {
+      // Plan mode: read-only investigation + write_plan
+      this.register(createWritePlanTool(this.context.cwd, this.context.onPlanWritten))
     }
   }
 
