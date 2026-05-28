@@ -10,7 +10,23 @@ import { fmtErr } from '../tools/errors.js'
 import { startSessionBridge, type WsMessage } from './session-bridge.js'
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
-const PUBLIC_DIR = path.resolve(__dirname, 'public')
+
+/**
+ * Find the public/ directory at runtime.
+ * - tsx dev mode: __dirname = src/web/, public/ is right there
+ * - built dist/ with copy:web: __dirname = dist/web/, public/ was copied alongside
+ * - built dist/ without copy: fallback to src/web/public/ relative to cwd
+ */
+function findPublicDir(): string {
+  const local = path.resolve(__dirname, 'public')
+  if (fs.existsSync(local)) return local
+  // Fallback: project root's src/web/public/ (for dist builds that skipped copy:web)
+  const fromCwd = path.resolve(process.cwd(), 'src', 'web', 'public')
+  if (fs.existsSync(fromCwd)) return fromCwd
+  return local // will fail with a clear ENOENT if neither exists
+}
+
+const PUBLIC_DIR = findPublicDir()
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
