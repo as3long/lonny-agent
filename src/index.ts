@@ -37,7 +37,7 @@ async function main() {
   }
 
   if (web) {
-    await startWebUi(config, port || 4096)
+    await startWebUi(config, port || 15090)
   } else if (prompt) {
     await runAgent(prompt, config)
   } else {
