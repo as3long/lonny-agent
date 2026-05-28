@@ -174,7 +174,14 @@
       thinkingEl.className = 'thinking-block'
       thinkingEl.innerHTML =
         '<div class="thinking-label">🤔 Think</div><div class="thinking-content"></div>'
-      messagesEl.appendChild(thinkingEl)
+      // Insert inside the streaming message (before .message-body) so it stays
+      // within the assistant message flow, not as a separate top-level element.
+      if (streamingMsgEl) {
+        const body = streamingMsgEl.querySelector('.message-body')
+        streamingMsgEl.insertBefore(thinkingEl, body)
+      } else {
+        messagesEl.appendChild(thinkingEl)
+      }
       thinkingText = ''
     }
     thinkingText += text
@@ -185,6 +192,7 @@
 
   function hideThinking() {
     if (thinkingEl) {
+      thinkingEl.remove()
       thinkingEl = null
       thinkingText = ''
     }
@@ -283,6 +291,10 @@
 
       case 'thinking':
         showThinking(msg.text || '')
+        break
+
+      case 'thinking_end':
+        hideThinking()
         break
 
       case 'tool_call':

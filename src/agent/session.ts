@@ -405,10 +405,10 @@ export class Session {
       for await (const chunk of stream) {
         if (chunk.reasoning_content) {
           reasoningContent = chunk.reasoning_content
-          // Emit thinking via EventBus for Web UI
-          bus.emit(EventChannels.THINKING, { text: chunk.reasoning_content })
           // Stream reasoning content in real-time (only when no text in same chunk)
           if (!chunk.text) {
+            // Emit thinking via EventBus for Web UI
+            bus.emit(EventChannels.THINKING, { text: chunk.reasoning_content })
             if (!reasoningOutput) {
               reasoningOutput = true
               reasoningLineStart = true
@@ -518,6 +518,7 @@ export class Session {
         }
         if (chunk.type === 'text' && chunk.text) {
           if (reasoningOutput) {
+            bus.emit(EventChannels.THINKING_END, {})
             if (!out?.suppressToolOutput) {
               writeOut(`${RS}\n`, out)
               writeOut(thinkBottomBorder(), out)
@@ -569,6 +570,7 @@ export class Session {
 
       // Close reasoning display if still open (model ended with tool calls, no text)
       if (reasoningOutput) {
+        bus.emit(EventChannels.THINKING_END, {})
         if (!out?.suppressToolOutput) {
           writeOut(`${RS}\n`, out)
           writeOut(thinkBottomBorder(), out)
