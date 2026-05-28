@@ -185,8 +185,6 @@ function extractEditPaths(input: Record<string, unknown>): string[] {
         paths.push(e.file_path as string)
       }
     }
-  } else if (typeof input.file_path === 'string') {
-    paths.push(input.file_path)
   }
   return paths
 }

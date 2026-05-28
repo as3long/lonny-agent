@@ -149,6 +149,7 @@ lonny 为 AI 模型提供了以下工具：
 | `git` | 执行只读 Git 操作 | code, plan |
 | `edit` | 编辑文件 | code |
 | `write_plan` | 编写计划文档 | plan |
+| `install_skill` | 安装 npm 包为技能 | code, plan |
 | `fetch` | 获取 URL 内容 | code, plan, ask |
 | `search` | 联网搜索（Tavily API） | code, plan, ask |
 

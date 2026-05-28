@@ -8,6 +8,7 @@ import { createFindTool } from './find.js'
 import { createGitTool } from './git.js'
 import { globTool } from './glob.js'
 import { createGrepTool } from './grep.js'
+import { createInstallSkillTool } from './install_skill.js'
 import { createLsTool } from './ls.js'
 import { createReadTool } from './read.js'
 import { searchTool } from './search.js'
@@ -62,6 +63,7 @@ export class ToolRegistry {
     this.register(createGitTool(this.context.cwd))
     this.register(fetchTool)
     this.register(searchTool)
+    this.register(createInstallSkillTool(this.context.cwd))
     if (this.context.mode === 'code') {
       this.register(createEditTool(this.context.applier, this.context.cwd))
     } else {

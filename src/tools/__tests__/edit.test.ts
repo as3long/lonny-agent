@@ -24,16 +24,13 @@ describe('edit tool', () => {
 
   describe('single edit mode', () => {
     beforeAll(() => {
-      // Reset a.txt to known state
       fs.writeFileSync(path.join(tmpDir, 'a.txt'), 'line one\nline two\nline three\n')
       fs.writeFileSync(path.join(tmpDir, 'dup.txt'), 'abc\ndef\nabc\n')
     })
 
     it('replaces an exact string', async () => {
       const r = await tool().execute({
-        file_path: 'a.txt',
-        old_string: 'line two',
-        new_string: 'line TWO',
+        edits: [{ file_path: 'a.txt', old_string: 'line two', new_string: 'line TWO' }],
       })
       expect(r.success).toBe(true)
       expect(fs.readFileSync(path.join(tmpDir, 'a.txt'), 'utf8')).toContain('line TWO')
@@ -41,9 +38,13 @@ describe('edit tool', () => {
 
     it('replaces multi-line string', async () => {
       const r = await tool().execute({
-        file_path: 'a.txt',
-        old_string: 'line one\nline TWO',
-        new_string: 'line 1\nline 2',
+        edits: [
+          {
+            file_path: 'a.txt',
+            old_string: 'line one\nline TWO',
+            new_string: 'line 1\nline 2',
+          },
+        ],
       })
       expect(r.success).toBe(true)
       const content = fs.readFileSync(path.join(tmpDir, 'a.txt'), 'utf8')
@@ -53,37 +54,29 @@ describe('edit tool', () => {
 
     it('reports old_string not found', async () => {
       const r = await tool().execute({
-        file_path: 'a.txt',
-        old_string: 'nonexistent',
-        new_string: 'x',
+        edits: [{ file_path: 'a.txt', old_string: 'nonexistent', new_string: 'x' }],
       })
       expect(r.success).toBe(false)
       expect(r.error).toContain('not found')
     })
 
     it('reports duplicate old_string', async () => {
-      const r = await tool().execute({ file_path: 'dup.txt', old_string: 'abc', new_string: 'xyz' })
+      const r = await tool().execute({
+        edits: [{ file_path: 'dup.txt', old_string: 'abc', new_string: 'xyz' }],
+      })
       expect(r.success).toBe(false)
       expect(r.error).toContain('MULTIPLE times')
     })
 
-    it('rejects missing file_path', async () => {
-      const r = await tool().execute({ old_string: 'x', new_string: 'y' })
+    it('rejects missing edits key', async () => {
+      const r = await tool().execute({ file_path: 'x', old_string: 'y', new_string: 'z' })
       expect(r.success).toBe(false)
-      expect(r.error).toContain('file_path is required')
-    })
-
-    it('rejects missing old_string', async () => {
-      const r = await tool().execute({ file_path: 'x', new_string: 'y' })
-      expect(r.success).toBe(false)
-      expect(r.error).toContain('old_string is required')
+      expect(r.error).toContain('edits')
     })
 
     it('reports file not found', async () => {
       const r = await tool().execute({
-        file_path: 'nonexistent.txt',
-        old_string: 'x',
-        new_string: 'y',
+        edits: [{ file_path: 'nonexistent.txt', old_string: 'x', new_string: 'y' }],
       })
       expect(r.success).toBe(false)
       expect(r.error).toContain('not found')
@@ -168,9 +161,13 @@ describe('edit tool', () => {
 
     it('creates a new file with empty old_string', async () => {
       const r = await tool().execute({
-        file_path: 'created-test/new.ts',
-        old_string: '',
-        new_string: 'const x = 1\nexport { x }',
+        edits: [
+          {
+            file_path: 'created-test/new.ts',
+            old_string: '',
+            new_string: 'const x = 1\nexport { x }',
+          },
+        ],
       })
       expect(r.success).toBe(true)
       const content = fs.readFileSync(path.join(createdDir(), 'new.ts'), 'utf8')
@@ -191,9 +188,13 @@ describe('edit tool', () => {
 
     it('rejects create when file already exists', async () => {
       const r = await tool().execute({
-        file_path: 'created-test/new.ts',
-        old_string: '',
-        new_string: 'x',
+        edits: [
+          {
+            file_path: 'created-test/new.ts',
+            old_string: '',
+            new_string: 'x',
+          },
+        ],
       })
       expect(r.success).toBe(false)
       expect(r.error).toContain('already exists')

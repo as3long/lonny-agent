@@ -200,8 +200,6 @@ function formatToolInput(tc: ToolCall): string {
     if (Array.isArray(tc.input.edits) && tc.input.edits.every(isSingleEditShape)) {
       const paths = tc.input.edits.map(e => e.file_path)
       parts.push(paths.join(', '))
-    } else if (typeof tc.input.file_path === 'string') {
-      parts.push(tc.input.file_path)
     }
   }
   return parts.join(' \u2502 ')

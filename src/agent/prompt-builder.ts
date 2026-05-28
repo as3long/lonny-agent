@@ -32,8 +32,9 @@ export function buildSystemPrompt(config: Config): string {
 - \`grep\`: Search file content by regex (pattern: string, include?: string, path?: string)
 - \`ls\`: List directory (path?: string)
 - \`bash\`: Execute a shell command
-- \`edit\`: Replace exact text in files — single (file_path+old_string+new_string) or batch (edits:[...])
+- \`edit\`: Replace exact text in files via \`edits: [{ file_path, old_string, new_string }, ...]\`
 - \`write_plan\`: Save plan markdown into .lonny/ folder (plan mode only)
+- \`install_skill\`: Install an npm package as a skill — fetches package info from npm, runs npm install, and creates a .lonny/skills/ file with usage instructions for the AI
 - \`find\`: Find files by name pattern (pattern: string, path?: string, maxResults?: number)
 - \`git\`: Run read-only git commands (command: string)
 - \`search\`: Search the web using Tavily (query: string, search_depth?: string, include_answer?: boolean, max_results?: number, topic?: string, days?: number)
@@ -91,14 +92,13 @@ RULES (ask-specific):
 
 RULES (code-specific):
 1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into \`edit\`.
-2. Use \`edit\` for file changes (single or batch via \`edits\` array). \`bash\` can also create and edit files, but \`edit\` is preferred for structured changes.
+2. Use \`edit\` for file changes via \`edits: [{ file_path, old_string, new_string }, ...]\`. \`bash\` can also create and edit files, but \`edit\` is preferred for structured changes.
 3. After making edits to a file, if you need to make ANOTHER edit to the SAME file, you MUST re-read it first to get the updated content.
 4. If \`edit\` reports \`old_string not found\`, do NOT retry with the same old_string — re-read the file immediately to see its actual current content, then retry with correctly-copied text.
 5. When copying old_string from \`read\` output, include 2-3 lines of context BEFORE and AFTER the target change to make the string unique in the file.
 6. On Windows, files may use CRLF (\\r\\n) line endings, but the \`edit\` tool normalizes them to LF (\\n). Always use \`\\n\` (not \`\\r\\n\`) in old_string/new_string.
-7. Prefer batch edits (\`edits: [...]\`) over single edits when modifying multiple spots in the same file — the tool processes them in reverse order so positions stay valid.
-8. COST OPTIMIZATION (CRITICAL): Each API call costs money. You have a hard limit of ~5 API calls per task.
-9. TODO LIST MAINTENANCE: After completing a task item, update the corresponding plan file in \`.lonny/\` by checking off the TODO item (change \`- [ ]\` to \`- [x]\`). Use \`read\` to find the plan file, then \`edit\` to update the checkbox.`
+7. COST OPTIMIZATION (CRITICAL): Each API call costs money. You have a hard limit of ~5 API calls per task.
+8. TODO LIST MAINTENANCE: After completing a task item, update the corresponding plan file in \`.lonny/\` by checking off the TODO item (change \`- [ ]\` to \`- [x]\`). Use \`read\` to find the plan file, then \`edit\` to update the checkbox.`
 
   // ── Environment section (dynamic content — put LAST for prefix caching) ──
   const envSection = `Environment:
