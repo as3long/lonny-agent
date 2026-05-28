@@ -42,6 +42,7 @@ EXAMPLES:
           type: 'array',
           description:
             'Array of edits. Each entry: { file_path, old_string, new_string }. Use this for ALL edits — single or batch.',
+          required: true,
           items: {
             type: 'object',
             properties: {
@@ -60,12 +61,70 @@ EXAMPLES:
       },
     },
     async execute(input): Promise<ToolResult> {
+      // ── Auto-correction: detect common misuse patterns ────────────────
+      // Pattern 0: input is an array (edits passed directly instead of wrapped)
+      if (Array.isArray(input)) {
+        input = { edits: input }
+      }
+
+      // Pattern 1: input has file_path, old_string, new_string at top level (missing edits array)
       if (!Array.isArray(input.edits)) {
         const keys = Object.keys(input)
-        return {
-          success: false,
-          output: '',
-          error: `edit requires an "edits" array. Received keys: [${keys.join(', ')}]. Usage: edit({ edits: [{ file_path, old_string, new_string }, ...] })`,
+
+        // Check if the keys look like a single edit object (file_path + old_string + new_string)
+        const hasFilePath = typeof input.file_path === 'string'
+        const hasOldString = typeof input.old_string === 'string'
+        const hasNewString = typeof input.new_string === 'string'
+
+        if (hasFilePath && hasOldString && hasNewString) {
+          // Auto-correct: wrap into edits array
+          input = {
+            edits: [
+              {
+                file_path: input.file_path,
+                old_string: input.old_string,
+                new_string: input.new_string,
+              },
+            ],
+          }
+        } else if (hasFilePath && hasOldString) {
+          // Only file_path + old_string (missing new_string) — still try
+          input = {
+            edits: [
+              {
+                file_path: input.file_path,
+                old_string: input.old_string,
+                new_string: input.new_string || '',
+              },
+            ],
+          }
+        } else if (keys.length === 1 && hasFilePath) {
+          // Only file_path — maybe they meant create file with empty content?
+          input = { edits: [{ file_path: input.file_path, old_string: '', new_string: '' }] }
+        } else if (keys.length === 2 && hasFilePath && typeof input.new_string === 'string') {
+          // file_path + new_string but no old_string — treat as new file creation
+          input = {
+            edits: [{ file_path: input.file_path, old_string: '', new_string: input.new_string }],
+          }
+        } else {
+          // Can't auto-correct — give helpful error with examples
+          return {
+            success: false,
+            output: '',
+            error: `edit requires an "edits" array. Received keys: [${keys.join(', ')}].
+
+CORRECT USAGE:
+  edit({ edits: [{ file_path: "src/file.ts", old_string: "old content", new_string: "new content" }] })
+
+BATCH EDITS:
+  edit({ edits: [
+    { file_path: "src/a.ts", old_string: "foo", new_string: "bar" },
+    { file_path: "src/b.ts", old_string: "x", new_string: "y" },
+  ] })
+
+CREATE NEW FILE:
+  edit({ edits: [{ file_path: "src/new.ts", old_string: "", new_string: "const x = 1" }] })`,
+          }
         }
       }
 
