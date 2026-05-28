@@ -5,6 +5,7 @@ import { runAgent } from './agent/index.js'
 import { parseArgs } from './cli/index.js'
 import { fmtErr } from './tools/errors.js'
 import { startTui } from './tui/index.js'
+import { startWebUi } from './web/index.js'
 
 const RE = '\x1b[31m'
 const RS = '\x1b[0m'
@@ -26,7 +27,7 @@ function tryEnableUtf8(): void {
 
 async function main() {
   tryEnableUtf8()
-  const { config, prompt } = parseArgs(process.argv)
+  const { config, prompt, web, port } = parseArgs(process.argv)
 
   if (!config.apiKey) {
     console.error(
@@ -35,7 +36,9 @@ async function main() {
     process.exit(1)
   }
 
-  if (prompt) {
+  if (web) {
+    await startWebUi(config, port || 4096)
+  } else if (prompt) {
     await runAgent(prompt, config)
   } else {
     await startTui(config)

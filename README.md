@@ -22,6 +22,7 @@
 - **美观的 TUI**：像素字体 Logo、状态栏（cwd + 模式 + token 统计 + 模型）、Todo 侧边栏、实时加载动画
 - **DeepSeek 余额查询**：自动查询 DeepSeek 账户余额并显示在状态栏
 - **事件总线**：内部事件系统，支持 TUI 实时更新工具调用状态
+- **Web UI**：通过浏览器访问的 Web 聊天界面，支持流式输出、工具调用可视化和模式切换
 - **代码质量管道**：内置 Biome 检查、Husky Git hooks、lint-staged 自动格式化
 
 ## 快速开始
@@ -78,6 +79,12 @@ lonny --mode plan
 
 # ask 模式
 lonny --mode ask -p "什么是 Rust 的所有权系统？"
+
+# Web UI 模式（浏览器访问 http://localhost:4096）
+lonny --web
+
+# 指定 Web UI 端口
+lonny --web --port 8080
 ```
 
 ## 命令行参数
@@ -95,6 +102,8 @@ lonny --mode ask -p "什么是 Rust 的所有权系统？"
 | `--reasoning-effort <level>` | 推理强度（仅 OpenAI）：`low`、`medium`、`high` |
 | `--temperature <num>` | 生成温度（0-2），默认 0.3（code）/ 0（plan/ask） |
 | `--max-tokens <num>` | 最大输出 token 数 |
+| `--web` | 启动 Web UI 模式（通过浏览器访问） |
+| `--port <num>` | Web UI 端口号（默认：4096） |
 
 ### 环境变量
 
@@ -108,6 +117,46 @@ lonny --mode ask -p "什么是 Rust 的所有权系统？"
 ### DeepSeek 缓存支持
 
 当使用 DeepSeek 模型时（模型名或 base URL 包含 `deepseek`），lonny 会自动启用 `enable_cache` 以利用 DeepSeek 的缓存功能，降低 API 调用成本。
+
+## Web UI 使用指南
+
+Lonny 提供了基于 WebSocket 的 Web 聊天界面，支持所有核心功能。
+
+### 启动
+
+```bash
+# 启动 Web UI（默认端口 4096）
+lonny --web
+
+# 指定端口
+lonny --web --port 8080
+```
+
+然后在浏览器中打开 `http://localhost:4096`。
+
+### 功能
+
+- **流式输出**：实时显示 AI 回复，逐字符流式渲染
+- **工具调用可视化**：显示正在调用的工具及其结果
+- **思考过程展示**：支持 Anthropic/OpenAI 推理模型的思考过程实时展示
+- **模式切换**：通过 `/mode code|plan|ask` 切换模式
+- **模型切换**：通过 `/model <name>` 切换模型
+- **新会话**：通过 `/new` 开始新会话
+- **自动重连**：连接断开后自动重连（最多尝试 10 次）
+- **心跳保活**：每 30 秒发送心跳保持连接
+
+### WebSocket 消息协议
+
+前后端通过 WebSocket 通信，消息格式为 JSON：
+
+```
+客户端 → 服务器: { type: "message", text: "..." }
+服务器 → 客户端: { type: "chunk", text: "..." }
+服务器 → 客户端: { type: "tool_call", name: "...", input: {...} }
+服务器 → 客户端: { type: "tool_result", name: "...", success: true/false, output: "..." }
+服务器 → 客户端: { type: "thinking", text: "..." }
+服务器 → 客户端: { type: "done", reason: "stop" | "error" }
+```
 
 ## TUI 使用指南
 

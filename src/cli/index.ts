@@ -1,6 +1,13 @@
 import { type Config, loadConfig } from '../config/index.js'
 
-export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
+export interface CliOptions {
+  config: Config
+  prompt?: string
+  web?: boolean
+  port?: number
+}
+
+export function parseArgs(argv: string[]): CliOptions {
   const args = argv.slice(2)
   let prompt: string | undefined
   let apiKey: string | undefined
@@ -13,6 +20,8 @@ export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
   let mode: 'code' | 'plan' | 'ask' | undefined
   let temperature: number | undefined
   let maxTokens: number | undefined
+  let web = false
+  let port: number | undefined
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
@@ -38,6 +47,10 @@ export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
       temperature = parseFloat(args[++i])
     } else if (arg === '--max-tokens') {
       maxTokens = parseInt(args[++i], 10)
+    } else if (arg === '--web') {
+      web = true
+    } else if (arg === '--port') {
+      port = parseInt(args[++i], 10)
     }
   }
 
@@ -58,5 +71,5 @@ export function parseArgs(argv: string[]): { config: Config; prompt?: string } {
     maxTokens,
   })
 
-  return { config, prompt }
+  return { config, prompt, web, port }
 }

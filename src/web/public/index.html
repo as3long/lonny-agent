@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lonny - AI 编码代理</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Status Bar -->
+  <header id="status-bar">
+    <div class="status-left">
+      <span class="logo">lonny</span>
+      <span class="separator">|</span>
+      <span id="status-indicator" class="status-idle">○ idle</span>
+      <span class="separator">|</span>
+      <span id="mode-display" class="mode-badge">code</span>
+    </div>
+    <div class="status-right">
+      <span id="model-display" class="model-name">loading...</span>
+      <span class="separator">|</span>
+      <span id="token-display" class="token-stats">0</span>
+    </div>
+  </header>
+
+  <!-- Chat Container -->
+  <main id="chat-container">
+    <div id="messages">
+      <!-- Messages will be rendered here -->
+    </div>
+  </main>
+
+  <!-- Input Area -->
+  <footer id="input-area">
+    <div class="input-wrapper">
+      <textarea id="chat-input" rows="3" placeholder="Type a message... (use /help for commands)"></textarea>
+      <button id="send-btn" title="Send">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/>
+        </svg>
+      </button>
+    </div>
+  </footer>
+
+  <!-- Connection status overlay -->
+  <div id="connection-overlay" class="overlay hidden">
+    <div class="overlay-content">
+      <div class="spinner"></div>
+      <p>Connecting to Lonny...</p>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
