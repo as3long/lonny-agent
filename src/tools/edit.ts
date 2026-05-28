@@ -14,34 +14,33 @@ export function createEditTool(applier: FileReadTracker, cwd: string): Tool {
   return {
     definition: {
       name: 'edit',
-      description: `Replace exact blocks of text in one or more files. Always uses batch mode via the \`edits\` array.
+      description: `Replace exact text in files. Parameter is {"edits": [{"file_path": "...", "old_string": "...", "new_string": "..."}]}.
 
 HOW TO USE:
-1. Read each file with \`read\` first
-2. Copy the EXACT text you want to replace — include 2-3 lines of context BEFORE and AFTER for uniqueness
-3. Call edit with \`edits: [{ file_path, old_string, new_string }, ...]\`
+1. Read the file first with \`read\`
+2. Copy the EXACT text to replace — include 2-3 lines of context before/after
+3. Call: edit({ edits: [{ file_path, old_string, new_string }] })
 
 RULES:
-- old_string must match the file EXACTLY (whitespace, indentation, everything)
-- old_string must be UNIQUE in the file — include enough surrounding context
+- old_string must match EXACTLY (whitespace, indentation, line breaks)
+- old_string must be UNIQUE — include enough surrounding context
 - Do NOT include the "<lineNumber>: " prefix from read output
-- old_string can span multiple lines (include surrounding lines for uniqueness)
+- CRITICAL: \`edits\` is always an array. Never pass file_path/old_string/new_string as top-level keys.
 
 EXAMPLES:
-  edits: [
-    { file_path: "src/config.ts", old_string: "mode: 'code'", new_string: "mode: 'plan'" },
-    { file_path: "src/cli/index.ts", old_string: "let mode: string", new_string: "let mode: 'code' | 'plan'" }
-  ]
+  edit({ edits: [{ file_path: "src/config.ts", old_string: "mode: 'code'", new_string: "mode: 'plan'" }] })
 
-  Create a new file (pass empty string for old_string):
-  edits: [
-    { file_path: "src/new.ts", old_string: "", new_string: "const x = 1\\nexport { x }" }
-  ]`,
+  edit({ edits: [
+    { file_path: "src/a.ts", old_string: "foo", new_string: "bar" },
+    { file_path: "src/b.ts", old_string: "x", new_string: "y" }
+  ] })
+
+  edit({ edits: [{ file_path: "src/new.ts", old_string: "", new_string: "const x = 1" }] })`,
       parameters: {
         edits: {
           type: 'array',
           description:
-            'Array of edits. Each entry: { file_path, old_string, new_string }. Use this for ALL edits — single or batch.',
+            'REQUIRED. Array of edits. ALWAYS an array. Example: [{ file_path: "src/file.ts", old_string: "old", new_string: "new" }]',
           required: true,
           items: {
             type: 'object',
