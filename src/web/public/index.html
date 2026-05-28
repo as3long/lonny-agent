@@ -96,6 +96,18 @@
     </div>
   </div>
 
+  <!-- Tool confirm dialog -->
+  <div id="confirm-overlay" class="overlay hidden">
+    <div class="confirm-dialog">
+      <div class="confirm-header">Allow these tool calls?</div>
+      <div id="confirm-tool-list" class="confirm-tool-list"></div>
+      <div class="confirm-actions">
+        <button id="confirm-reject-btn" class="confirm-btn confirm-btn-reject">Reject</button>
+        <button id="confirm-allow-btn" class="confirm-btn confirm-btn-allow">Allow</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.4/marked.min.js"></script>
   <script src="/app.js"></script>
 </body>

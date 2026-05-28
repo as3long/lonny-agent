@@ -572,6 +572,103 @@ body {
   cursor: not-allowed;
 }
 
+/* ── Tool Running State ──────────────────────────────────────── */
+.tool-call.executing .tool-name {
+  color: var(--warning);
+}
+.tool-call.executing .tool-name::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  border: 2px solid var(--warning);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+}
+
+/* ── Confirm Dialog ──────────────────────────────────────────── */
+.confirm-dialog {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 360px;
+  max-width: 480px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+
+.confirm-header {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.confirm-tool-list {
+  margin-bottom: 16px;
+}
+
+.confirm-tool-item {
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.confirm-tool-item .confirm-tool-name {
+  color: var(--accent-dim);
+  font-weight: 600;
+}
+
+.confirm-tool-item .confirm-tool-input {
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.confirm-btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 6px;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.confirm-btn-allow {
+  background: var(--success);
+  color: white;
+}
+
+.confirm-btn-allow:hover {
+  opacity: 0.85;
+}
+
+.confirm-btn-reject {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.confirm-btn-reject:hover {
+  background: rgba(255,255,255,0.06);
+  color: var(--text-primary);
+}
+
 /* ── Connection Overlay ──────────────────────────────────────── */
 .overlay {
   position: fixed;

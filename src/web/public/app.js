@@ -43,6 +43,8 @@
   let todos = []
   const MAX_RECONNECT_ATTEMPTS = 10
   const RECONNECT_DELAY = 2000
+  const pendingToolCalls = new Map() // id -> tool-call element
+  let pendingConfirmResolve = null // for confirm dialog
 
   // ── Utility Functions ──
 
@@ -250,28 +252,38 @@
     scrollToBottom()
   }
 
-  function addToolCall(name, input) {
-    // Find the current streaming message, or the last assistant message
+  function addToolCall(name, input, id) {
     const container = streamingMsgEl || messagesEl.querySelector('.message:last-child')
     const div = document.createElement('div')
-    div.className = 'tool-call'
+    div.className = 'tool-call executing'
+    div.dataset.toolId = id || ''
     const inputStr = typeof input === 'object' ? JSON.stringify(input).slice(0, 120) : String(input)
-    div.innerHTML = `<span class="tool-name">◇ ${escapeHtml(name)}</span> <span class="tool-input">${escapeHtml(inputStr)}</span>`
+    div.innerHTML = `<span class="tool-name">${escapeHtml(name)}</span> <span class="tool-input">${escapeHtml(inputStr)}</span>`
     if (container && container.matches('.message')) {
       container.appendChild(div)
     } else {
       messagesEl.appendChild(div)
     }
+    if (id) pendingToolCalls.set(id, div)
     scrollToBottom()
   }
 
-  function addToolResult(name, success, outputOrError) {
-    // Find the current streaming message, or the last assistant message
+  function addToolResult(name, success, outputOrError, id) {
+    // Remove from pending tracking and clear executing state
+    if (id) {
+      const pendingEl = pendingToolCalls.get(id)
+      if (pendingEl) {
+        pendingEl.classList.remove('executing')
+        pendingToolCalls.delete(id)
+      }
+    }
     const container = streamingMsgEl || messagesEl.querySelector('.message:last-child')
     const div = document.createElement('div')
     div.className = 'tool-result'
     if (success) {
-      const summary = typeof outputOrError === 'string' ? outputOrError.slice(0, 80) : ''
+      let display = outputOrError
+      if (display === '(no output)') display = ''
+      const summary = typeof display === 'string' ? display.slice(0, 80) : ''
       div.innerHTML = `<span class="tool-result-success">✔ ${escapeHtml(name)}</span>${summary ? ' ' + escapeHtml(summary) : ''}`
     } else {
       div.innerHTML = `<span class="tool-result-error">✖ ${escapeHtml(name)}</span> ${escapeHtml(outputOrError)}`
@@ -282,6 +294,65 @@
       messagesEl.appendChild(div)
     }
     scrollToBottom()
+  }
+
+  function showConfirmDialog(toolCalls) {
+    const overlay = document.getElementById('confirm-overlay')
+    const list = document.getElementById('confirm-tool-list')
+    if (!overlay || !list) return
+    list.innerHTML = ''
+    for (const tc of toolCalls) {
+      const detail = tc.input?.file_path || tc.input?.command || tc.input?.package_name || ''
+      const item = document.createElement('div')
+      item.className = 'confirm-tool-item'
+      item.innerHTML =
+        `<span class="confirm-tool-name">${escapeHtml(tc.name)}</span>` +
+        (detail
+          ? ` <span class="confirm-tool-input">${escapeHtml(detail.length > 80 ? detail.slice(0, 80) + '…' : detail)}</span>`
+          : '')
+      list.appendChild(item)
+    }
+    overlay.classList.remove('hidden')
+
+    pendingConfirmResolve = null
+
+    function cleanup(approved) {
+      overlay.classList.add('hidden')
+      allowBtn.removeEventListener('click', onAllow)
+      rejectBtn.removeEventListener('click', onReject)
+      if (pendingConfirmResolve) {
+        pendingConfirmResolve(approved)
+        pendingConfirmResolve = null
+      }
+    }
+
+    const allowBtn = document.getElementById('confirm-allow-btn')
+    const rejectBtn = document.getElementById('confirm-reject-btn')
+    const onAllow = () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'tool_confirm_response', approved: true }))
+      }
+      cleanup(true)
+    }
+    const onReject = () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'tool_confirm_response', approved: false }))
+      }
+      cleanup(false)
+    }
+    allowBtn.addEventListener('click', onAllow)
+    rejectBtn.addEventListener('click', onReject)
+  }
+
+  function closeConfirmDialog() {
+    const overlay = document.getElementById('confirm-overlay')
+    if (overlay && !overlay.classList.contains('hidden')) {
+      overlay.classList.add('hidden')
+      if (pendingConfirmResolve) {
+        pendingConfirmResolve(false)
+        pendingConfirmResolve = null
+      }
+    }
   }
 
   function showThinking(text) {
@@ -403,6 +474,9 @@
     ws.onclose = () => {
       setStatus(false)
       hideThinking()
+      // Clear any pending tool call spinners on disconnect
+      for (const [, el] of pendingToolCalls) el.classList.remove('executing')
+      pendingToolCalls.clear()
       if (streamingMsgEl) {
         finalizeAssistantMessage()
       }
@@ -471,18 +545,15 @@
         break
 
       case 'tool_call':
-        // Append tool call inline with the current assistant message
-        addToolCall(msg.name, msg.input)
+        addToolCall(msg.name, msg.input, msg.id)
         break
 
       case 'tool_result':
         if (msg.success) {
-          addToolResult(msg.name, true, msg.output || '')
+          addToolResult(msg.name, true, msg.output || '', msg.id)
         } else {
-          addToolResult(msg.name, false, msg.error || 'Unknown error')
+          addToolResult(msg.name, false, msg.error || 'Unknown error', msg.id)
         }
-        // After a tool result, the next text chunk should continue in the
-        // existing assistant message (don't start a new one)
         break
 
       case 'turn_start':
@@ -493,13 +564,18 @@
 
       case 'turn_end':
         hideThinking()
-        // Finalize the current message so the next turn starts a fresh one
+        // Clear any remaining pending tool call spinners
+        for (const [, el] of pendingToolCalls) el.classList.remove('executing')
+        pendingToolCalls.clear()
         finalizeAssistantMessage()
         break
 
       case 'done':
         setStatus(false)
         hideThinking()
+        // Clear any remaining pending tool call spinners
+        for (const [, el] of pendingToolCalls) el.classList.remove('executing')
+        pendingToolCalls.clear()
         finalizeAssistantMessage()
         if (msg.reason === 'error') {
           addErrorMessage('An error occurred during processing.')
@@ -567,31 +643,29 @@
 
       case 'tool_confirm_request': {
         if (!msg.toolCalls || msg.toolCalls.length === 0) break
-        let confirmText = 'Allow these tool calls?'
-        for (const tc of msg.toolCalls) {
-          const detail = tc.input?.file_path || tc.input?.command || tc.input?.package_name || ''
-          confirmText += `\n  • ${tc.name}${detail ? ' ' + JSON.stringify(detail) : ''}`
-        }
-        addSystemMessage(confirmText)
-        const approved = window.confirm(confirmText)
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'tool_confirm_response', approved }))
-        }
+        showConfirmDialog(msg.toolCalls)
         break
       }
 
       case 'error':
+        closeConfirmDialog()
         addErrorMessage(msg.message || 'Unknown error')
         break
 
       case 'pong':
-        // Heartbeat response, ignore
         break
 
       default:
         console.log('Unknown message type:', msg.type)
     }
   }
+
+  // ── Confirm dialog: click overlay background to close ──
+  document.getElementById('confirm-overlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) {
+      closeConfirmDialog()
+    }
+  })
 
   // ── Send Message ──
 

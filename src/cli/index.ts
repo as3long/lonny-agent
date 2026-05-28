@@ -19,7 +19,7 @@ export async function parseArgs(argv: string[]): Promise<CliOptions> {
   }
 
   let prompt: string | undefined
-  let autoApprove = false
+  let autoApprove: boolean | undefined
   let mode: 'code' | 'plan' | 'ask' | undefined
   let web = false
   let port: number | undefined
