@@ -177,22 +177,23 @@ body {
   50% { opacity: 0; }
 }
 
-/* ── Tool Calls ──────────────────────────────────────────────── */
-.tool-call {
-  margin: 4px 0 4px 12px;
-  padding: 4px 8px;
+/* ── Tool Calls & Results ───────────────────────────────────── */
+.tool-call,
+.tool-result {
+  margin: 2px 0 2px 12px;
+  padding: 3px 8px;
   border-left: 2px solid var(--border);
   font-size: 13px;
   font-family: var(--font-mono);
   color: var(--text-secondary);
+  line-height: 1.5;
 }
 
-.tool-call .tool-name {
-  color: var(--accent-dim);
-}
+.tool-call .tool-name { color: var(--accent-dim); }
+.tool-call .tool-input { color: var(--text-dim); }
 
-.tool-call .tool-success { color: var(--success); }
-.tool-call .tool-error { color: var(--error); }
+.tool-result .tool-result-success { color: var(--success); }
+.tool-result .tool-result-error { color: var(--error); }
 
 /* ── Thinking Block ──────────────────────────────────────────── */
 .thinking-block {
@@ -212,6 +213,15 @@ body {
   font-weight: 600;
   text-transform: uppercase;
   margin-bottom: 2px;
+}
+
+.thinking-block.thinking-done {
+  opacity: 0.7;
+  border-left-color: var(--text-dim);
+}
+
+.thinking-block.thinking-done .thinking-label {
+  color: var(--text-dim);
 }
 
 /* ── Token Stats ─────────────────────────────────────────────── */

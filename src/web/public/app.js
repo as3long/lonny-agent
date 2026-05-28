@@ -140,7 +140,7 @@
     const div = document.createElement('div')
     div.className = 'tool-call'
     const inputStr = typeof input === 'object' ? JSON.stringify(input).slice(0, 120) : String(input)
-    div.innerHTML = `<span class="tool-name">◇ ${escapeHtml(name)}</span> ${escapeHtml(inputStr)}`
+    div.innerHTML = `<span class="tool-name">◇ ${escapeHtml(name)}</span> <span class="tool-input">${escapeHtml(inputStr)}</span>`
     if (container && container.matches('.message')) {
       container.appendChild(div)
     } else {
@@ -153,12 +153,12 @@
     // Find the current streaming message, or the last assistant message
     const container = streamingMsgEl || messagesEl.querySelector('.message:last-child')
     const div = document.createElement('div')
-    div.className = 'tool-call'
+    div.className = 'tool-result'
     if (success) {
       const summary = typeof outputOrError === 'string' ? outputOrError.slice(0, 80) : ''
-      div.innerHTML = `<span class="tool-success">✔ ${escapeHtml(name)}</span> ${escapeHtml(summary)}`
+      div.innerHTML = `<span class="tool-result-success">✔ ${escapeHtml(name)}</span>${summary ? ' ' + escapeHtml(summary) : ''}`
     } else {
-      div.innerHTML = `<span class="tool-error">✖ ${escapeHtml(name)}</span> ${escapeHtml(outputOrError)}`
+      div.innerHTML = `<span class="tool-result-error">✖ ${escapeHtml(name)}</span> ${escapeHtml(outputOrError)}`
     }
     if (container && container.matches('.message')) {
       container.appendChild(div)
@@ -192,7 +192,10 @@
 
   function hideThinking() {
     if (thinkingEl) {
-      thinkingEl.remove()
+      // Don't remove — keep the thinking content visible in the message flow.
+      // Just mark it as finalized and clear the reference so new thinking
+      // blocks can be created for subsequent turns.
+      thinkingEl.classList.add('thinking-done')
       thinkingEl = null
       thinkingText = ''
     }
