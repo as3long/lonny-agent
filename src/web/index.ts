@@ -130,13 +130,17 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
     sessionWithOutput.totalOutputTokens = session.totalOutputTokens
     sessionWithOutput.totalApiCalls = session.totalApiCalls
 
-    // Helper: read todos from plan file
-    function loadPlanTodos(plans: PlanEntry[]): {
+    // Helper: read todos from a specific plan file (or first plan if no name given)
+    function loadPlanTodos(
+      plans: PlanEntry[],
+      planName?: string,
+    ): {
       name: string
       todos: { text: string; done: boolean }[]
     } {
       if (plans.length === 0) return { name: '', todos: [] }
-      const plan = plans[0]
+      const plan = planName ? plans.find(p => p.name === planName) : plans[0]
+      if (!plan) return { name: planName || '', todos: [] }
       const todos: { text: string; done: boolean }[] = []
       try {
         const content = fs.readFileSync(plan.fullPath, 'utf-8')
@@ -256,6 +260,18 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
             ws.send(JSON.stringify({ type: 'error', message: errMsg }))
             ws.send(JSON.stringify({ type: 'done', reason: 'error' }))
           }
+        } else if (msg.type === 'load_plan') {
+          const planName = String(msg.planName || '')
+          const planEntries = listPlans(config.cwd)
+          const { name, todos } = loadPlanTodos(planEntries, planName)
+          ws.send(
+            JSON.stringify({
+              type: 'plan_data',
+              plans: planEntries.map(p => ({ name: p.name, mtime: p.mtime })),
+              currentPlanName: name,
+              todos,
+            }),
+          )
         } else if (msg.type === 'tool_confirm_response') {
           if (pendingConfirm) {
             pendingConfirm(msg.approved === true)

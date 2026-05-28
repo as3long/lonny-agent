@@ -122,7 +122,9 @@
           ' ' +
           new Date(plan.mtime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         : ''
+      div.dataset.planName = plan.name
       div.innerHTML = `<div class="plan-name">${escapeHtml(plan.name)}</div><div class="plan-time">${escapeHtml(timeStr)}</div>`
+      div.addEventListener('click', () => onPlanClick(plan.name))
       plansList.appendChild(div)
     }
   }
@@ -155,6 +157,15 @@
         `<span class="todo-text ${done ? 'done' : ''}">${escapeHtml(todo.text)}</span>`
       todosList.appendChild(div)
     }
+  }
+
+  function onPlanClick(planName) {
+    // Send load_plan message to server
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'load_plan', planName }))
+    }
+    // Switch to the Todo tab
+    switchTab('todos')
   }
 
   function updatePlansAndTodos() {
