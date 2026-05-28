@@ -214,6 +214,17 @@ export class ToolRegistry {
     return this.tools.has(name)
   }
 
+  /** Re-register write_plan tool with an updated callback */
+  reRegisterWritePlan(cwd: string, cb?: (display: string) => void): void {
+    this.tools.delete('write_plan')
+    this.tools.set('write_plan', createWritePlanTool(cwd, cb))
+  }
+
+  /** Partially update the context (used by session.onPlanWritten setter) */
+  updateContext(partial: Partial<ToolContext>): void {
+    Object.assign(this.context, partial)
+  }
+
   /** List all registered tool names */
   listTools(): string[] {
     return Array.from(this.tools.keys())

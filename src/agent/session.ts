@@ -238,7 +238,20 @@ export class Session {
   applier: FileReadTracker
   config: Config
   output?: SessionOutput
-  onPlanWritten?: (display: string) => void
+  private _onPlanWritten?: (display: string) => void
+  /** Set the plan-written callback and propagate to ToolRegistry */
+  set onPlanWritten(cb: ((display: string) => void) | undefined) {
+    this._onPlanWritten = cb
+    // Update context so setMode() picks it up too
+    this.registry.updateContext({ onPlanWritten: cb })
+    // Re-register write_plan tool with the new callback
+    if (this.registry.has('write_plan')) {
+      this.registry.reRegisterWritePlan(this.config.cwd, cb)
+    }
+  }
+  get onPlanWritten(): ((display: string) => void) | undefined {
+    return this._onPlanWritten
+  }
   totalInputTokens: number = 0
   totalOutputTokens: number = 0
   turnInputTokens: number = 0
