@@ -113,11 +113,12 @@ export function compact(
   // Build a summary of the older conversation
   const summary = buildSummary(toSummarize)
 
-  // Reconstruct: system + summary + recent messages
+  // Reconstruct: system + recent messages + summary (appended at end so
+  // the sys+recent prefix stays stable for LLM prompt caching)
   const compacted: LLMMessage[] = [
     systemMsg,
-    { role: 'system', content: `[Conversation History Summary]\n${summary}` },
     ...recentMessages,
+    { role: 'system', content: `[Conversation History Summary]\n${summary}` },
   ]
 
   return {
