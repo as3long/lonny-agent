@@ -226,6 +226,40 @@
     }
   }
 
+  function renderSessionHistory(messages) {
+    if (!Array.isArray(messages)) return
+    for (const msg of messages) {
+      if (msg.role === 'user') {
+        addUserMessage(msg.content || '')
+      } else if (msg.role === 'assistant') {
+        startAssistantMessage()
+        if (msg.reasoning_content) {
+          showThinking(msg.reasoning_content)
+          hideThinking()
+        }
+        if (msg.content) {
+          streamingText = msg.content
+          const body = streamingMsgEl.querySelector('.message-body')
+          body.innerHTML = renderMarkdown(msg.content)
+        }
+        if (msg.tool_calls && msg.tool_calls.length > 0) {
+          for (const tc of msg.tool_calls) {
+            addToolCall(tc.name, tc.input)
+          }
+        }
+        finalizeAssistantMessage()
+      } else if (msg.role === 'tool') {
+        const content = msg.content || ''
+        const isError = content.startsWith('ERROR: ')
+        if (isError) {
+          addToolResult(msg.name || '', false, content.replace(/^ERROR:\s*/, ''))
+        } else {
+          addToolResult(msg.name || '', true, content)
+        }
+      }
+    }
+  }
+
   function addTokenStats(turnIn, turnOut, totalIn, totalOut, turnApi, totalApi) {
     const div = document.createElement('div')
     div.className = 'token-stats-bar'
@@ -398,6 +432,10 @@
 
       case 'plan_written':
         addSystemMessage(`📝 Plan written: ${msg.display || ''}`)
+        break
+
+      case 'session_history':
+        renderSessionHistory(msg.messages)
         break
 
       case 'token_stats':

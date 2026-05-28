@@ -218,6 +218,17 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
         totalApi: sessionWithOutput.totalApiCalls,
       }),
     )
+
+    // Send full session history (exclude system prompt)
+    const historyMessages = sessionWithOutput.messages.filter(m => m.role !== 'system')
+    if (historyMessages.length > 0) {
+      ws.send(
+        JSON.stringify({
+          type: 'session_history',
+          messages: historyMessages,
+        }),
+      )
+    }
   })
 
   // Start server
