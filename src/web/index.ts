@@ -7,6 +7,8 @@ import { resetGlobalEventBus } from '../agent/event-bus.js'
 import { Session } from '../agent/session.js'
 import type { Config } from '../config/index.js'
 import { fmtErr } from '../tools/errors.js'
+import { fetchDeepSeekBalance, isDeepSeekOfficial } from '../tui/balance.js'
+import { listPlans, type PlanEntry } from '../tui/components.js'
 import { startSessionBridge, type WsMessage } from './session-bridge.js'
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
@@ -112,9 +114,62 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
     sessionWithOutput.totalOutputTokens = session.totalOutputTokens
     sessionWithOutput.totalApiCalls = session.totalApiCalls
 
+    // Helper: read todos from plan file
+    function loadPlanTodos(plans: PlanEntry[]): {
+      name: string
+      todos: { text: string; done: boolean }[]
+    } {
+      if (plans.length === 0) return { name: '', todos: [] }
+      const plan = plans[0]
+      const todos: { text: string; done: boolean }[] = []
+      try {
+        const content = fs.readFileSync(plan.fullPath, 'utf-8')
+        const lines = content.split('\n')
+        let inTodo = false
+        for (const line of lines) {
+          if (line.startsWith('## Todo List')) {
+            inTodo = true
+            continue
+          }
+          if (inTodo && line.startsWith('## ')) break
+          if (inTodo) {
+            const m = line.trim().match(/^- \[([ x])\]\s+(.+)/)
+            if (m) {
+              todos.push({ text: m[2], done: m[1] === 'x' })
+            }
+          }
+        }
+      } catch {
+        // Ignore file read errors
+      }
+      return { name: plan.name, todos }
+    }
+
+    // Helper: send plan & todo data to client
+    function sendPlanData(): void {
+      try {
+        const planEntries = listPlans(config.cwd)
+        const { name, todos } = loadPlanTodos(planEntries)
+        ws.send(
+          JSON.stringify({
+            type: 'plan_data',
+            plans: planEntries.map(p => ({
+              name: p.name,
+              mtime: p.mtime,
+            })),
+            currentPlanName: name,
+            todos,
+          }),
+        )
+      } catch {
+        // Silently ignore
+      }
+    }
+
     // Set plan written callback
     sessionWithOutput.onPlanWritten = (display: string) => {
       ws.send(JSON.stringify({ type: 'plan_written', display }))
+      sendPlanData()
     }
 
     // Start bridge
@@ -205,19 +260,37 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
       if (bridge) bridge.close()
     })
 
-    // Send initial state with current token stats
-    ws.send(
-      JSON.stringify({
-        type: 'hello',
-        version: 1,
-        mode: config.mode,
-        model: config.model,
-        provider: config.provider,
-        totalIn: sessionWithOutput.totalInputTokens,
-        totalOut: sessionWithOutput.totalOutputTokens,
-        totalApi: sessionWithOutput.totalApiCalls,
-      }),
-    )
+    // Fetch DeepSeek balance (non-blocking) and send with initial state
+    ;(async () => {
+      let balanceDisplay = ''
+      let webBalanceDisplay = ''
+      try {
+        if (isDeepSeekOfficial(config.baseUrl) && config.apiKey) {
+          const balance = await fetchDeepSeekBalance(config.apiKey)
+          if (balance.isAvailable && balance.display) {
+            balanceDisplay = balance.display
+            webBalanceDisplay = balance.webDisplay
+          }
+        }
+      } catch {
+        // Silently ignore balance fetch errors
+      }
+      ws.send(
+        JSON.stringify({
+          type: 'hello',
+          version: 1,
+          mode: config.mode,
+          model: config.model,
+          provider: config.provider,
+          totalIn: sessionWithOutput.totalInputTokens,
+          totalOut: sessionWithOutput.totalOutputTokens,
+          totalApi: sessionWithOutput.totalApiCalls,
+          balance: balanceDisplay,
+          webBalance: webBalanceDisplay,
+        }),
+      )
+      sendPlanData()
+    })()
 
     // Send full session history (exclude system prompt)
     const historyMessages = sessionWithOutput.messages.filter(m => m.role !== 'system')

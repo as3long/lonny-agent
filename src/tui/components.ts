@@ -258,6 +258,7 @@ export class RichFooter implements Component {
   private totalOutputTokens: number = 0
   private totalApiCalls: number = 0
   private balance: string = ''
+  private webBalance: string = ''
   private visible = true
   private phase: 'landing' | 'chat' = 'landing'
   private agentStatus: 'running' | 'idle' = 'idle'
@@ -288,6 +289,9 @@ export class RichFooter implements Component {
   }
   setBalance(b: string): void {
     this.balance = b
+  }
+  setWebBalance(wb: string): void {
+    this.webBalance = wb
   }
   setAgentStatus(s: 'running' | 'idle'): void {
     this.agentStatus = s
@@ -356,7 +360,10 @@ export class RichFooter implements Component {
     }
 
     // Balance (DeepSeek official API only)
-    if (this.balance) {
+    if (this.webBalance) {
+      // Show the web-style breakdown if available
+      segments.push(`\x1b[38;2;255;200;50m\u4F59\u989D\x1b[0m\uFF1A${this.webBalance}`)
+    } else if (this.balance) {
       segments.push(`\x1b[38;2;255;200;50m\u4F59\u989D\x1b[0m\uFF1A${this.balance}`)
     }
 

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lonny - AI 编码代理</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/normalize.css@8.0.1/normalize.css">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -25,41 +26,67 @@
         <span class="token-out" id="token-out">0</span>
         <span class="token-calls" id="token-calls">(0)</span>
       </span>
+      <span class="separator" id="balance-sep" style="display:none">|</span>
+      <span id="balance-display" class="balance-display" style="display:none"></span>
     </div>
   </header>
 
-  <!-- Chat Container -->
-  <main id="chat-container">
-    <div id="messages">
-      <!-- Messages will be rendered here -->
-    </div>
-  </main>
-
-  <!-- Input Area -->
-  <footer id="input-area">
-    <div class="input-wrapper">
-      <div class="input-container">
-        <div id="slash-hint" class="slash-hint hidden">
-          <div class="slash-hint-header">Commands</div>
-          <div class="slash-hint-item" data-cmd="mode code|plan|ask">/mode <span class="hint-arg">code|plan|ask</span> <span class="hint-desc">Switch mode</span></div>
-          <div class="slash-hint-item" data-cmd="model ">/model <span class="hint-arg">&lt;name&gt;</span> <span class="hint-desc">Switch model</span></div>
-          <div class="slash-hint-item" data-cmd="new">/new <span class="hint-desc">Start a new session</span></div>
-          <div class="slash-hint-item" data-cmd="help">/help <span class="hint-desc">Show this help</span></div>
+  <!-- App Content (chat + sidebar) -->
+  <div id="app-content">
+    <!-- Chat Panel -->
+    <div id="chat-panel">
+      <!-- Chat Container -->
+      <main id="chat-container">
+        <div id="messages">
+          <!-- Messages will be rendered here -->
         </div>
-        <textarea id="chat-input" rows="3" placeholder="Type a message... (type / for commands)"></textarea>
-      </div>
-      <button id="send-btn" title="Send">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/>
-        </svg>
-      </button>
-      <button id="stop-btn" class="stop-btn hidden" title="Stop">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-          <rect x="6" y="6" width="12" height="12" rx="2"/>
-        </svg>
-      </button>
+      </main>
+
+      <!-- Input Area -->
+      <footer id="input-area">
+        <div class="input-wrapper">
+          <div class="input-container">
+            <div id="slash-hint" class="slash-hint hidden">
+              <div class="slash-hint-header">Commands</div>
+              <div class="slash-hint-item" data-cmd="mode code|plan|ask">/mode <span class="hint-arg">code|plan|ask</span> <span class="hint-desc">Switch mode</span></div>
+              <div class="slash-hint-item" data-cmd="model ">/model <span class="hint-arg">&lt;name&gt;</span> <span class="hint-desc">Switch model</span></div>
+              <div class="slash-hint-item" data-cmd="new">/new <span class="hint-desc">Start a new session</span></div>
+              <div class="slash-hint-item" data-cmd="help">/help <span class="hint-desc">Show this help</span></div>
+            </div>
+            <textarea id="chat-input" rows="3" placeholder="Type a message... (type / for commands)"></textarea>
+          </div>
+          <button id="send-btn" title="Send">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/>
+            </svg>
+          </button>
+          <button id="stop-btn" class="stop-btn hidden" title="Stop">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="6" width="12" height="12" rx="2"/>
+            </svg>
+          </button>
+        </div>
+      </footer>
     </div>
-  </footer>
+
+    <!-- Right Sidebar -->
+    <aside id="sidebar">
+      <div class="sidebar-tabs">
+        <button class="sidebar-tab active" data-tab="plans">░ Plans</button>
+        <button class="sidebar-tab" data-tab="todos">☑ Todo</button>
+      </div>
+      <div class="sidebar-content">
+        <div class="sidebar-pane active" id="plans-pane">
+          <div id="plans-placeholder" class="sidebar-placeholder">Loading plans...</div>
+          <div id="plans-list"></div>
+        </div>
+        <div class="sidebar-pane" id="todos-pane">
+          <div id="todos-placeholder" class="sidebar-placeholder">Loading todos...</div>
+          <div id="todos-list"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
 
   <!-- Connection status overlay -->
   <div id="connection-overlay" class="overlay hidden">

@@ -81,12 +81,21 @@ html, body {
 .token-sep { color: var(--text-dim); margin: 0 1px; }
 .token-calls { color: var(--text-secondary); margin-left: 4px; }
 
+.balance-display {
+  color: var(--warning);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 /* ── Chat Container ──────────────────────────────────────────── */
 #chat-container {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
   scroll-behavior: smooth;
+  min-height: 0;
 }
 
 #chat-container::-webkit-scrollbar {
@@ -103,6 +112,24 @@ html, body {
 body {
   display: flex;
   flex-direction: column;
+  height: 100vh;
+}
+
+/* ── App Content Layout ───────────────────────────────────────── */
+#app-content {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+#chat-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* ── Messages ────────────────────────────────────────────────── */
@@ -190,18 +217,30 @@ body {
 }
 
 .message-body ul, .message-body ol {
-  margin: 0.25em 0;
-  padding-left: 1.6em;
+  margin: 0.15em 0;
+  padding-left: 1.5em;
 }
 
 .message-body li {
-  margin: 0.05em 0;
+  margin: 0;
+  line-height: 1.2;
 }
 
 /* Neutralize <p> inside <li> (marked wraps list items in <p> when there are blank lines) */
 .message-body li > p {
   margin: 0;
   display: inline;
+}
+
+/* Neutralize ALL block-level children inside li (marked can nest multiple p, div, etc.) */
+.message-body li > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* Remove <br> spacing inside list items (from breaks:true option) */
+.message-body li br {
+  display: none;
 }
 
 .message-body blockquote {
@@ -343,9 +382,10 @@ body {
 .thinking-content :first-child { margin-top: 0; }
 .thinking-content :last-child { margin-bottom: 0; }
 .thinking-content p { margin: 0.2em 0; }
-.thinking-content ul, .thinking-content ol { margin: 0.2em 0; padding-left: 1.5em; }
-.thinking-content li { margin: 0.05em 0; }
+.thinking-content ul, .thinking-content ol { margin: 0.15em 0; padding-left: 1.5em; }
+.thinking-content li { margin: 0; line-height: 1.2; }
 .thinking-content li > p { margin: 0; display: inline; }
+.thinking-content li > * { margin-top: 0; margin-bottom: 0; }
 .thinking-content code {
   font-family: var(--font-mono);
   font-size: 0.9em;
@@ -577,6 +617,169 @@ body {
 #chat-container::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 3px;
+}
+
+/* ── Right Sidebar ────────────────────────────────────────────── */
+#sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar-tab {
+  flex: 1;
+  padding: 8px 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-tab:hover {
+  color: var(--text-secondary);
+  background: rgba(255,255,255,0.03);
+}
+
+.sidebar-tab.active {
+  color: var(--accent);
+  background: rgba(0,170,255,0.06);
+  border-bottom: 2px solid var(--accent);
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.sidebar-content::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-content::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+.sidebar-pane {
+  display: none;
+  padding: 8px;
+}
+
+.sidebar-pane.active {
+  display: block;
+}
+
+.sidebar-placeholder {
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+  padding: 20px 8px;
+  font-style: italic;
+}
+
+/* ── Plan List Items ─────────────────────────────────────────── */
+.plan-item {
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border: 1px solid transparent;
+}
+
+.plan-item:hover {
+  background: rgba(0,170,255,0.06);
+  border-color: var(--border);
+}
+
+.plan-item.active {
+  background: rgba(0,170,255,0.1);
+  border-color: var(--accent-dim);
+}
+
+.plan-item .plan-name {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.plan-item .plan-time {
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* ── Todo Items ──────────────────────────────────────────────── */
+.todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 8px;
+  margin-bottom: 2px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+  transition: background 0.15s;
+}
+
+.todo-item:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.todo-item .todo-check {
+  flex-shrink: 0;
+  margin-top: 1px;
+  font-size: 14px;
+}
+
+.todo-item .todo-check.done {
+  color: var(--success);
+}
+
+.todo-item .todo-check.pending {
+  color: var(--text-dim);
+}
+
+.todo-item .todo-text {
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.todo-item .todo-text.done {
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
+
+.todo-header-text {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
 }
 
 /* ── Utility ─────────────────────────────────────────────────── */

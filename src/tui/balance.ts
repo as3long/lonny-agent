@@ -7,8 +7,13 @@ import { fmtErr } from '../tools/errors.js'
 
 export interface DeepSeekBalance {
   isAvailable: boolean
-  /** Formatted display string, e.g. "CNY 110.00" */
+  /** Formatted display string, e.g. "¥110.00" */
   display: string
+  /**
+   * Web-style display with breakdown, e.g. "¥110.00 (赠¥10.00 充¥100.00)".
+   * Shows the same breakdown visible on the DeepSeek web platform.
+   */
+  webDisplay: string
   raw: {
     totalBalance: string
     grantedBalance: string
@@ -36,6 +41,7 @@ export async function fetchDeepSeekBalance(apiKey: string): Promise<DeepSeekBala
       return {
         isAvailable: false,
         display: '',
+        webDisplay: '',
         raw: { totalBalance: '0', grantedBalance: '0', toppedUpBalance: '0', currency: '' },
         error: `HTTP ${res.status}`,
       }
@@ -55,18 +61,25 @@ export async function fetchDeepSeekBalance(apiKey: string): Promise<DeepSeekBala
       return {
         isAvailable: data.is_available,
         display: '',
+        webDisplay: '',
         raw: { totalBalance: '0', grantedBalance: '0', toppedUpBalance: '0', currency: '' },
         error: 'no balance info',
       }
     }
 
     const info = data.balance_infos[0]
-    const symbol = info.currency === 'CNY' ? '\u00A5' : '$'
+    const symbol = info.currency === 'CNY' ? '¥' : '$'
     const display = `${symbol}${info.total_balance}`
+
+    // Build web-style display with breakdown (granted + topped-up)
+    const grantedLabel = '赠'
+    const topupLabel = '充'
+    const webDisplay = `${display} (${grantedLabel}${symbol}${info.granted_balance} ${topupLabel}${symbol}${info.topped_up_balance})`
 
     return {
       isAvailable: data.is_available,
       display,
+      webDisplay,
       raw: {
         totalBalance: info.total_balance,
         grantedBalance: info.granted_balance,
@@ -79,6 +92,7 @@ export async function fetchDeepSeekBalance(apiKey: string): Promise<DeepSeekBala
     return {
       isAvailable: false,
       display: '',
+      webDisplay: '',
       raw: { totalBalance: '0', grantedBalance: '0', toppedUpBalance: '0', currency: '' },
       error: msg,
     }

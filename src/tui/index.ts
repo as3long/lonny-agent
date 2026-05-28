@@ -191,6 +191,7 @@ export async function startTui(config: Config): Promise<void> {
         const balance = await fetchDeepSeekBalance(config.apiKey)
         if (balance.isAvailable && balance.display) {
           footer.setBalance(balance.display)
+          footer.setWebBalance(balance.webDisplay)
           tui.requestRender(true)
         } else if (balance.error) {
           chatContent += `\n${colors.warn('\u26A0')} Balance fetch failed: ${balance.error}\n`
@@ -409,8 +410,10 @@ export async function startTui(config: Config): Promise<void> {
         const balance = await fetchDeepSeekBalance(config.apiKey)
         if (balance.isAvailable && balance.display) {
           footer.setBalance(balance.display)
+          footer.setWebBalance(balance.webDisplay)
         } else {
           footer.setBalance('')
+          footer.setWebBalance('')
         }
         tui.requestRender(true)
       }

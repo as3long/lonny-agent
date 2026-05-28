@@ -12,8 +12,20 @@
   const tokenIn = document.getElementById('token-in')
   const tokenOut = document.getElementById('token-out')
   const tokenCalls = document.getElementById('token-calls')
+  const balanceDisplay = document.getElementById('balance-display')
+  const balanceSep = document.getElementById('balance-sep')
   const connectionOverlay = document.getElementById('connection-overlay')
   const chatContainer = document.getElementById('chat-container')
+
+  // ── Sidebar DOM References ──
+  const sidebar = document.getElementById('sidebar')
+  const sidebarTabs = document.querySelectorAll('.sidebar-tab')
+  const plansPane = document.getElementById('plans-pane')
+  const todosPane = document.getElementById('todos-pane')
+  const plansList = document.getElementById('plans-list')
+  const todosList = document.getElementById('todos-list')
+  const plansPlaceholder = document.getElementById('plans-placeholder')
+  const todosPlaceholder = document.getElementById('todos-placeholder')
 
   // ── State ──
   let ws = null
@@ -26,6 +38,9 @@
   let thinkingEl = null
   let thinkingText = ''
   let reconnectAttempts = 0
+  let plans = []
+  let currentPlanName = ''
+  let todos = []
   const MAX_RECONNECT_ATTEMPTS = 10
   const RECONNECT_DELAY = 2000
 
@@ -80,6 +95,71 @@
 
   function updateStats() {
     // Token stats are updated via messages from the server
+  }
+
+  // ── Sidebar Functions ──
+
+  function switchTab(tabId) {
+    sidebarTabs.forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.tab === tabId)
+    })
+    plansPane.classList.toggle('active', tabId === 'plans')
+    todosPane.classList.toggle('active', tabId === 'todos')
+  }
+
+  function updatePlans() {
+    plansList.innerHTML = ''
+    if (plans.length === 0) {
+      plansPlaceholder.style.display = ''
+      return
+    }
+    plansPlaceholder.style.display = 'none'
+    for (const plan of plans) {
+      const div = document.createElement('div')
+      div.className = 'plan-item' + (plan.name === currentPlanName ? ' active' : '')
+      const timeStr = plan.mtime
+        ? new Date(plan.mtime).toLocaleDateString() +
+          ' ' +
+          new Date(plan.mtime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : ''
+      div.innerHTML = `<div class="plan-name">${escapeHtml(plan.name)}</div><div class="plan-time">${escapeHtml(timeStr)}</div>`
+      plansList.appendChild(div)
+    }
+  }
+
+  function updateTodos() {
+    todosList.innerHTML = ''
+    if (!currentPlanName) {
+      todosPlaceholder.textContent = '(no plan selected)'
+      todosPlaceholder.style.display = ''
+      return
+    }
+    if (todos.length === 0) {
+      todosPlaceholder.textContent = '(no todos)'
+      todosPlaceholder.style.display = ''
+      return
+    }
+    todosPlaceholder.style.display = 'none'
+    // Header
+    const header = document.createElement('div')
+    header.className = 'todo-header-text'
+    header.textContent = currentPlanName
+    todosList.appendChild(header)
+    // Items
+    for (const todo of todos) {
+      const div = document.createElement('div')
+      div.className = 'todo-item'
+      const done = todo.done
+      div.innerHTML =
+        `<span class="todo-check ${done ? 'done' : 'pending'}">${done ? '✅' : '⬜'}</span>` +
+        `<span class="todo-text ${done ? 'done' : ''}">${escapeHtml(todo.text)}</span>`
+      todosList.appendChild(div)
+    }
+  }
+
+  function updatePlansAndTodos() {
+    updatePlans()
+    updateTodos()
   }
 
   // ── Message Rendering ──
@@ -352,6 +432,19 @@
           tokenOut.textContent = formatTokenCount(msg.totalOut || 0)
           tokenCalls.textContent = `(${msg.totalApi || 0})`
         }
+        // Show DeepSeek balance if available
+        if (msg.webBalance) {
+          balanceDisplay.textContent = '余额：' + msg.webBalance
+          balanceDisplay.style.display = ''
+          balanceSep.style.display = ''
+        } else if (msg.balance) {
+          balanceDisplay.textContent = '余额：' + msg.balance
+          balanceDisplay.style.display = ''
+          balanceSep.style.display = ''
+        } else {
+          balanceDisplay.style.display = 'none'
+          balanceSep.style.display = 'none'
+        }
         break
 
       case 'chunk':
@@ -436,6 +529,13 @@
 
       case 'session_history':
         renderSessionHistory(msg.messages)
+        break
+
+      case 'plan_data':
+        plans = msg.plans || []
+        currentPlanName = msg.currentPlanName || ''
+        todos = msg.todos || []
+        updatePlansAndTodos()
         break
 
       case 'token_stats':
@@ -554,6 +654,13 @@
     } else if (!text.startsWith('/') || text.includes(' ')) {
       hideSlashHint()
     }
+  })
+
+  // ── Sidebar Tab Switching ──
+  sidebarTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      switchTab(tab.dataset.tab)
+    })
   })
 
   // ── Heartbeat (keep connection alive) ──
