@@ -709,11 +709,14 @@ body {
 }
 
 /* ── Scrollbar for chat ──────────────────────────────────────── */
-#chat-container::-webkit-scrollbar { width: 6px; }
+#chat-container::-webkit-scrollbar { width: 8px; }
 #chat-container::-webkit-scrollbar-track { background: transparent; }
 #chat-container::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
+  background: var(--text-dim);
+  border-radius: 4px;
+}
+#chat-container::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
 }
 
 /* ── Right Sidebar ────────────────────────────────────────────── */
@@ -766,14 +769,17 @@ body {
 }
 
 .sidebar-content::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
 }
 .sidebar-content::-webkit-scrollbar-track {
   background: transparent;
 }
 .sidebar-content::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 2px;
+  background: var(--text-dim);
+  border-radius: 3px;
+}
+.sidebar-content::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
 }
 
 .sidebar-pane {
