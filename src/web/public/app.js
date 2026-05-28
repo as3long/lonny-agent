@@ -297,6 +297,11 @@
         currentProvider = msg.provider || ''
         modeDisplay.textContent = currentMode
         modelDisplay.textContent = `${currentProvider}/${currentModel}`
+        // Sync token stats from session
+        if (msg.totalIn !== undefined) {
+          const total = (msg.totalIn || 0) + (msg.totalOut || 0)
+          tokenDisplay.textContent = `${total} tokens`
+        }
         break
 
       case 'chunk':

@@ -203,7 +203,7 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
       if (bridge) bridge.close()
     })
 
-    // Send initial state
+    // Send initial state with current token stats
     ws.send(
       JSON.stringify({
         type: 'hello',
@@ -211,6 +211,9 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
         mode: config.mode,
         model: config.model,
         provider: config.provider,
+        totalIn: sessionWithOutput.totalInputTokens,
+        totalOut: sessionWithOutput.totalOutputTokens,
+        totalApi: sessionWithOutput.totalApiCalls,
       }),
     )
   })

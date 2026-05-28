@@ -23,13 +23,16 @@ export function startSessionBridge(
 ): { close: () => void; sendMessage: (text: string) => Promise<void> } {
   const bus = getGlobalEventBus()
 
-  // Send initial handshake
+  // Send initial handshake with current token stats
   send({
     type: 'hello',
     version: WS_PROTOCOL_VERSION,
     mode: config.mode,
     model: config.model,
     provider: config.provider,
+    totalIn: session.totalInputTokens,
+    totalOut: session.totalOutputTokens,
+    totalApi: session.totalApiCalls,
   })
 
   // ── Subscribe to EventBus ──
