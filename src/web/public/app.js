@@ -363,6 +363,10 @@
         addSystemMessage(`📝 Plan written: ${msg.display || ''}`)
         break
 
+      case 'token_stats':
+        addTokenStats(msg.turnIn, msg.turnOut, msg.totalIn, msg.totalOut, msg.turnApi, msg.totalApi)
+        break
+
       case 'error':
         addErrorMessage(msg.message || 'Unknown error')
         break

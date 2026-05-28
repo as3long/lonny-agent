@@ -73,6 +73,18 @@ export function startSessionBridge(
     send({ type: 'compaction', before: d.before, after: d.after })
   })
 
+  const unsubTokenStats = bus.on(EventChannels.TOKEN_STATS, data => {
+    const d = data as {
+      turnIn: number
+      turnOut: number
+      totalIn: number
+      totalOut: number
+      turnApi: number
+      totalApi: number
+    }
+    send({ type: 'token_stats', ...d })
+  })
+
   // ── Handle incoming messages from client ──
 
   async function handleClientMessage(msg: WsMessage): Promise<void> {
@@ -155,6 +167,7 @@ export function startSessionBridge(
       unsubThinking()
       unsubThinkingEnd()
       unsubCompaction()
+      unsubTokenStats()
     },
     sendMessage: async (text: string) => {
       await handleClientMessage({ type: 'message', text })

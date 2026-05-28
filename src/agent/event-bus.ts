@@ -48,6 +48,9 @@ export const EventChannels = {
   // Compaction events
   COMPACTION_TRIGGERED: 'compaction:triggered',
 
+  // Token stats
+  TOKEN_STATS: 'token:stats',
+
   // Mode events
   MODE_CHANGE: 'mode:change',
 

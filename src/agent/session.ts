@@ -217,7 +217,9 @@ function printTokenStats(
   totalApi: number,
   output?: SessionOutput,
 ): void {
-  // Skip in Web UI mode — frontend gets token info via EventBus
+  const bus = getGlobalEventBus()
+  bus.emit(EventChannels.TOKEN_STATS, { turnIn, turnOut, totalIn, totalOut, turnApi, totalApi })
+  // Skip terminal output in Web UI mode
   if (output?.suppressToolOutput) return
   const total = totalIn + totalOut
   const msg = `  ${GY}┃${RS} ${GY}${BLD}▴${RS}${GY}${turnIn}${RS} ${GY}${BLD}▾${RS}${GY}${turnOut}${RS}  ${GY}total${RS} ${total}  ${GY}calls${RS} ${turnApi}(${totalApi})`
