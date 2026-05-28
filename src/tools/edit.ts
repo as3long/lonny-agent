@@ -45,16 +45,14 @@ EXAMPLES:
           items: {
             type: 'object',
             properties: {
-              file_path: { type: 'string', description: 'Path to the file', required: true },
+              file_path: { type: 'string', description: 'Path to the file' },
               old_string: {
                 type: 'string',
                 description:
                   'Text to replace (pass empty string "" to create a new file). Required.',
-                required: true,
               },
-              new_string: { type: 'string', description: 'Replacement text', required: true },
+              new_string: { type: 'string', description: 'Replacement text' },
             },
-            required: true,
           },
         },
       },
