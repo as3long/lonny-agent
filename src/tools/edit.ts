@@ -111,22 +111,13 @@ EXAMPLES:
           }
         } else {
           // Can't auto-correct — give helpful error with examples
+          const example = hasFilePath
+            ? `edit({ edits: [{ file_path: "${input.file_path}", old_string: "...", new_string: "..." }] })`
+            : `edit({ edits: [{ file_path: "src/file.ts", old_string: "old", new_string: "new" }] })`
           return {
             success: false,
             output: '',
-            error: `edit requires an "edits" array. Received: ${JSON.stringify(rawInput)}
-
-CORRECT USAGE:
-  edit({ edits: [{ file_path: "src/file.ts", old_string: "old content", new_string: "new content" }] })
-
-BATCH EDITS:
-  edit({ edits: [
-    { file_path: "src/a.ts", old_string: "foo", new_string: "bar" },
-    { file_path: "src/b.ts", old_string: "x", new_string: "y" },
-  ] })
-
-CREATE NEW FILE:
-  edit({ edits: [{ file_path: "src/new.ts", old_string: "", new_string: "const x = 1" }] })`,
+            error: `edit requires "edits" array. Received: ${JSON.stringify(rawInput)}. Usage: ${example}`,
           }
         }
       }
@@ -136,7 +127,7 @@ CREATE NEW FILE:
         return {
           success: false,
           output: '',
-          error: `edits array is empty. Received: ${JSON.stringify(rawInput)}`,
+          error: `edits array is empty. Example: edit({ edits: [{ file_path: "src/file.ts", old_string: "old", new_string: "new" }] })`,
         }
       }
 
