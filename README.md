@@ -35,29 +35,14 @@ npm install -g lonny-agent
 
 ### 配置
 
-lonny 支持多种配置方式（优先级从高到低）：
-
-1. **命令行参数**
-2. **环境变量**
-3. **配置文件 `~/.lonny/config.json`**
-
-```bash
-# 设置 API 密钥（Anthropic）
-export LONNY_API_KEY=sk-ant-...
-# 或（OpenAI）
-export LONNY_API_KEY=sk-proj-...
-# 或（Google）
-export LONNY_API_KEY=AIza...
-```
-
-示例配置文件 `~/.lonny/config.json`：
+配置文件 `~/.lonny/config.json`（通过 `lonny init` 自动生成）：
 
 ```json
 {
-  "provider": "anthropic",
-  "model": "claude-sonnet-4-20250514",
-  "apiKey": "sk-ant-...",
-  "thinking": true,
+  "provider": "openai",
+  "model": "deepseek-v4-flash",
+  "baseUrl": "https://api.deepseek.com",
+  "apiKey": "sk-...",
   "tavilyApiKey": "tvly-..."
 }
 ```
@@ -70,9 +55,6 @@ lonny
 
 # 单次对话模式（非交互式）
 lonny -p "你的问题"
-
-# 指定模型和提供商
-lonny --provider openai --model gpt-4o
 
 # plan 模式
 lonny --mode plan
@@ -92,27 +74,10 @@ lonny --web --port 8080
 | 参数 | 说明 |
 |------|------|
 | `-p, --prompt <text>` | 单次对话模式，直接提问 |
-| `--provider <name>` | AI 提供商：`anthropic`、`openai`、`google`、`ollama` |
-| `--model <name>` | 模型名称（默认：`claude-sonnet-4-20250514`） |
-| `--api-key <key>` | API 密钥 |
-| `--base-url <url>` | 自定义 API 地址（兼容 OpenAI 格式） |
 | `--mode <code\|plan\|ask>` | 模式：`code`（编辑代码）、`plan`（制定计划）、`ask`（问答搜索） |
 | `--auto-approve` | 自动批准工具执行（无需确认） |
-| `--thinking` | 启用思考模式（仅 Anthropic/OpenAI） |
-| `--reasoning-effort <level>` | 推理强度（仅 OpenAI）：`low`、`medium`、`high` |
-| `--temperature <num>` | 生成温度（0-2），默认 0.3（code）/ 0（plan/ask） |
-| `--max-tokens <num>` | 最大输出 token 数 |
 | `--web` | 启动 Web UI 模式（通过浏览器访问） |
 | `--port <num>` | Web UI 端口号（默认：15090） |
-
-### 环境变量
-
-| 变量 | 说明 |
-|------|------|
-| `LONNY_API_KEY` | API 密钥 |
-| `LONNY_PROVIDER` | AI 提供商 |
-| `LONNY_MODEL` | 模型名称 |
-| `LONNY_BASE_URL` | 自定义 API 地址 |
 
 ### DeepSeek 缓存支持
 

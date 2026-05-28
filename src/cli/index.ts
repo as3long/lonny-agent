@@ -1,25 +1,26 @@
 import { type Config, loadConfig } from '../config/index.js'
+import { runInit } from './init.js'
 
 export interface CliOptions {
   config: Config
   prompt?: string
   web?: boolean
   port?: number
+  init?: boolean
 }
 
-export function parseArgs(argv: string[]): CliOptions {
+export async function parseArgs(argv: string[]): Promise<CliOptions> {
   const args = argv.slice(2)
+
+  // Check for init command
+  if (args[0] === 'init') {
+    await runInit()
+    return { init: true } as CliOptions
+  }
+
   let prompt: string | undefined
-  let apiKey: string | undefined
-  let baseUrl: string | undefined
-  let provider: string | undefined
-  let model: string | undefined
   let autoApprove = false
-  let thinking: boolean | undefined
-  let reasoningEffort: string | undefined
   let mode: 'code' | 'plan' | 'ask' | undefined
-  let temperature: number | undefined
-  let maxTokens: number | undefined
   let web = false
   let port: number | undefined
 
@@ -27,26 +28,10 @@ export function parseArgs(argv: string[]): CliOptions {
     const arg = args[i]
     if (arg === '-p' || arg === '--prompt') {
       prompt = args[++i]
-    } else if (arg === '--api-key') {
-      apiKey = args[++i]
-    } else if (arg === '--base-url') {
-      baseUrl = args[++i]
-    } else if (arg === '--provider') {
-      provider = args[++i]
-    } else if (arg === '--model') {
-      model = args[++i]
     } else if (arg === '--auto-approve') {
       autoApprove = true
-    } else if (arg === '--thinking') {
-      thinking = true
-    } else if (arg === '--reasoning-effort') {
-      reasoningEffort = args[++i]
     } else if (arg === '--mode') {
-      mode = args[++i] as 'code' | 'plan'
-    } else if (arg === '--temperature') {
-      temperature = parseFloat(args[++i])
-    } else if (arg === '--max-tokens') {
-      maxTokens = parseInt(args[++i], 10)
+      mode = args[++i] as 'code' | 'plan' | 'ask'
     } else if (arg === '--web') {
       web = true
     } else if (arg === '--port') {
@@ -58,18 +43,7 @@ export function parseArgs(argv: string[]): CliOptions {
     prompt = args[0]
   }
 
-  const config = loadConfig({
-    apiKey,
-    baseUrl,
-    provider: provider as 'openai' | 'anthropic' | 'google' | 'ollama' | undefined,
-    model,
-    autoApprove,
-    thinking,
-    reasoningEffort,
-    mode,
-    temperature,
-    maxTokens,
-  })
+  const config = loadConfig({ autoApprove, mode })
 
   return { config, prompt, web, port }
 }

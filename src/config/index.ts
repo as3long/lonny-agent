@@ -55,34 +55,37 @@ function isDeepSeekModel(model: string, baseUrl?: string): boolean {
   return false
 }
 
-export function loadConfig(options: Partial<Config>): Config {
+export function loadConfig(options?: {
+  mode?: 'code' | 'plan' | 'ask'
+  autoApprove?: boolean
+  cwd?: string
+}): Config {
   const jsonConfig = loadJsonConfig()
 
-  const model =
-    options.model || process.env.LONNY_MODEL || jsonConfig.model || 'claude-sonnet-4-20250514'
-  const baseUrl = options.baseUrl || process.env.LONNY_BASE_URL || jsonConfig.baseUrl || undefined
+  const model = jsonConfig.model || 'deepseek-v4-flash'
+  const baseUrl = process.env.LONNY_BASE_URL || jsonConfig.baseUrl || undefined
 
   // Auto-enable cache for DeepSeek models unless explicitly disabled
-  const enableCache =
-    options.enableCache ?? jsonConfig.enableCache ?? (isDeepSeekModel(model, baseUrl) || undefined)
+  const enableCache = jsonConfig.enableCache ?? (isDeepSeekModel(model, baseUrl) || undefined)
 
   return {
-    apiKey: options.apiKey || process.env.LONNY_API_KEY || jsonConfig.apiKey || '',
+    apiKey: jsonConfig.apiKey || '',
     baseUrl,
-    provider: (options.provider ||
-      process.env.LONNY_PROVIDER ||
-      jsonConfig.provider ||
-      'anthropic') as 'openai' | 'anthropic' | 'google' | 'ollama',
-    mode: options.mode || 'code',
+    provider: (process.env.LONNY_PROVIDER || jsonConfig.provider || 'openai') as
+      | 'openai'
+      | 'anthropic'
+      | 'google'
+      | 'ollama',
+    mode: options?.mode || 'code',
     model,
-    cwd: options.cwd || process.cwd(),
-    autoApprove: options.autoApprove ?? false,
-    thinking: options.thinking ?? jsonConfig.thinking,
-    reasoningEffort: options.reasoningEffort || jsonConfig.reasoningEffort,
+    cwd: options?.cwd || process.cwd(),
+    autoApprove: options?.autoApprove ?? false,
+    thinking: jsonConfig.thinking,
+    reasoningEffort: jsonConfig.reasoningEffort,
     enableCache,
-    strictTools: options.strictTools ?? jsonConfig.strictTools,
-    temperature: options.temperature ?? jsonConfig.temperature,
-    maxTokens: options.maxTokens ?? jsonConfig.maxTokens,
+    strictTools: jsonConfig.strictTools,
+    temperature: jsonConfig.temperature,
+    maxTokens: jsonConfig.maxTokens,
     tavilyApiKey: jsonConfig.tavilyApiKey,
   }
 }

@@ -27,11 +27,16 @@ function tryEnableUtf8(): void {
 
 async function main() {
   tryEnableUtf8()
-  const { config, prompt, web, port } = parseArgs(process.argv)
+  const { config, prompt, web, port, init } = await parseArgs(process.argv)
+
+  // init command exits after completion
+  if (init) {
+    process.exit(0)
+  }
 
   if (!config.apiKey) {
     console.error(
-      `${RE}Error:${RS} API key is required. Set ${BLD}LONNY_API_KEY${RS} env var, ${BLD}~/.lonny/config.json${RS}, or pass ${BLD}--api-key${RS}.`,
+      `${RE}Error:${RS} API key is required. Run ${BLD}lonny init${RS} to set up, or use env vars / CLI flags.`,
     )
     process.exit(1)
   }
