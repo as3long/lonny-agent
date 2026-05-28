@@ -89,7 +89,7 @@
 
     const body = document.createElement('div')
     body.className = 'message-body user'
-    body.textContent = text
+    body.innerHTML = renderMarkdown(text)
     msgDiv.appendChild(body)
 
     messagesEl.appendChild(msgDiv)
@@ -115,19 +115,30 @@
     scrollToBottom()
   }
 
+  function renderMarkdown(text) {
+    if (typeof marked !== 'undefined' && marked.parse) {
+      return marked.parse(text, { breaks: true, gfm: true })
+    }
+    return '<pre>' + escapeHtml(text) + '</pre>'
+  }
+
   function appendChunk(text) {
     if (!streamingMsgEl) {
       startAssistantMessage()
     }
     streamingText += text
     const body = streamingMsgEl.querySelector('.message-body')
-    body.textContent = streamingText
+    body.innerHTML = renderMarkdown(streamingText)
+    // Ensure streaming cursor stays visible
+    body.classList.add('streaming')
     scrollToBottom()
   }
 
   function finalizeAssistantMessage() {
     if (!streamingMsgEl) return
     const body = streamingMsgEl.querySelector('.message-body')
+    // Re-render final text as markdown
+    body.innerHTML = renderMarkdown(streamingText)
     body.classList.remove('streaming')
     streamingMsgEl = null
     streamingText = ''
