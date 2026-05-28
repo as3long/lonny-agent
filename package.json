@@ -2,7 +2,7 @@
   "name": "lonny-agent",
   "version": "0.1.0",
   "license": "MIT",
-  "description": "Per-call optimized coding agent with two-phase batch editing",
+  "description": "AI coding agent that does more with fewer API calls, optimized for Coding Plan (5h 1200-call bundle)",
   "type": "module",
   "bin": {
     "lonny": "./dist/index.js"
