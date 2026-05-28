@@ -622,14 +622,13 @@ export class Session {
         const writeTools = ['edit', 'bash', 'write_plan', 'exec', 'install_skill']
         const needsConfirm = toolCalls.filter(tc => writeTools.includes(tc.name))
         if (needsConfirm.length > 0) {
-          const approved = await this.output.confirmTool(toolCalls)
+          const approved = await this.output.confirmTool(needsConfirm)
           if (!approved) {
-            // User rejected — inject feedback so the LLM can try a different approach
             const rejectMsg: LLMMessage = {
               role: 'tool',
               content:
                 'USER_REJECTED: The user declined to execute the requested tool calls. Try a different approach.',
-              tool_call_id: toolCalls[0].id,
+              tool_call_id: needsConfirm[0].id,
               name: 'user_feedback',
             }
             this.messages.push(rejectMsg)

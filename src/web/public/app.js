@@ -565,6 +565,21 @@
         addTokenStats(msg.turnIn, msg.turnOut, msg.totalIn, msg.totalOut, msg.turnApi, msg.totalApi)
         break
 
+      case 'tool_confirm_request': {
+        if (!msg.toolCalls || msg.toolCalls.length === 0) break
+        let confirmText = 'Allow these tool calls?'
+        for (const tc of msg.toolCalls) {
+          const detail = tc.input?.file_path || tc.input?.command || tc.input?.package_name || ''
+          confirmText += `\n  • ${tc.name}${detail ? ' ' + JSON.stringify(detail) : ''}`
+        }
+        addSystemMessage(confirmText)
+        const approved = window.confirm(confirmText)
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'tool_confirm_response', approved }))
+        }
+        break
+      }
+
       case 'error':
         addErrorMessage(msg.message || 'Unknown error')
         break
