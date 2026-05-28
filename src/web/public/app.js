@@ -135,15 +135,23 @@
   }
 
   function addToolCall(name, input) {
+    // Find the current streaming message, or the last assistant message
+    const container = streamingMsgEl || messagesEl.querySelector('.message:last-child')
     const div = document.createElement('div')
     div.className = 'tool-call'
     const inputStr = typeof input === 'object' ? JSON.stringify(input).slice(0, 120) : String(input)
     div.innerHTML = `<span class="tool-name">◇ ${escapeHtml(name)}</span> ${escapeHtml(inputStr)}`
-    messagesEl.appendChild(div)
+    if (container && container.matches('.message')) {
+      container.appendChild(div)
+    } else {
+      messagesEl.appendChild(div)
+    }
     scrollToBottom()
   }
 
   function addToolResult(name, success, outputOrError) {
+    // Find the current streaming message, or the last assistant message
+    const container = streamingMsgEl || messagesEl.querySelector('.message:last-child')
     const div = document.createElement('div')
     div.className = 'tool-call'
     if (success) {
@@ -152,7 +160,11 @@
     } else {
       div.innerHTML = `<span class="tool-error">✖ ${escapeHtml(name)}</span> ${escapeHtml(outputOrError)}`
     }
-    messagesEl.appendChild(div)
+    if (container && container.matches('.message')) {
+      container.appendChild(div)
+    } else {
+      messagesEl.appendChild(div)
+    }
     scrollToBottom()
   }
 
@@ -274,6 +286,7 @@
         break
 
       case 'tool_call':
+        // Append tool call inline with the current assistant message
         addToolCall(msg.name, msg.input)
         break
 
@@ -283,10 +296,14 @@
         } else {
           addToolResult(msg.name, false, msg.error || 'Unknown error')
         }
+        // After a tool result, the next text chunk should continue in the
+        // existing assistant message (don't start a new one)
         break
 
       case 'turn_start':
         setStatus(true)
+        // Start a fresh assistant message container for the upcoming response
+        startAssistantMessage()
         break
 
       case 'turn_end':

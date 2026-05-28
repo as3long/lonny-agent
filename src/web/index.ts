@@ -12,6 +12,14 @@ import { startSessionBridge, type WsMessage } from './session-bridge.js'
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
 
 /**
+ * Strip ANSI escape codes from a string.
+ * These are terminal control sequences (\x1b[...m) that are meaningless in the browser.
+ */
+function stripAnsi(text: string): string {
+  return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+}
+
+/**
  * Find the public/ directory at runtime.
  * - tsx dev mode: __dirname = src/web/, public/ is right there
  * - built dist/ with copy:web: __dirname = dist/web/, public/ was copied alongside
@@ -86,9 +94,13 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
     let bridge: ReturnType<typeof startSessionBridge> | null = null
 
     // Track output to forward to WebSocket
+    // Strip ANSI codes since they are meaningless in the browser
     const output = {
       write: (text: string) => {
-        ws.send(JSON.stringify({ type: 'chunk', text }))
+        const clean = stripAnsi(text)
+        if (clean) {
+          ws.send(JSON.stringify({ type: 'chunk', text: clean }))
+        }
       },
       suppressToolOutput: true, // EventBus handles tool call display
     }
