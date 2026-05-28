@@ -5,7 +5,7 @@ import type { LLMMessage } from './llm.js'
  * key context, inspired by pi's compaction system.
  */
 
-const DEFAULT_MAX_TOKENS = 128_000
+const DEFAULT_MAX_TOKENS = 256_000
 const COMPACTION_THRESHOLD = 0.75 // compact when usage exceeds 75% of budget
 
 /** Rough token estimation (4 chars ~= 1 token).
