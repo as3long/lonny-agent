@@ -379,8 +379,6 @@ export class Session {
     // Reset stopped flag for new conversation
     this.resetStopped()
 
-    bus.emit(EventChannels.TURN_START, { prompt: userPrompt })
-
     // Declare toolCalls outside the loop so we can reference it in stop check
     let toolCalls: ToolCall[] = []
 
@@ -400,6 +398,7 @@ export class Session {
       let reasoningOutput = false
       let reasoningLineStart = false
 
+      bus.emit(EventChannels.TURN_START, { prompt: userPrompt, iteration: iterations })
       bus.emit(EventChannels.LLM_STREAM_START, { iteration: iterations })
 
       const stream = this.provider.chat(this.messages, this.registry.getDefinitions())
@@ -642,6 +641,9 @@ export class Session {
         }
         this.messages.push(resultMsg)
       }
+
+      // End the current turn before next iteration — frontend creates a new message
+      bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: toolCalls.length })
 
       // Check if compaction is needed
       if (shouldCompact(this.messages)) {

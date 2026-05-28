@@ -323,6 +323,8 @@
 
       case 'turn_end':
         hideThinking()
+        // Finalize the current message so the next turn starts a fresh one
+        finalizeAssistantMessage()
         break
 
       case 'done':
