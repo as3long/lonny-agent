@@ -15,6 +15,66 @@ import { searchTool } from './search.js'
 import type { Tool, ToolCall, ToolDefinition, ToolResult } from './types.js'
 import { createWritePlanTool } from './write_plan.js'
 
+/**
+ * Normalize tool input to prevent common LLM call misuses.
+ * The LLM sometimes passes parameters in the wrong format — this function
+ * auto-corrects those patterns so tools work reliably.
+ *
+ * Common misuses handled:
+ * 1. Passed as a string instead of { ... } object wrapper
+ * 2. Passed top-level params directly instead of nested in the expected key
+ * 3. Array passed directly (for tools that expect { items: [...] })
+ */
+function normalizeToolInput(
+  toolName: string,
+  _definition: ToolDefinition,
+  input: Record<string, unknown>,
+): Record<string, unknown> {
+  // If input is a string (e.g. install_skill("package-name") or bash("ls -la"))
+  // wrap it into the appropriate key
+  if (typeof input === 'string') {
+    if (toolName === 'bash' || toolName === 'git') {
+      return { command: input }
+    }
+    if (
+      toolName === 'install_skill' ||
+      toolName === 'find' ||
+      toolName === 'glob' ||
+      toolName === 'grep'
+    ) {
+      return { pattern: input }
+    }
+    if (toolName === 'search' || toolName === 'fetch') {
+      return { query: input, url: input }
+    }
+    if (toolName === 'write_plan') {
+      return { filename: input, content: input }
+    }
+    if (toolName === 'exec') {
+      return { code: input }
+    }
+    // For tools that take a single string param, guess from the definition
+    const params = Object.keys(_definition.parameters)
+    if (params.length === 1) {
+      return { [params[0]]: input }
+    }
+    return input
+  }
+
+  // If input is an array (e.g. read called with ["file.ts"] directly)
+  if (Array.isArray(input)) {
+    if (toolName === 'read' || toolName === 'ls') {
+      return { paths: input, path: (input as string[])[0] }
+    }
+    if (toolName === 'edit') {
+      return { edits: input }
+    }
+    return input
+  }
+
+  return input
+}
+
 export interface ToolContext {
   cwd: string
   autoApprove: boolean
@@ -168,8 +228,17 @@ export class ToolRegistry {
       }
     }
 
+    // ── Universal input normalization ──────────────────────────────────
+    // Auto-correct common LLM call misuses before they reach tool execute()
+    let input = call.input
     try {
-      return await tool.execute(call.input)
+      input = normalizeToolInput(call.name, tool.definition, input)
+    } catch {
+      // If normalization throws, let the tool handle it (or fail naturally)
+    }
+
+    try {
+      return await tool.execute(input)
     } catch (err) {
       return {
         success: false,

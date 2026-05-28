@@ -68,10 +68,13 @@ describe('edit tool', () => {
       expect(r.error).toContain('MULTIPLE times')
     })
 
-    it('rejects missing edits key', async () => {
+    it('auto-corrects flat file_path/old_string/new_string into edits array', async () => {
+      // The tool auto-corrects { file_path, old_string, new_string }
+      // into { edits: [{ file_path, old_string, new_string }] }
+      // So the error should be about file not found, not 'edits' missing
       const r = await tool().execute({ file_path: 'x', old_string: 'y', new_string: 'z' })
       expect(r.success).toBe(false)
-      expect(r.error).toContain('edits')
+      expect(r.error).toContain('not found')
     })
 
     it('reports file not found', async () => {
