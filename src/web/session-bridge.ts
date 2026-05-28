@@ -155,6 +155,10 @@ export function startSessionBridge(
         send({ type: 'pong' })
         return
 
+      case 'stop':
+        session.stop()
+        return
+
       default:
         send({ type: 'error', message: `Unknown message type: ${msg.type}` })
     }

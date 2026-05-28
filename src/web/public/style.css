@@ -499,6 +499,28 @@ body {
   cursor: not-allowed;
 }
 
+/* ── Stop Button ────────────────────────────────────────────── */
+#stop-btn {
+  background: var(--error);
+  border: none;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: white;
+  transition: background 0.2s, opacity 0.2s;
+  flex-shrink: 0;
+}
+
+#stop-btn:hover { background: #cc2244; }
+#stop-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ── Connection Overlay ──────────────────────────────────────── */
 .overlay {
   position: fixed;

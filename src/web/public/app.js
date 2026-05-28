@@ -5,6 +5,7 @@
   const messagesEl = document.getElementById('messages')
   const chatInput = document.getElementById('chat-input')
   const sendBtn = document.getElementById('send-btn')
+  const stopBtn = document.getElementById('stop-btn')
   const statusIndicator = document.getElementById('status-indicator')
   const modeDisplay = document.getElementById('mode-display')
   const modelDisplay = document.getElementById('model-display')
@@ -52,6 +53,11 @@
   function setInputEnabled(enabled) {
     chatInput.disabled = !enabled
     sendBtn.disabled = !enabled
+    sendBtn.classList.toggle('hidden', !enabled)
+    stopBtn.classList.toggle('hidden', enabled)
+    if (!enabled) {
+      stopBtn.disabled = false
+    }
     if (enabled) {
       chatInput.focus()
     }
@@ -422,6 +428,14 @@
   // ── Event Listeners ──
 
   sendBtn.addEventListener('click', sendMessage)
+
+  // Stop button
+  stopBtn.addEventListener('click', () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'stop' }))
+    }
+    stopBtn.disabled = true
+  })
 
   chatInput.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) {

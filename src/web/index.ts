@@ -187,6 +187,8 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
           }
         } else if (msg.type === 'ping') {
           ws.send(JSON.stringify({ type: 'pong' }))
+        } else if (msg.type === 'stop') {
+          sessionWithOutput.stop()
         }
       } catch {
         ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }))
