@@ -155,6 +155,97 @@ describe('edit tool', () => {
     })
   })
 
+  describe('diff output', () => {
+    beforeAll(() => {
+      fs.writeFileSync(path.join(tmpDir, 'diff-test.txt'), 'line one\nline two\nline three\n')
+    })
+
+    it('shows green + for new file creation (no red - lines)', async () => {
+      const r = await tool().execute({
+        edits: [{ file_path: 'diff-new.txt', old_string: '', new_string: 'hello\nworld' }],
+      })
+      expect(r.success).toBe(true)
+      // Should contain green ANSI code for added lines
+      expect(r.output).toContain('\x1b[38;2;0;200;100m') // green
+      expect(r.output).toContain('+ hello')
+      expect(r.output).toContain('+ world')
+      // Should NOT contain red ANSI code (no removed lines)
+      expect(r.output).not.toContain('\x1b[38;2;255;80;80m')
+      expect(r.output).toContain('Created')
+    })
+
+    it('shows red - for removed lines and green + for added lines on replacement', async () => {
+      const r = await tool().execute({
+        edits: [
+          {
+            file_path: 'diff-test.txt',
+            old_string: 'line two',
+            new_string: 'line TWO',
+          },
+        ],
+      })
+      expect(r.success).toBe(true)
+      // Should contain red ANSI code for removed content
+      expect(r.output).toContain('\x1b[38;2;255;80;80m')
+      expect(r.output).toContain('- line two')
+      // Should contain green ANSI code for added content
+      expect(r.output).toContain('\x1b[38;2;0;200;100m')
+      expect(r.output).toContain('+ line TWO')
+      expect(r.output).toContain('Edited')
+    })
+
+    it('shows multi-line diff correctly', async () => {
+      const r = await tool().execute({
+        edits: [
+          {
+            file_path: 'diff-test.txt',
+            old_string: 'line one\nline TWO',
+            new_string: 'line 1\nline 2',
+          },
+        ],
+      })
+      expect(r.success).toBe(true)
+      // Removed lines
+      expect(r.output).toContain('- line one')
+      expect(r.output).toContain('- line TWO')
+      // Added lines
+      expect(r.output).toContain('+ line 1')
+      expect(r.output).toContain('+ line 2')
+    })
+
+    it('handles CRLF in old_string (Windows compatibility)', async () => {
+      fs.writeFileSync(path.join(tmpDir, 'crlf-test.txt'), 'a\\r\\nb\\r\\nc\\r\\n')
+      const r = await tool().execute({
+        edits: [
+          {
+            file_path: 'crlf-test.txt',
+            // Simulate AI sending old_string with \\r\\n (CRLF) on Windows
+            old_string: 'b\\r\\n',
+            new_string: 'B\\r\\n',
+          },
+        ],
+      })
+      expect(r.success).toBe(true)
+      const content = fs.readFileSync(path.join(tmpDir, 'crlf-test.txt'), 'utf8')
+      expect(content).toContain('B')
+      // Should show the normalized diff (with \\n, not \\r\\n)
+      expect(r.output).toContain('- b')
+      expect(r.output).toContain('+ B')
+    })
+
+    it('does not show empty red line when old_string is empty', async () => {
+      const r = await tool().execute({
+        edits: [{ file_path: 'empty-old.txt', old_string: '', new_string: 'only added' }],
+      })
+      expect(r.success).toBe(true)
+      // Should have green + lines
+      expect(r.output).toContain('+ only added')
+      // Count red-start markers — should be 0 (no removed content)
+      const redCount = (r.output.match(/\x1b\[38;2;255;80;80m/g) || []).length
+      expect(redCount).toBe(0)
+    })
+  })
+
   describe('create mode', () => {
     const createdDir = () => path.join(tmpDir, 'created-test')
 

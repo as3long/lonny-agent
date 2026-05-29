@@ -7,6 +7,11 @@ import type { Config } from '../config/index.js'
  * Listens to EventBus events and forwards them as JSON messages.
  */
 
+/** Strip ANSI escape codes from a string (terminal colors are meaningless in the browser) */
+function stripAnsi(text: string): string {
+  return text.replace(/\x1b\[[0-9;]*m/g, '')
+}
+
 export interface WsMessage {
   type: string
   [key: string]: unknown
@@ -49,12 +54,18 @@ export function startSessionBridge(
 
   const unsubToolResult = bus.on(EventChannels.TOOL_RESULT, data => {
     const d = data as { name: string; id: string; output: string }
-    send({ type: 'tool_result', name: d.name, id: d.id, success: true, output: d.output })
+    send({
+      type: 'tool_result',
+      name: d.name,
+      id: d.id,
+      success: true,
+      output: stripAnsi(d.output),
+    })
   })
 
   const unsubToolError = bus.on(EventChannels.TOOL_ERROR, data => {
     const d = data as { name: string; id: string; error: string }
-    send({ type: 'tool_result', name: d.name, id: d.id, success: false, error: d.error })
+    send({ type: 'tool_result', name: d.name, id: d.id, success: false, error: stripAnsi(d.error) })
   })
 
   const unsubTurnEnd = bus.on(EventChannels.TURN_END, data => {

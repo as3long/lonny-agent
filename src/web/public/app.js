@@ -268,6 +268,21 @@
     scrollToBottom()
   }
 
+  function renderDiffContent(text) {
+    const lines = text.split('\n')
+    return lines
+      .map(line => {
+        const trimmed = line.trim()
+        if (trimmed.startsWith('+ ')) {
+          return `<span class="diff-added">${escapeHtml(line)}\n</span>`
+        } else if (trimmed.startsWith('- ')) {
+          return `<span class="diff-removed">${escapeHtml(line)}\n</span>`
+        }
+        return escapeHtml(line) + '\n'
+      })
+      .join('')
+  }
+
   function addToolResult(name, success, outputOrError, id) {
     // Remove from pending tracking and clear executing state
     if (id) {
@@ -283,8 +298,20 @@
     if (success) {
       let display = outputOrError
       if (display === '(no output)') display = ''
-      const summary = typeof display === 'string' ? display.slice(0, 80) : ''
-      div.innerHTML = `<span class="tool-result-success">✔ ${escapeHtml(name)}</span>${summary ? ' ' + escapeHtml(summary) : ''}`
+      // Check if this is an edit tool result with diff content
+      if (
+        name === 'edit' &&
+        display &&
+        (display.includes('\n  - ') ||
+          display.includes('\n  + ') ||
+          display.startsWith('  - ') ||
+          display.startsWith('  + '))
+      ) {
+        div.innerHTML = `<span class="tool-result-success">✔ ${escapeHtml(name)}</span><span class="tool-result-diff">${renderDiffContent(display)}</span>`
+      } else {
+        const summary = typeof display === 'string' ? display.slice(0, 80) : ''
+        div.innerHTML = `<span class="tool-result-success">✔ ${escapeHtml(name)}</span>${summary ? ' ' + escapeHtml(summary) : ''}`
+      }
     } else {
       div.innerHTML = `<span class="tool-result-error">✖ ${escapeHtml(name)}</span> ${escapeHtml(outputOrError)}`
     }

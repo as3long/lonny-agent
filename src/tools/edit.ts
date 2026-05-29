@@ -4,6 +4,24 @@ import type { FileReadTracker } from '../diff/apply.js'
 import { fmtErr } from './errors.js'
 import type { Tool, ToolResult } from './types.js'
 
+// ── ANSI colors for diff output ─────────────────────────────────────────
+const DIFF_RED = '\x1b[38;2;255;80;80m'
+const DIFF_GREEN = '\x1b[38;2;0;200;100m'
+const DIFF_RESET = '\x1b[0m'
+
+function generateDiff(oldStr: string, newStr: string): string {
+  const oldLines = oldStr === '' ? [] : oldStr.split('\n')
+  const newLines = newStr.split('\n')
+  const lines: string[] = []
+  for (const line of oldLines) {
+    lines.push(`  ${DIFF_RED}- ${line}${DIFF_RESET}`)
+  }
+  for (const line of newLines) {
+    lines.push(`  ${DIFF_GREEN}+ ${line}${DIFF_RESET}`)
+  }
+  return lines.join('\n')
+}
+
 interface SingleEdit {
   file_path: string
   old_string: string
@@ -155,6 +173,9 @@ EXAMPLES:
 
         for (let i = group.edits.length - 1; i >= 0; i--) {
           const e = group.edits[i]
+          // Normalize CRLF → LF in AI-provided strings (critical on Windows)
+          e.old_string = e.old_string.replace(/\r\n/g, '\n')
+          e.new_string = e.new_string.replace(/\r\n/g, '\n')
 
           if (e.old_string === '') {
             if (content !== null) {
@@ -170,8 +191,11 @@ EXAMPLES:
               }
               break
             }
+            const newLines = e.new_string.split('\n').length
             content = e.new_string
-            results.push(`  Created ${relPath} (${e.new_string.split('\n').length} lines)`)
+            results.push(
+              `  Created ${relPath} (${newLines} lines):\n${generateDiff('', e.new_string)}`,
+            )
             continue
           }
 
@@ -218,6 +242,8 @@ EXAMPLES:
             break
           }
 
+          const diff = generateDiff(e.old_string, e.new_string)
+          results.push(`  Edited ${relPath}:\n${diff}`)
           content = content.slice(0, idx) + e.new_string + content.slice(idx + e.old_string.length)
         }
 

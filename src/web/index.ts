@@ -357,8 +357,15 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
       sendPlanData()
     })()
 
-    // Send full session history (exclude system prompt)
-    const historyMessages = sessionWithOutput.messages.filter(m => m.role !== 'system')
+    // Send full session history (exclude system prompt, strip ANSI from tool results)
+    const historyMessages = sessionWithOutput.messages
+      .filter(m => m.role !== 'system')
+      .map(m => {
+        if (m.role === 'tool' && typeof m.content === 'string') {
+          return { ...m, content: stripAnsi(m.content) }
+        }
+        return m
+      })
     if (historyMessages.length > 0) {
       ws.send(
         JSON.stringify({

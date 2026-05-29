@@ -352,6 +352,23 @@ body {
 .tool-result .tool-result-success { color: var(--success); }
 .tool-result .tool-result-error { color: var(--error); }
 
+/* ── Edit Diff Display ─────────────────────────────────────────── */
+.tool-result .tool-result-diff {
+  display: block;
+  margin-top: 2px;
+  white-space: pre;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.tool-result .diff-added {
+  color: var(--success);
+}
+
+.tool-result .diff-removed {
+  color: var(--error);
+}
+
 /* ── Thinking Block ──────────────────────────────────────────── */
 .thinking-block {
   margin: 4px 0 4px 12px;

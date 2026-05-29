@@ -155,7 +155,7 @@ function printToolResult(tc: ToolCall, result: ToolResult, output?: SessionOutpu
     writeOut(`  ${GY}│${RS}  ${GR}✔${RS} edit\n`, output)
     if (result.output) {
       for (const l of result.output.split('\n')) {
-        if (l.trim()) writeOut(`  ${GY}│${RS}    ${GY}${l.trim()}${RS}\n`, output)
+        if (l.trim()) writeOut(`  ${GY}│${RS}  ${l.trim()}\n`, output)
       }
     }
   } else if (tc.name === 'write_plan') {

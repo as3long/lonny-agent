@@ -97,9 +97,10 @@ describe('compact', () => {
     // Should have: system + summary + 5 recent
     expect(result.newCount).toBeLessThan(result.originalCount)
     expect(result.messages[0].role).toBe('system')
-    // Second message should be the summary
-    expect(result.messages[1].role).toBe('system')
-    expect(result.messages[1].content).toContain('Conversation History Summary')
+    // Last message should be the summary (appended at end for prompt cache stability)
+    const summaryMsg = result.messages[result.messages.length - 1]
+    expect(summaryMsg.role).toBe('system')
+    expect(summaryMsg.content).toContain('Conversation History Summary')
   })
 
   test('preserves tool-call cycles when cutting off', () => {
@@ -140,7 +141,8 @@ describe('compact', () => {
 
     const result = compact(messages, 100, 5)
     if (result.compressed) {
-      const summary = result.messages[1].content || ''
+      // Summary is always the last message (appended at end for prompt cache stability)
+      const summary = result.messages[result.messages.length - 1].content || ''
       expect(summary).toContain('Total exchanges')
     }
   })
