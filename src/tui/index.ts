@@ -483,6 +483,15 @@ export async function startTui(config: Config): Promise<void> {
       }
 
       if (cmd === 'new') {
+        // If the agent is running, stop the old session gracefully first.
+        // Without this, the pending chat() promise would continue consuming
+        // tokens and write stale output into the freshly cleared chat display.
+        if (isRunning) {
+          session.stop()
+          isRunning = false
+          loader.setMessage('')
+          tui.setShowHardwareCursor(true)
+        }
         Session.clearSavedSession(config.cwd)
         resetTokenUsage(config.cwd)
         resetGlobalEventBus()
@@ -491,6 +500,10 @@ export async function startTui(config: Config): Promise<void> {
         chatContent = ''
         chatMarkdown.setText('')
         plansList.clearFilter()
+        // Reset editor internal state that setText('') doesn't clear
+        ;(editor as any).undoStack.clear()
+        ;(editor as any).history = []
+        ;(editor as any).killRing.ring = []
         updateFooter()
         return
       }
