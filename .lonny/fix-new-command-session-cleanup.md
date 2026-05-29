@@ -62,4 +62,4 @@ if (cmd === 'new') {
 
 - [x] Replace the `/new` command handler in `src/tui/index.ts` (around line 485) with the version above that calls `session.stop()` if running and resets editor internal state
 - [x] Run `npm run build` to verify compilation
-- [ ] Test: start agent, let it run, type `/new`, verify no stale output appears and editor history/undo is clean
+- [x] Test: start agent, let it run, type `/new`, verify no stale output appears and editor history/undo is clean
