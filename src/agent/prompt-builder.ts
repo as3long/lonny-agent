@@ -26,7 +26,19 @@ export function buildSystemPrompt(config: Config): string {
 - \`search\`: Search the web using Tavily (query: string, search_depth?: string, include_answer?: boolean, max_results?: number, topic?: string, days?: number)
 `
     }
-    const planOnly = mode === 'plan'
+    if (mode === 'plan') {
+      return `Available tools (read-only investigation + write_plan):
+- \`read\`: Read file contents (paths: string[])
+- \`glob\`: Find files by glob pattern (pattern: string)
+- \`grep\`: Search file content by regex (pattern: string, include?: string, path?: string)
+- \`ls\`: List directory (path?: string)
+- \`bash\`: Execute read-only shell commands for investigation (NEVER modify files)
+- \`find\`: Find files by name pattern (pattern: string, path?: string, maxResults?: number)
+- \`git\`: Run read-only git commands (command: string)
+- \`search\`: Search the web using Tavily (query: string, search_depth?: string, include_answer?: boolean, max_results?: number, topic?: string, days?: number)
+- \`write_plan\`: Save plan/todo markdown into .lonny/ folder
+`
+    }
     return `Available tools:
 - \`read\`: Read file contents (paths: string[])
 - \`glob\`: Find files by glob pattern (pattern: string)
@@ -34,7 +46,7 @@ export function buildSystemPrompt(config: Config): string {
 - \`ls\`: List directory (path?: string)
 - \`bash\`: Execute a shell command
 - \`edit\`: Replace text in files — call with {"edits": [{"file_path", "old_string", "new_string"}]} (array required)
-${planOnly ? '- `write_plan`: Save plan/todo markdown into .lonny/ folder\n' : ''}- \`install_skill\`: Install an npm package as a skill — fetches package info from npm, runs npm install, and creates a .lonny/skills/ file with usage instructions for the AI
+- \`install_skill\`: Install an npm package as a skill — fetches package info from npm, runs npm install, and creates a .lonny/skills/ file with usage instructions for the AI
 - \`find\`: Find files by name pattern (pattern: string, path?: string, maxResults?: number)
 - \`git\`: Run read-only git commands (command: string)
 - \`search\`: Search the web using Tavily (query: string, search_depth?: string, include_answer?: boolean, max_results?: number, topic?: string, days?: number)
@@ -59,10 +71,12 @@ ${getToolListForMode(config.mode)}`
 
 RULES (plan-specific):
 1. Read first: Use read/grep/glob tools to gather all context you need before planning.
-2. You CANNOT edit source files — you have no code edit tools. Only read and analyze.
-3. Use \`bash\` for read-only commands only.
-4. You MUST persist the final plan AND todo list to a file in \`.lonny/\` using \`write_plan\`. The \`write_plan\` content MUST include both ## Plan and ## Todo List sections.
-5. You MUST also include the todo list in your text response to the user (not just in the file).
+2. You NEVER edit source files. You ONLY use read-only tools (read/glob/grep/ls/find/git/search) and bash (read-only commands only). You do NOT have access to edit, install_skill, or exec.
+3. Use \`bash\` for investigation only — NEVER to modify files, install packages, or run write operations.
+4. Your ONLY output is a plan file saved via \`write_plan\`. You CANNOT modify the codebase directly.
+5. You MUST persist the final plan AND todo list to a file in \`.lonny/\` using \`write_plan\`. The \`write_plan\` content MUST include both ## Plan and ## Todo List sections.
+6. You MUST also include the todo list in your text response to the user (not just in the file).
+7. If the user asks you to modify files, run write commands, or install packages — refuse and explain they need to switch to code mode (\`/mode code\`).
 
 OUTPUT FORMAT (you MUST include both in write_plan AND in your response text):
 
@@ -113,8 +127,13 @@ RULES (code-specific):
 ${isWindows ? '  - Use PowerShell. Do NOT use Unix commands like `cat`, `ls`, `grep`, `which`, `chmod`, `mv`, `cp`, `rm`, `touch`, `mkdir`, `uname`, etc.' : ''}
 ${isWindows ? '  - Use `type` instead of `cat`, `dir` instead of `ls`, `where` instead of `which`' : ''}`
 
+  // Plan mode uses its own standalone tool list inside modeInstructions — skip sharedRules
+  const rulesSection =
+    config.mode === 'plan'
+      ? ''
+      : `
+${sharedRules}`
   return `${modeInstructions}
 
-${envSection}
-${sharedRules}${skillsSection}`
+${envSection}${rulesSection}${skillsSection}`
 }

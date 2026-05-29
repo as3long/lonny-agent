@@ -257,8 +257,21 @@
     const div = document.createElement('div')
     div.className = id ? 'tool-call executing' : 'tool-call'
     div.dataset.toolId = id || ''
-    const inputStr = typeof input === 'object' ? JSON.stringify(input).slice(0, 120) : String(input)
-    div.innerHTML = `<span class="tool-name">${escapeHtml(name)}</span> <span class="tool-input">${escapeHtml(inputStr)}</span>`
+
+    if (name === 'edit') {
+      // Special display for edit tool: show file paths being edited
+      const edits = input && input.edits
+      const paths = Array.isArray(edits) ? edits.map(e => e.file_path).filter(Boolean) : []
+      const uniquePaths = [...new Set(paths)]
+      const pathsStr =
+        uniquePaths.length > 0 ? uniquePaths.map(p => escapeHtml(p)).join(', ') : '(no files)'
+      div.innerHTML = `<span class="tool-name tool-name-edit">✏ edit</span> <span class="tool-input tool-input-edit">${pathsStr}</span>`
+    } else {
+      const inputStr =
+        typeof input === 'object' ? JSON.stringify(input).slice(0, 120) : String(input)
+      div.innerHTML = `<span class="tool-name">${escapeHtml(name)}</span> <span class="tool-input">${escapeHtml(inputStr)}</span>`
+    }
+
     if (container && container.matches('.message')) {
       container.appendChild(div)
     } else {
@@ -290,6 +303,10 @@
       if (pendingEl) {
         pendingEl.classList.remove('executing')
         pendingToolCalls.delete(id)
+        // For edit tool, update the tool-call element to show completion summary
+        if (name === 'edit' && success) {
+          pendingEl.classList.add('completed')
+        }
       }
     }
     const container = streamingMsgEl || messagesEl.querySelector('.message:last-child')
@@ -298,16 +315,33 @@
     if (success) {
       let display = outputOrError
       if (display === '(no output)') display = ''
-      // Check if this is an edit tool result with diff content
-      if (
-        name === 'edit' &&
-        display &&
-        (display.includes('\n  - ') ||
-          display.includes('\n  + ') ||
-          display.startsWith('  - ') ||
-          display.startsWith('  + '))
-      ) {
-        div.innerHTML = `<span class="tool-result-success">✔ ${escapeHtml(name)}</span><span class="tool-result-diff">${renderDiffContent(display)}</span>`
+      // Special display for edit tool success — show rich diff content
+      if (name === 'edit' && display) {
+        const lines = display.split('\n')
+        const summaryLines = []
+        const diffLines = []
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (
+            trimmed.startsWith('Edited ') ||
+            trimmed.startsWith('Created ') ||
+            trimmed.startsWith('Deleted ')
+          ) {
+            summaryLines.push(trimmed)
+          } else if (trimmed.startsWith('- ') || trimmed.startsWith('+ ')) {
+            diffLines.push(line)
+          }
+        }
+        let html = `<span class="tool-result-success">✔ ${escapeHtml(name)}</span>`
+        if (summaryLines.length > 0) {
+          html += `<span class="tool-result-summary">${summaryLines.map(s => escapeHtml(s)).join('<br>')}</span>`
+        }
+        if (diffLines.length > 0) {
+          html += `<span class="tool-result-diff"><pre><code>${renderDiffContent(diffLines.join('\n'))}</code></pre></span>`
+        } else if (display.includes(' FAIL ')) {
+          html += `<span class="tool-result-diff"><pre>${escapeHtml(display)}</pre></span>`
+        }
+        div.innerHTML = html
       } else {
         const summary = typeof display === 'string' ? display.slice(0, 80) : ''
         div.innerHTML = `<span class="tool-result-success">✔ ${escapeHtml(name)}</span>${summary ? ' ' + escapeHtml(summary) : ''}`

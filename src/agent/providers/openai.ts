@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import type { RequestOptions } from 'openai/core.js'
 import type {
   ChatCompletionChunk,
   ChatCompletionMessageParam,
@@ -47,7 +48,11 @@ export class OpenAIProvider implements LLMProvider {
     this.strictTools = strictTools ?? (baseURL ? /beta/i.test(baseURL) : false)
   }
 
-  async *chat(messages: LLMMessage[], tools: ToolDefinition[]): AsyncGenerator<LLMChunk> {
+  async *chat(
+    messages: LLMMessage[],
+    tools: ToolDefinition[],
+    signal?: AbortSignal,
+  ): AsyncGenerator<LLMChunk> {
     const openAIFormattedTools: ChatCompletionTool[] = tools.map(t => {
       const properties: Record<string, unknown> = {}
       for (const [key, param] of Object.entries(t.parameters)) {
@@ -117,18 +122,22 @@ export class OpenAIProvider implements LLMProvider {
     const stream: Stream<ChatCompletionChunk> = await (
       this.client.chat.completions.create as (
         params: ExtendedCreateParams,
+        options?: RequestOptions,
       ) => Promise<Stream<ChatCompletionChunk>>
-    )({
-      model: this.model,
-      messages: openAIMessages,
-      tools: openAIFormattedTools.length > 0 ? openAIFormattedTools : undefined,
-      stream: true,
-      stream_options: { include_usage: true },
-      ...(this.thinking
-        ? { thinking: { type: 'enabled' }, reasoning_effort: this.reasoningEffort || 'high' }
-        : {}),
-      ...(this.enableCache ? { enable_cache: true } : {}),
-    })
+    )(
+      {
+        model: this.model,
+        messages: openAIMessages,
+        tools: openAIFormattedTools.length > 0 ? openAIFormattedTools : undefined,
+        stream: true,
+        stream_options: { include_usage: true },
+        ...(this.thinking
+          ? { thinking: { type: 'enabled' }, reasoning_effort: this.reasoningEffort || 'high' }
+          : {}),
+        ...(this.enableCache ? { enable_cache: true } : {}),
+      },
+      signal ? { signal } : undefined,
+    )
 
     let currentToolCall: {
       id: string

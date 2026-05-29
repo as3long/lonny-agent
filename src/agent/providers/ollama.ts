@@ -40,7 +40,11 @@ export class OllamaProvider implements LLMProvider {
     this.model = model || 'llama3.2'
   }
 
-  async *chat(messages: LLMMessage[], tools: ToolDefinition[]): AsyncGenerator<LLMChunk> {
+  async *chat(
+    messages: LLMMessage[],
+    tools: ToolDefinition[],
+    signal?: AbortSignal,
+  ): AsyncGenerator<LLMChunk> {
     // Build Ollama-format messages
     const ollamaMessages: OllamaMessage[] = messages.map(m => {
       if (m.role === 'system') {
@@ -108,6 +112,7 @@ export class OllamaProvider implements LLMProvider {
     const response = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal,
       body: JSON.stringify(body),
     })
 

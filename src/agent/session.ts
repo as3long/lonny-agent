@@ -259,6 +259,7 @@ export class Session {
   turnApiCalls: number = 0
   totalApiCalls: number = 0
   private stopped: boolean = false
+  private abortController: AbortController | null = null
 
   constructor(config: Config, output?: SessionOutput) {
     this.config = config
@@ -368,6 +369,8 @@ export class Session {
   /** Stop the current conversation gracefully */
   stop(): void {
     this.stopped = true
+    // Abort any in-flight LLM stream to stop token consumption immediately
+    this.abortController?.abort()
   }
 
   /** Check if the session was stopped */
@@ -396,6 +399,9 @@ export class Session {
 
     // Reset stopped flag for new conversation
     this.resetStopped()
+    // Create a new AbortController for this chat invocation
+    // (a new controller is needed each time because abort() is one-shot)
+    this.abortController = new AbortController()
 
     // Declare toolCalls outside the loop so we can reference it in stop check
     let toolCalls: ToolCall[] = []
@@ -419,7 +425,11 @@ export class Session {
       bus.emit(EventChannels.TURN_START, { prompt: userPrompt, iteration: iterations })
       bus.emit(EventChannels.LLM_STREAM_START, { iteration: iterations })
 
-      const stream = this.provider.chat(this.messages, this.registry.getDefinitions())
+      const stream = this.provider.chat(
+        this.messages,
+        this.registry.getDefinitions(),
+        this.abortController.signal,
+      )
 
       for await (const chunk of stream) {
         if (chunk.reasoning_content) {

@@ -10,7 +10,11 @@ export interface LLMMessage {
 }
 
 export interface LLMProvider {
-  chat(messages: LLMMessage[], tools: ToolDefinition[]): AsyncGenerator<LLMChunk>
+  chat(
+    messages: LLMMessage[],
+    tools: ToolDefinition[],
+    signal?: AbortSignal,
+  ): AsyncGenerator<LLMChunk>
 }
 
 export interface TokenUsage {

@@ -12,7 +12,11 @@ export class AnthropicProvider implements LLMProvider {
     this.model = model || 'claude-sonnet-4-20250514'
   }
 
-  async *chat(messages: LLMMessage[], tools: ToolDefinition[]): AsyncGenerator<LLMChunk> {
+  async *chat(
+    messages: LLMMessage[],
+    tools: ToolDefinition[],
+    signal?: AbortSignal,
+  ): AsyncGenerator<LLMChunk> {
     const anthropicTools: Anthropic.Tool[] = tools.map(t => {
       const properties: Record<string, unknown> = {}
       for (const [key, param] of Object.entries(t.parameters)) {
@@ -71,13 +75,16 @@ export class AnthropicProvider implements LLMProvider {
       return { role: 'user' as const, content: '' }
     })
 
-    const stream = this.client.messages.stream({
-      model: this.model,
-      system: systemMsg?.content || '',
-      messages: anthropicMessages,
-      tools: anthropicTools.length > 0 ? anthropicTools : undefined,
-      max_tokens: 8192,
-    })
+    const stream = this.client.messages.stream(
+      {
+        model: this.model,
+        system: systemMsg?.content || '',
+        messages: anthropicMessages,
+        tools: anthropicTools.length > 0 ? anthropicTools : undefined,
+        max_tokens: 8192,
+      },
+      signal ? { signal } : undefined,
+    )
 
     let currentToolUse: {
       id: string

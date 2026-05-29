@@ -48,7 +48,11 @@ export class GoogleProvider implements LLMProvider {
     this.baseUrl = baseURL || 'https://generativelanguage.googleapis.com/v1beta'
   }
 
-  async *chat(messages: LLMMessage[], tools: ToolDefinition[]): AsyncGenerator<LLMChunk> {
+  async *chat(
+    messages: LLMMessage[],
+    tools: ToolDefinition[],
+    signal?: AbortSignal,
+  ): AsyncGenerator<LLMChunk> {
     const systemInstruction = messages.find(m => m.role === 'system')?.content || ''
     const nonSystemMessages = messages.filter(m => m.role !== 'system')
 
@@ -135,6 +139,7 @@ export class GoogleProvider implements LLMProvider {
         'Content-Type': 'application/json',
         'x-goog-api-key': this.apiKey,
       },
+      signal,
       body: JSON.stringify(body),
     })
 

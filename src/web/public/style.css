@@ -347,18 +347,50 @@ body {
 }
 
 .tool-call .tool-name { color: var(--accent-dim); }
+.tool-call .tool-name.tool-name-edit { color: var(--warning); }
 .tool-call .tool-input { color: var(--text-dim); }
+.tool-call .tool-input.tool-input-edit { font-family: var(--font-mono); font-size: 0.85em; }
+.tool-call.completed { opacity: 0.6; }
+.tool-call.completed .tool-name::before { display: none; }
 
 .tool-result .tool-result-success { color: var(--success); }
 .tool-result .tool-result-error { color: var(--error); }
+.tool-result .tool-result-summary {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  margin-top: 2px;
+  line-height: 1.3;
+}
 
 /* ── Edit Diff Display ─────────────────────────────────────────── */
 .tool-result .tool-result-diff {
   display: block;
   margin-top: 2px;
-  white-space: pre;
+}
+
+.tool-result .tool-result-diff pre {
+  max-height: 300px;
+  max-width: 100%;
+  overflow-y: auto;
+  overflow-x: auto;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 4px 0;
   font-size: 12px;
   line-height: 1.4;
+  white-space: pre;
+  word-break: break-all;
+}
+
+.tool-result .tool-result-diff code {
+  font-family: var(--font-mono);
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  padding: 0;
 }
 
 .tool-result .diff-added {
