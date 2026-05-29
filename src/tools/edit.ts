@@ -22,6 +22,74 @@ function generateDiff(oldStr: string, newStr: string): string {
   return lines.join('\n')
 }
 
+/**
+ * Normalize a line for whitespace-tolerant comparison:
+ * 1. Trim leading/trailing whitespace
+ * 2. Collapse runs of 2+ spaces/tabs into a single space
+ *
+ * This handles whitespace differences ANYWHERE on the line:
+ * - Leading/trailing spaces → `trim()` removes them
+ * - Extra internal spaces → `"foo  bar"` → `"foo bar"`
+ * - Blank lines with spaces → `"   "` → `""`
+ */
+function normalizeLine(s: string): string {
+  return s.trim().replace(/[ \t]{2,}/g, ' ')
+}
+
+interface MatchPos {
+  index: number
+  length: number
+}
+
+/**
+ * Sliding-window line search that ignores whitespace differences
+ * (leading, trailing, and internal runs).
+ *
+ * Returns all match positions in the ORIGINAL (unnormalized) content,
+ * so the caller can do content.slice(match.index, match.index + match.length)
+ * to extract the actual matched text (with its original whitespace).
+ */
+function findAllLinesTolerant(content: string, oldString: string): MatchPos[] {
+  if (oldString === '') return []
+
+  const contentLines = content.split('\n')
+  const oldLines = oldString.split('\n')
+
+  if (oldLines.length > contentLines.length) return []
+
+  // Pre-normalize for speed
+  const normContent = contentLines.map(normalizeLine)
+  const normOld = oldLines.map(normalizeLine)
+
+  const matches: MatchPos[] = []
+
+  for (let start = 0; start <= normContent.length - normOld.length; start++) {
+    let match = true
+    for (let j = 0; j < normOld.length; j++) {
+      if (normContent[start + j] !== normOld[j]) {
+        match = false
+        break
+      }
+    }
+    if (match) {
+      // Compute byte position in ORIGINAL (unnormalized) content
+      let charPos = 0
+      for (let k = 0; k < start; k++) {
+        charPos += contentLines[k]!.length + 1 // +1 for the \n
+      }
+      // Compute matched text length in ORIGINAL content
+      let matchedLen = 0
+      for (let j = 0; j < oldLines.length; j++) {
+        matchedLen += contentLines[start + j]!.length
+        if (j < oldLines.length - 1) matchedLen += 1 // +1 for the \n
+      }
+      matches.push({ index: charPos, length: matchedLen })
+    }
+  }
+
+  return matches
+}
+
 interface SingleEdit {
   file_path: string
   old_string: string
@@ -213,38 +281,96 @@ EXAMPLES:
             break
           }
 
-          const idx = content.indexOf(e.old_string)
-          if (idx === -1) {
-            const diag = JSON.stringify({
-              file_path: e.file_path,
-              old_string: e.old_string,
-              new_string: e.new_string,
-            })
-            results.push(`  FAIL ${relPath}: old_string not found — ${diag}`)
-            if (!anyFailed) {
-              anyFailed = true
-              firstError = `old_string not found in ${relPath} — ${diag}`
+          // ── Tier 1: Exact match ──────────────────────────────────────
+          const exactIdx = content.indexOf(e.old_string)
+
+          let matchInfo: { index: number; length: number; strategy: 'exact' | 'tolerant' } | null =
+            null
+
+          if (exactIdx !== -1) {
+            // Exact match found — check for duplicates
+            const lastIdx = content.lastIndexOf(e.old_string)
+            if (exactIdx !== lastIdx) {
+              const diag = JSON.stringify({
+                file_path: e.file_path,
+                old_string: e.old_string,
+                new_string: e.new_string,
+              })
+              results.push(`  FAIL ${relPath}: old_string appears MULTIPLE times — ${diag}`)
+              if (!anyFailed) {
+                anyFailed = true
+                firstError = `old_string appears MULTIPLE times in ${relPath} — ${diag}`
+              }
+              break
             }
-            break
-          }
-          const lastIdx = content.lastIndexOf(e.old_string)
-          if (idx !== lastIdx) {
-            const diag = JSON.stringify({
-              file_path: e.file_path,
-              old_string: e.old_string,
-              new_string: e.new_string,
-            })
-            results.push(`  FAIL ${relPath}: old_string appears MULTIPLE times — ${diag}`)
-            if (!anyFailed) {
-              anyFailed = true
-              firstError = `old_string appears MULTIPLE times in ${relPath} — ${diag}`
+            matchInfo = { index: exactIdx, length: e.old_string.length, strategy: 'exact' }
+          } else {
+            // ── Tier 2: Whitespace-normalized fallback ─────────────────
+            const tolerant = findAllLinesTolerant(content, e.old_string)
+            if (tolerant.length === 0) {
+              // Not found by any strategy — include proximity hint
+              const contentLines = content.split('\n')
+              let hint = ''
+              const firstLine = (e.old_string.split('\n')[0] || '').trim()
+              if (firstLine) {
+                const normFirst = normalizeLine(firstLine)
+                // Try to find a line that contains the first line text
+                const similarIdx = contentLines.findIndex(
+                  l => l.length > 0 && normFirst.length > 0 && normalizeLine(l).includes(normFirst),
+                )
+                if (similarIdx !== -1) {
+                  const start = Math.max(0, similarIdx - 1)
+                  const end = Math.min(contentLines.length, similarIdx + 2)
+                  const snippet = contentLines.slice(start, end).join('\n')
+                  hint = `\n  Near line ${similarIdx + 1}:\n  """\n${snippet}\n  """`
+                }
+              }
+              // Always show top of file for context, unless already shown via match
+              if (!hint && contentLines.length > 0) {
+                const lines = contentLines.slice(0, Math.min(contentLines.length, 5))
+                hint = `\n  File content (first ${lines.length} lines):\n  """\n${lines.join('\n')}\n  """`
+              }
+              const diag = JSON.stringify({
+                file_path: e.file_path,
+                old_string: e.old_string,
+                new_string: e.new_string,
+              })
+              results.push(`  FAIL ${relPath}: old_string not found — ${diag}${hint}`)
+              if (!anyFailed) {
+                anyFailed = true
+                firstError = `old_string not found in ${relPath} — ${diag}`
+              }
+              break
             }
-            break
+            if (tolerant.length > 1) {
+              const diag = JSON.stringify({
+                file_path: e.file_path,
+                old_string: e.old_string,
+                new_string: e.new_string,
+              })
+              results.push(
+                `  FAIL ${relPath}: old_string appears MULTIPLE times (whitespace-normalized) — ${diag}`,
+              )
+              if (!anyFailed) {
+                anyFailed = true
+                firstError = `old_string appears MULTIPLE times in ${relPath} (whitespace-normalized) — ${diag}`
+              }
+              break
+            }
+            matchInfo = {
+              index: tolerant[0]!.index,
+              length: tolerant[0]!.length,
+              strategy: 'tolerant',
+            }
           }
 
+          const strategyLabel = matchInfo.strategy === 'tolerant' ? ' (whitespace-normalized)' : ''
           const diff = generateDiff(e.old_string, e.new_string)
-          results.push(`  Edited ${relPath}:\n${diff}`)
-          content = content.slice(0, idx) + e.new_string + content.slice(idx + e.old_string.length)
+          results.push(`  Edited ${relPath}${strategyLabel}:\n${diff}`)
+          content =
+            content.slice(0, matchInfo.index) +
+            e.new_string +
+            content.slice(matchInfo.index + matchInfo.length)
         }
 
         if (anyFailed) break

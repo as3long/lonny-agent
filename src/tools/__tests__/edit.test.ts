@@ -305,4 +305,159 @@ describe('edit tool', () => {
       expect(fs.existsSync(path.join(createdDir(), 'rollback-1.ts'))).toBe(false)
     })
   })
+
+  describe('whitespace tolerance', () => {
+    const wsDir = () => path.join(tmpDir, 'ws-test')
+    const f = (name: string) => path.join(wsDir(), name)
+
+    beforeAll(() => {
+      fs.mkdirSync(wsDir(), { recursive: true })
+    })
+
+    const tool = () => createEditTool(applier, wsDir())
+
+    it('handles trailing space in file (AI omits trailing space)', async () => {
+      fs.writeFileSync(f('trailing.txt'), 'hello \nworld\n')
+      const r = await tool().execute({
+        edits: [
+          { file_path: 'trailing.txt', old_string: 'hello\nworld', new_string: 'HELLO\nWORLD' },
+        ],
+      })
+      expect(r.success).toBe(true)
+      expect(fs.readFileSync(f('trailing.txt'), 'utf8')).toBe('HELLO\nWORLD\n')
+      // Should indicate whitespace-normalized in output
+      expect(r.output).toContain('whitespace-normalized')
+    })
+
+    it('handles trailing space in old_string (AI adds extra trailing space)', async () => {
+      fs.writeFileSync(f('trailing.txt'), 'hello \nworld\n')
+      const r = await tool().execute({
+        edits: [
+          { file_path: 'trailing.txt', old_string: 'hello \nworld', new_string: 'HELLO\nWORLD' },
+        ],
+      })
+      expect(r.success).toBe(true)
+      expect(fs.readFileSync(f('trailing.txt'), 'utf8')).toBe('HELLO\nWORLD\n')
+    })
+
+    it('handles leading space in file (AI omits leading indent)', async () => {
+      fs.writeFileSync(f('leading.txt'), '  hello\nworld\n')
+      const r = await tool().execute({
+        edits: [
+          { file_path: 'leading.txt', old_string: 'hello\nworld', new_string: 'HELLO\nWORLD' },
+        ],
+      })
+      expect(r.success).toBe(true)
+      // Leading spaces in the original file become part of the matched block
+      // and are preserved in the result
+      expect(fs.readFileSync(f('leading.txt'), 'utf8')).toBe('  HELLO\nWORLD\n')
+    })
+
+    it('handles leading space in old_string (AI adds extra indent)', async () => {
+      fs.writeFileSync(f('leading.txt'), '  hello\nworld\n')
+      const r = await tool().execute({
+        edits: [
+          { file_path: 'leading.txt', old_string: '    hello\nworld', new_string: 'HELLO\nWORLD' },
+        ],
+      })
+      expect(r.success).toBe(true)
+      // The file's leading spaces are part of the matched block, so they
+      // get replaced along with the rest of the matched text
+      expect(fs.readFileSync(f('leading.txt'), 'utf8')).toBe('HELLO\nWORLD\n')
+    })
+
+    it('handles extra internal spaces in file (AI sends single space)', async () => {
+      fs.writeFileSync(f('internal.txt'), 'foo  bar\nbaz\n')
+      const r = await tool().execute({
+        edits: [
+          { file_path: 'internal.txt', old_string: 'foo bar\nbaz', new_string: 'FOO BAR\nBAZ' },
+        ],
+      })
+      expect(r.success).toBe(true)
+      expect(fs.readFileSync(f('internal.txt'), 'utf8')).toBe('FOO BAR\nBAZ\n')
+    })
+
+    it('handles extra internal spaces in old_string (AI adds double space)', async () => {
+      fs.writeFileSync(f('internal.txt'), 'foo  bar\nbaz\n')
+      const r = await tool().execute({
+        edits: [
+          { file_path: 'internal.txt', old_string: 'foo  bar\nbaz', new_string: 'FOO BAR\nBAZ' },
+        ],
+      })
+      expect(r.success).toBe(true)
+      expect(fs.readFileSync(f('internal.txt'), 'utf8')).toBe('FOO BAR\nBAZ\n')
+    })
+
+    it('handles blank line with spaces matching empty blank line', async () => {
+      fs.writeFileSync(f('blank.txt'), 'foo\n   \nbar\n')
+      const r = await tool().execute({
+        edits: [{ file_path: 'blank.txt', old_string: 'foo\n\nbar', new_string: 'FOO\n\nBAR' }],
+      })
+      expect(r.success).toBe(true)
+      // The blank line with spaces is part of the matched block and gets
+      // replaced entirely by the new_string's blank line
+      expect(fs.readFileSync(f('blank.txt'), 'utf8')).toBe('FOO\n\nBAR\n')
+    })
+
+    it('handles mixed whitespace across multiple lines', async () => {
+      fs.writeFileSync(f('mixed.txt'), '  a  \nb \nc\n')
+      const r = await tool().execute({
+        edits: [{ file_path: 'mixed.txt', old_string: 'a\nb\nc', new_string: 'A\nB\nC' }],
+      })
+      expect(r.success).toBe(true)
+      expect(fs.readFileSync(f('mixed.txt'), 'utf8')).toBe('A\nB\nC\n')
+    })
+
+    it('still fails when text content differs (not just whitespace)', async () => {
+      fs.writeFileSync(f('trailing.txt'), 'hello \nworld\n')
+      const r = await tool().execute({
+        edits: [{ file_path: 'trailing.txt', old_string: 'hello\nmundo', new_string: 'x\ny' }],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('not found')
+    })
+
+    it('still fails for completely wrong old_string', async () => {
+      fs.writeFileSync(f('trailing.txt'), 'hello \nworld\n')
+      const r = await tool().execute({
+        edits: [{ file_path: 'trailing.txt', old_string: 'zzz\nzzz', new_string: 'x\ny' }],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('not found')
+    })
+
+    it('reports duplicate in whitespace-normalized mode', async () => {
+      fs.writeFileSync(f('duplicate.txt'), 'a  \nb\na  \nb\n')
+      const r = await tool().execute({
+        edits: [{ file_path: 'duplicate.txt', old_string: 'a\nb', new_string: 'X\nY' }],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('MULTIPLE times')
+      expect(r.error).toContain('whitespace-normalized')
+    })
+
+    it('prefers exact match when available', async () => {
+      fs.writeFileSync(f('exact-prefer.txt'), 'hello\nworld\n')
+      const r = await tool().execute({
+        edits: [
+          { file_path: 'exact-prefer.txt', old_string: 'hello\nworld', new_string: 'HELLO\nWORLD' },
+        ],
+      })
+      expect(r.success).toBe(true)
+      expect(fs.readFileSync(f('exact-prefer.txt'), 'utf8')).toBe('HELLO\nWORLD\n')
+      // Exact match should NOT have the whitespace-normalized note
+      expect(r.output).not.toContain('whitespace-normalized')
+    })
+
+    it('provides context snippet when old_string not found', async () => {
+      fs.writeFileSync(f('trailing.txt'), 'hello \nworld\n')
+      const r = await tool().execute({
+        edits: [{ file_path: 'trailing.txt', old_string: 'nonexistent_line_xyz', new_string: 'x' }],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('not found')
+      // Should contain a snippet with the file's actual content
+      expect(r.error).toContain('hello')
+    })
+  })
 })
