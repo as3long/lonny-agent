@@ -38,6 +38,7 @@ import {
   TodoPanel,
 } from './components.js'
 import { highlightLine } from './highlight.js'
+
 export async function startTui(config: Config): Promise<void> {
   let chatContent = ''
   let isRunning = false
@@ -293,7 +294,7 @@ export async function startTui(config: Config): Promise<void> {
       anchor: 'bottom-left',
       width: terminal.columns ?? process.stdout.columns ?? 120,
       offsetY: -1,
-      maxHeight: 6,
+      maxHeight: 12,
       nonCapturing: false,
     })
     showTodoPanel()
@@ -652,7 +653,7 @@ export async function startTui(config: Config): Promise<void> {
       anchor: 'bottom-left',
       width: terminal.columns ?? process.stdout.columns ?? 120,
       offsetY: -1,
-      maxHeight: 6,
+      maxHeight: 12,
       nonCapturing: false,
     })
 
