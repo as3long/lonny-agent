@@ -1,6 +1,6 @@
 {
   "name": "lonny-agent",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "license": "MIT",
   "repository": "github:as3long/lonny-agent",
   "description": "AI coding agent that does more with fewer API calls, optimized for Coding Plan (5h 1200-call bundle)",
@@ -20,7 +20,7 @@
     "format": "biome format --write .",
     "check": "biome check .",
     "check:fix": "biome check --fix .",
-    "postinstall": "npx patch-package",
+    "postinstall": "husky",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -33,8 +33,9 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
-    "@earendil-works/pi-tui": "0.75.5",
     "adm-zip": "^0.5.17",
+    "get-east-asian-width": "1.6.0",
+    "marked": "15.0.12",
     "commander": "^12.0.0",
     "openai": "^4.0.0",
     "ws": "^8.21.0",
@@ -46,7 +47,6 @@
     "@types/ws": "^8.18.1",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.5",
-    "patch-package": "^8.0.1",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"

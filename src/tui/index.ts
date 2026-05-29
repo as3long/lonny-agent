@@ -1,5 +1,11 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { resetGlobalEventBus } from '../agent/event-bus.js'
+import { ensurePromptsDir, loadPromptTemplates } from '../agent/prompt-templates.js'
+import { formatToolInput, Session, type SessionOutput } from '../agent/session.js'
+import { ensureSkillsDir, loadSkills } from '../agent/skills.js'
+import type { Config } from '../config/index.js'
+import { loadTokenUsage, resetTokenUsage } from '../config/tokens.js'
 import type {
   EditorTheme,
   MarkdownTheme,
@@ -7,7 +13,7 @@ import type {
   SelectItem,
   SelectListTheme,
   SlashCommand,
-} from '@earendil-works/pi-tui'
+} from '../pi-tui/index.js'
 import {
   Box,
   CombinedAutocompleteProvider,
@@ -18,13 +24,7 @@ import {
   ProcessTerminal,
   Text,
   TUI,
-} from '@earendil-works/pi-tui'
-import { resetGlobalEventBus } from '../agent/event-bus.js'
-import { ensurePromptsDir, loadPromptTemplates } from '../agent/prompt-templates.js'
-import { formatToolInput, Session, type SessionOutput } from '../agent/session.js'
-import { ensureSkillsDir, loadSkills } from '../agent/skills.js'
-import type { Config } from '../config/index.js'
-import { loadTokenUsage, resetTokenUsage } from '../config/tokens.js'
+} from '../pi-tui/index.js'
 import { fmtErr } from '../tools/errors.js'
 import { fetchDeepSeekBalance, isDeepSeekOfficial } from './balance.js'
 import {

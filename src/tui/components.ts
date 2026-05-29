@@ -1,7 +1,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import type { Component, SelectItem, SelectListTheme } from '@earendil-works/pi-tui'
-import { SelectList } from '@earendil-works/pi-tui'
+import type { Component, SelectItem, SelectListTheme } from '../pi-tui/index.js'
+import { SelectList } from '../pi-tui/index.js'
 import { PLAN_DIR } from '../tools/write_plan.js'
 import { visibleLen } from './utils.js'
 
