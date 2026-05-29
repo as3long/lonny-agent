@@ -1,6 +1,6 @@
 {
   "name": "lonny-agent",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "license": "MIT",
   "repository": "github:as3long/lonny-agent",
   "description": "AI coding agent that does more with fewer API calls, optimized for Coding Plan (5h 1200-call bundle)",
@@ -21,7 +21,6 @@
     "format": "biome format --write .",
     "check": "biome check .",
     "check:fix": "biome check --fix .",
-    "postinstall": "husky",
     "prepare": "husky"
   },
   "lint-staged": {
