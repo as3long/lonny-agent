@@ -695,9 +695,9 @@ export class Session {
       bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: toolCalls.length })
 
       // Check if compaction is needed
-      if (shouldCompact(this.messages)) {
+      if (shouldCompact(this.messages, this.config.contextWindow)) {
         const before = this.messages.length
-        const result = compact(this.messages)
+        const result = compact(this.messages, this.config.contextWindow)
         if (result.compressed) {
           this.messages = result.messages
           bus.emit(EventChannels.COMPACTION_TRIGGERED, { before, after: result.newCount })

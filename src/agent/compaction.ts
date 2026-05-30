@@ -6,6 +6,12 @@ import type { LLMMessage } from './llm.js'
  */
 
 const DEFAULT_MAX_TOKENS = 256_000
+
+/**
+ * 获取默认的上下文窗口大小（保持向后兼容）
+ * @deprecated 请使用 config.contextWindow 代替
+ */
+export const DEFAULT_CONTEXT_WINDOW = DEFAULT_MAX_TOKENS
 const COMPACTION_THRESHOLD = 0.75 // compact when usage exceeds 75% of budget
 
 /** Rough token estimation (4 chars ~= 1 token).
