@@ -39,6 +39,19 @@ import {
 } from './components.js'
 import { highlightLine } from './highlight.js'
 
+/**
+ * Invisible spacer that renders N empty lines.
+ * Used to reserve space at the bottom of the chat area so the editor
+ * overlay doesn't cover the last lines of command output.
+ */
+class Spacer {
+  constructor(private height: number) {}
+  render(_width: number): string[] {
+    return Array.from({ length: this.height }, () => '')
+  }
+  invalidate(): void {}
+}
+
 export async function startTui(config: Config): Promise<void> {
   let chatContent = ''
   let isRunning = false
@@ -106,6 +119,9 @@ export async function startTui(config: Config): Promise<void> {
   const chatMarkdown = new Markdown('', 1, 0, markdownTheme)
   const chatBox = new Box(1, 0)
   chatBox.addChild(chatMarkdown)
+  // Reserve space at the bottom so the editor overlay doesn't cover
+  // the last lines of command output. 13 = maxHeight(12) + offsetY(1).
+  chatBox.addChild(new Spacer(13))
 
   // Chat input — Editor with multi-line support, history, and autocomplete
   const slashCommands: SlashCommand[] = [
