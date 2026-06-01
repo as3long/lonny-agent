@@ -267,6 +267,7 @@ interface JsonConfig {
   autoApprove?: boolean
   enableCache?: boolean
   strictTools?: boolean
+  contextWindow?: number
   temperature?: number
   maxTokens?: number
   tavilyApiKey?: string
@@ -307,8 +308,8 @@ export function loadConfig(options?: {
   // Auto-enable cache for DeepSeek models unless explicitly disabled
   const enableCache = jsonConfig.enableCache ?? (isDeepSeekModel(model, baseUrl) || undefined)
 
-  // 根据模型名称获取上下文窗口大小
-  const contextWindow = getContextWindowForModel(model)
+  // 根据模型名称获取上下文窗口大小，如果配置中有则优先使用配置值
+  const contextWindow = jsonConfig.contextWindow || getContextWindowForModel(model)
 
   return {
     apiKey: jsonConfig.apiKey || '',
