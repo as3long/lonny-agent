@@ -116,12 +116,18 @@ export class AnthropicProvider implements LLMProvider {
         }
       } else if (event.type === 'content_block_stop') {
         if (currentToolUse) {
+          let input: Record<string, unknown>
+          try {
+            input = JSON.parse(currentToolUse.input || '{}')
+          } catch {
+            input = {}
+          }
           yield {
             type: 'tool_use',
             tool_call: {
               id: currentToolUse.id,
               name: currentToolUse.name,
-              input: JSON.parse(currentToolUse.input || '{}'),
+              input,
             },
           }
           currentToolUse = null
@@ -138,12 +144,18 @@ export class AnthropicProvider implements LLMProvider {
         }
         if (event.delta.stop_reason === 'end_turn' || event.delta.stop_reason === 'stop_sequence') {
           if (currentToolUse) {
+            let input: Record<string, unknown>
+            try {
+              input = JSON.parse(currentToolUse.input || '{}')
+            } catch {
+              input = {}
+            }
             yield {
               type: 'tool_use',
               tool_call: {
                 id: currentToolUse.id,
                 name: currentToolUse.name,
-                input: JSON.parse(currentToolUse.input || '{}'),
+                input,
               },
             }
             currentToolUse = null

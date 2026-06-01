@@ -200,12 +200,18 @@ export class OpenAIProvider implements LLMProvider {
         for (const tc of delta.tool_calls) {
           if (tc.id) {
             if (currentToolCall) {
+              let input: Record<string, unknown>
+              try {
+                input = JSON.parse(currentToolCall.arguments || '{}')
+              } catch {
+                input = {}
+              }
               yield {
                 type: 'tool_use',
                 tool_call: {
                   id: currentToolCall.id,
                   name: currentToolCall.name,
-                  input: JSON.parse(currentToolCall.arguments || '{}'),
+                  input,
                 },
                 reasoning_content: reasoningContent,
               }
@@ -296,12 +302,18 @@ export class OpenAIProvider implements LLMProvider {
             output_tokens: lastUsage.completion_tokens ?? 0,
           }
         : undefined
+      let input: Record<string, unknown>
+      try {
+        input = JSON.parse(currentToolCall.arguments || '{}')
+      } catch {
+        input = {}
+      }
       yield {
         type: 'tool_use',
         tool_call: {
           id: currentToolCall.id,
           name: currentToolCall.name,
-          input: JSON.parse(currentToolCall.arguments || '{}'),
+          input,
         },
         reasoning_content: reasoningContent,
         usage,
