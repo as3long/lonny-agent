@@ -100,33 +100,36 @@ export function createEditTool(applier: FileReadTracker, cwd: string): Tool {
   return {
     definition: {
       name: 'edit',
-      description: `Replace exact text in files. Parameter is {"edits": [{"file_path": "...", "old_string": "...", "new_string": "..."}]}.
+      description: `Replace exact text in files. Each edit object is a COMPLETE find-and-replace pair.
+Parameter: {"edits": [{"file_path": "...", "old_string": "...", "new_string": "..."}]}
 
 HOW TO USE:
 1. Read the file first with \`read\`
 2. Copy the EXACT text to replace — include 2-3 lines of context before/after
 3. Call: edit({ edits: [{ file_path, old_string, new_string }] })
 
-RULES:
+CRITICAL RULES:
+- Each edit MUST have BOTH old_string AND new_string (a complete find-replace pair)
 - old_string must match EXACTLY (whitespace, indentation, line breaks)
 - old_string must be UNIQUE — include enough surrounding context
 - Do NOT include the "<lineNumber>: " prefix from read output
-- CRITICAL: \`edits\` is always an array. Never pass file_path/old_string/new_string as top-level keys.
+- \`edits\` is always an array. Never pass file_path/old_string/new_string as top-level keys.
+- To batch multiple independent edits, add multiple objects to the array
 
 EXAMPLES:
-  edit({ edits: [{ file_path: "src/config.ts", old_string: "mode: 'code'", new_string: "mode: 'plan'" }] })
+  Single edit: edit({ edits: [{ file_path: "src/config.ts", old_string: "mode: 'code'", new_string: "mode: 'plan'" }] })
 
-  edit({ edits: [
+  Batch edits: edit({ edits: [
     { file_path: "src/a.ts", old_string: "foo", new_string: "bar" },
     { file_path: "src/b.ts", old_string: "x", new_string: "y" }
   ] })
 
-  edit({ edits: [{ file_path: "src/new.ts", old_string: "", new_string: "const x = 1" }] })`,
+  Create file: edit({ edits: [{ file_path: "src/new.ts", old_string: "", new_string: "const x = 1" }] })`,
       parameters: {
         edits: {
           type: 'array',
           description:
-            'REQUIRED. Array of edits. ALWAYS an array. Example: [{ file_path: "src/file.ts", old_string: "old", new_string: "new" }]',
+            'REQUIRED. Array of complete find-replace pairs. Each edit MUST have BOTH old_string AND new_string. Example: [{ file_path: "src/file.ts", old_string: "old", new_string: "new" }]',
           required: true,
           items: {
             type: 'object',
@@ -135,9 +138,13 @@ EXAMPLES:
               old_string: {
                 type: 'string',
                 description:
-                  'Text to replace (pass empty string "" to create a new file). Required.',
+                  'Text to FIND in the file. REQUIRED. Pair with new_string to form a complete find-replace. Pass "" to create a new file.',
               },
-              new_string: { type: 'string', description: 'Replacement text' },
+              new_string: {
+                type: 'string',
+                description:
+                  'Replacement text. REQUIRED. Pair with old_string to form a complete find-replace. Pass "" to delete content.',
+              },
             },
           },
         },
@@ -240,7 +247,8 @@ EXAMPLES:
         return {
           success: false,
           output: '',
-          error: `edit FAILED — ${editErrors.length} of ${edits.length} edit(s) have missing fields.\n${editErrors.join('\n')}\n\nReceived: ${JSON.stringify(rawInput)}\n\nEach edit needs: { file_path: "...", old_string: "...", new_string: "..." }`,
+          error: `edit FAILED — ${editErrors.length} of ${edits.length} edit(s) have missing fields.\n${editErrors.join('\n')}\n\nReceived: ${JSON.stringify(rawInput)}\n\nEach edit object must be a COMPLETE find-replace pair with BOTH old_string AND new_string.
+Do NOT split old_string (text to find) and new_string (replacement) across different edit objects.`,
         }
       }
 
