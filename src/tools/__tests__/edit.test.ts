@@ -86,6 +86,133 @@ describe('edit tool', () => {
     })
   })
 
+  describe('validation', () => {
+    beforeAll(() => {
+      fs.writeFileSync(path.join(tmpDir, 'a.txt'), 'test content\n')
+    })
+
+    it('rejects edit missing old_string', async () => {
+      const r = await tool().execute({
+        edits: [{ file_path: 'a.txt', new_string: 'replacement' }],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('missing')
+      expect(r.error).toContain('old_string')
+    })
+
+    it('rejects edit missing new_string', async () => {
+      const r = await tool().execute({
+        edits: [{ file_path: 'a.txt', old_string: 'original' }],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('missing')
+      expect(r.error).toContain('new_string')
+    })
+
+    it('rejects edit missing file_path', async () => {
+      const r = await tool().execute({
+        edits: [{ old_string: 'a', new_string: 'b' }],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('missing')
+      expect(r.error).toContain('file_path')
+    })
+
+    it('reports all missing fields in one error', async () => {
+      const r = await tool().execute({
+        edits: [
+          { file_path: 'a.txt', old_string: 'a', new_string: 'b' },
+          { file_path: 'a.txt', new_string: 'c' },
+          { file_path: 'a.txt', old_string: 'd' },
+        ],
+      })
+      expect(r.success).toBe(false)
+      // Should report BOTH errors, not just the first
+      expect(r.error).toContain('2 of 3')
+      expect(r.error).toContain('edit #2')
+      expect(r.error).toContain('edit #3')
+      // Should mention not to split across edits
+      expect(r.error).toContain('COMPLETE')
+    })
+
+    it('reports which fields each malformed edit has', async () => {
+      const r = await tool().execute({
+        edits: [{ file_path: 'a.txt', new_string: 'c' }],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('has: file_path, new_string')
+    })
+
+    it('includes rawInput in the error message', async () => {
+      const r = await tool().execute({
+        edits: [{ file_path: 'a.txt', new_string: 'c' }],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('a.txt')
+      expect(r.error).toContain('new_string')
+    })
+  })
+
+  describe('auto-correction', () => {
+    it('wraps top-level file_path/old_string/new_string into edits array', async () => {
+      const r = await tool().execute({
+        file_path: 'nonexistent.ts',
+        old_string: 'x',
+        new_string: 'y',
+      })
+      // Should be auto-corrected so the error is about file not found, not about missing edits
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('not found')
+    })
+
+    it('wraps flat file_path + old_string (missing new_string) with default empty new_string', async () => {
+      const r = await tool().execute({
+        file_path: path.join(tmpDir, 'new.txt'),
+        old_string: '',
+      })
+      // Auto-corrected to { edits: [{ file_path, old_string: '', new_string: '' }] }
+      // This creates a file with empty content
+      expect(r.success).toBe(true)
+      expect(fs.existsSync(path.join(tmpDir, 'new.txt'))).toBe(true)
+      expect(fs.readFileSync(path.join(tmpDir, 'new.txt'), 'utf8')).toBe('')
+      fs.unlinkSync(path.join(tmpDir, 'new.txt'))
+    })
+
+    it('handles edits passed directly as an array (not wrapped)', async () => {
+      const r = await tool().execute([
+        { file_path: 'a.txt', old_string: 'test', new_string: 'TEST' },
+      ])
+      expect(r.success).toBe(true)
+    })
+
+    it('handles file_path + new_string (no old_string) at top level as create', async () => {
+      const r = await tool().execute({
+        file_path: path.join(tmpDir, 'auto-create.txt'),
+        new_string: 'auto created',
+      })
+      expect(r.success).toBe(true)
+      expect(fs.readFileSync(path.join(tmpDir, 'auto-create.txt'), 'utf8')).toBe('auto created')
+      fs.unlinkSync(path.join(tmpDir, 'auto-create.txt'))
+    })
+
+    it('handles only file_path at top level as empty file creation', async () => {
+      const r = await tool().execute({
+        file_path: path.join(tmpDir, 'empty-file.txt'),
+      })
+      expect(r.success).toBe(true)
+      expect(fs.existsSync(path.join(tmpDir, 'empty-file.txt'))).toBe(true)
+      expect(fs.readFileSync(path.join(tmpDir, 'empty-file.txt'), 'utf8')).toBe('')
+      fs.unlinkSync(path.join(tmpDir, 'empty-file.txt'))
+    })
+
+    it('rejects nonsensical top-level keys with helpful error', async () => {
+      const r = await tool().execute({ foo: 'bar' })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('edits')
+      expect(r.error).toContain('array')
+    })
+  })
+
   describe('batch mode', () => {
     beforeAll(() => {
       fs.writeFileSync(path.join(tmpDir, 'a.txt'), 'one\ntwo\nthree\nfour\n')
