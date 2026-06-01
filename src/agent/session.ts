@@ -5,6 +5,7 @@ import * as path from 'node:path'
 import type { Config } from '../config/index.js'
 import { saveTokenUsage } from '../config/tokens.js'
 import { FileReadTracker } from '../diff/apply.js'
+import { fmtErr } from '../tools/errors.js'
 import { ToolRegistry } from '../tools/registry.js'
 import type { ToolCall, ToolResult } from '../tools/types.js'
 import { compact, estimateMessagesTokens, shouldCompact } from './compaction.js'
@@ -433,171 +434,195 @@ export class Session {
         this.abortController.signal,
       )
 
-      for await (const chunk of stream) {
-        if (chunk.reasoning_content) {
-          reasoningContent = chunk.reasoning_content
-          // Stream reasoning content in real-time (only when no text in same chunk)
-          if (!chunk.text) {
-            // Emit thinking via EventBus for Web UI
-            bus.emit(EventChannels.THINKING, { text: chunk.reasoning_content })
-            if (!reasoningOutput) {
-              reasoningOutput = true
-              reasoningLineStart = true
-              if (!out?.suppressToolOutput) {
-                writeOut(thinkTopBorder(), out)
-              }
-            }
-            // Terminal display with box drawing (skip in Web UI mode, handled by EventBus)
-            if (!out?.suppressToolOutput) {
-              // Track column position on current line for wrapping
-              let thinkCol = 0
-              // Handle newlines in streamed content - add left border on each new line
-              // Also manually wrap long lines so wrapped lines keep the │ prefix.
-              let remaining = chunk.reasoning_content
-              const maxContentWidth = termWidth() - THINK_PREFIX_WIDTH
-              while (remaining.length > 0) {
-                if (reasoningLineStart) {
-                  writeOut(`  ${GY}│${RS}${TH}`, out)
-                  reasoningLineStart = false
-                  thinkCol = 0
+      try {
+        for await (const chunk of stream) {
+          if (chunk.reasoning_content) {
+            reasoningContent = chunk.reasoning_content
+            // Stream reasoning content in real-time (only when no text in same chunk)
+            if (!chunk.text) {
+              // Emit thinking via EventBus for Web UI
+              bus.emit(EventChannels.THINKING, { text: chunk.reasoning_content })
+              if (!reasoningOutput) {
+                reasoningOutput = true
+                reasoningLineStart = true
+                if (!out?.suppressToolOutput) {
+                  writeOut(thinkTopBorder(), out)
                 }
-                const nlIdx = remaining.indexOf('\n')
-                if (nlIdx === -1) {
-                  // No newline — write as much as fits on current line, wrap if needed
-                  while (remaining.length > 0) {
-                    const segWidth = visibleWidth(remaining)
-                    const avail = maxContentWidth - thinkCol
-                    if (segWidth <= avail) {
-                      // Fits entirely on current line
-                      writeOut(remaining, out)
-                      thinkCol += segWidth
-                      remaining = ''
-                    } else if (avail <= 0) {
-                      // Current line is full, wrap to next
-                      writeOut(`${RS}\n`, out)
-                      writeOut(`  ${GY}│${RS}${TH}`, out)
-                      thinkCol = 0
-                    } else {
-                      // Write first part that fits, then wrap
-                      // Find character boundary that fits within avail
-                      let cut = avail
-                      while (cut > 0 && visibleWidth(remaining.slice(0, cut)) > avail) cut--
-                      if (cut <= 0) cut = 1
-                      writeOut(remaining.slice(0, cut), out)
-                      writeOut(`${RS}\n`, out)
-                      writeOut(`  ${GY}│${RS}${TH}`, out)
-                      thinkCol = 0
-                      remaining = remaining.slice(cut)
-                    }
+              }
+              // Terminal display with box drawing (skip in Web UI mode, handled by EventBus)
+              if (!out?.suppressToolOutput) {
+                // Track column position on current line for wrapping
+                let thinkCol = 0
+                // Handle newlines in streamed content - add left border on each new line
+                // Also manually wrap long lines so wrapped lines keep the │ prefix.
+                let remaining = chunk.reasoning_content
+                const maxContentWidth = termWidth() - THINK_PREFIX_WIDTH
+                while (remaining.length > 0) {
+                  if (reasoningLineStart) {
+                    writeOut(`  ${GY}│${RS}${TH}`, out)
+                    reasoningLineStart = false
+                    thinkCol = 0
                   }
-                } else {
-                  // Has newline — process the segment up to newline
-                  const segment = remaining.slice(0, nlIdx)
-                  const segWidth = visibleWidth(segment)
-                  const avail = maxContentWidth - thinkCol
-                  if (segWidth <= avail) {
-                    // Segment fits on current line
-                    writeOut(segment, out)
-                    writeOut(`${RS}\n`, out)
-                    reasoningLineStart = true
-                    thinkCol = 0
-                  } else {
-                    // Segment too long — write what fits, wrap, then rest
-                    let rest = segment
-                    // Write remainder of current line
-                    if (avail > 0) {
-                      let cut = avail
-                      while (cut > 0 && visibleWidth(rest.slice(0, cut)) > avail) cut--
-                      if (cut <= 0) cut = 1
-                      writeOut(rest.slice(0, cut), out)
-                      rest = rest.slice(cut)
-                    }
-                    writeOut(`${RS}\n`, out)
-                    reasoningLineStart = true
-                    thinkCol = 0
-                    // Write rest of segment on continuation line(s)
-                    if (rest.length > 0) {
-                      writeOut(`  ${GY}│${RS}${TH}`, out)
-                      reasoningLineStart = false
-                      while (rest.length > 0) {
-                        const rw = visibleWidth(rest)
-                        if (rw <= maxContentWidth) {
-                          writeOut(rest, out)
-                          thinkCol = rw
-                          rest = ''
-                        } else {
-                          let cut = maxContentWidth
-                          while (cut > 0 && visibleWidth(rest.slice(0, cut)) > maxContentWidth)
-                            cut--
-                          if (cut <= 0) cut = 1
-                          writeOut(rest.slice(0, cut), out)
-                          writeOut(`${RS}\n`, out)
-                          writeOut(`  ${GY}│${RS}${TH}`, out)
-                          rest = rest.slice(cut)
-                        }
+                  const nlIdx = remaining.indexOf('\n')
+                  if (nlIdx === -1) {
+                    // No newline — write as much as fits on current line, wrap if needed
+                    while (remaining.length > 0) {
+                      const segWidth = visibleWidth(remaining)
+                      const avail = maxContentWidth - thinkCol
+                      if (segWidth <= avail) {
+                        // Fits entirely on current line
+                        writeOut(remaining, out)
+                        thinkCol += segWidth
+                        remaining = ''
+                      } else if (avail <= 0) {
+                        // Current line is full, wrap to next
+                        writeOut(`${RS}\n`, out)
+                        writeOut(`  ${GY}│${RS}${TH}`, out)
+                        thinkCol = 0
+                      } else {
+                        // Write first part that fits, then wrap
+                        // Find character boundary that fits within avail
+                        let cut = avail
+                        while (cut > 0 && visibleWidth(remaining.slice(0, cut)) > avail) cut--
+                        if (cut <= 0) cut = 1
+                        writeOut(remaining.slice(0, cut), out)
+                        writeOut(`${RS}\n`, out)
+                        writeOut(`  ${GY}│${RS}${TH}`, out)
+                        thinkCol = 0
+                        remaining = remaining.slice(cut)
                       }
                     }
-                    writeOut(`${RS}\n`, out)
-                    reasoningLineStart = true
-                    thinkCol = 0
+                  } else {
+                    // Has newline — process the segment up to newline
+                    const segment = remaining.slice(0, nlIdx)
+                    const segWidth = visibleWidth(segment)
+                    const avail = maxContentWidth - thinkCol
+                    if (segWidth <= avail) {
+                      // Segment fits on current line
+                      writeOut(segment, out)
+                      writeOut(`${RS}\n`, out)
+                      reasoningLineStart = true
+                      thinkCol = 0
+                    } else {
+                      // Segment too long — write what fits, wrap, then rest
+                      let rest = segment
+                      // Write remainder of current line
+                      if (avail > 0) {
+                        let cut = avail
+                        while (cut > 0 && visibleWidth(rest.slice(0, cut)) > avail) cut--
+                        if (cut <= 0) cut = 1
+                        writeOut(rest.slice(0, cut), out)
+                        rest = rest.slice(cut)
+                      }
+                      writeOut(`${RS}\n`, out)
+                      reasoningLineStart = true
+                      thinkCol = 0
+                      // Write rest of segment on continuation line(s)
+                      if (rest.length > 0) {
+                        writeOut(`  ${GY}│${RS}${TH}`, out)
+                        reasoningLineStart = false
+                        while (rest.length > 0) {
+                          const rw = visibleWidth(rest)
+                          if (rw <= maxContentWidth) {
+                            writeOut(rest, out)
+                            thinkCol = rw
+                            rest = ''
+                          } else {
+                            let cut = maxContentWidth
+                            while (cut > 0 && visibleWidth(rest.slice(0, cut)) > maxContentWidth)
+                              cut--
+                            if (cut <= 0) cut = 1
+                            writeOut(rest.slice(0, cut), out)
+                            writeOut(`${RS}\n`, out)
+                            writeOut(`  ${GY}│${RS}${TH}`, out)
+                            rest = rest.slice(cut)
+                          }
+                        }
+                      }
+                      writeOut(`${RS}\n`, out)
+                      reasoningLineStart = true
+                      thinkCol = 0
+                    }
+                    remaining = remaining.slice(nlIdx + 1)
                   }
-                  remaining = remaining.slice(nlIdx + 1)
                 }
               }
             }
           }
-        }
-        if (chunk.type === 'text' && chunk.text) {
-          if (reasoningOutput) {
-            bus.emit(EventChannels.THINKING_END, {})
-            if (!out?.suppressToolOutput) {
-              writeOut(`${RS}\n`, out)
-              writeOut(thinkBottomBorder(), out)
-            }
-            reasoningOutput = false
-            reasoningLineStart = false
-          }
-          fullResponse += chunk.text
-          writeOut(chunk.text, out)
-        } else if (chunk.type === 'tool_use' && chunk.tool_call) {
-          toolCalls.push(chunk.tool_call)
-        } else if (chunk.type === 'complete') {
-          if (chunk.usage) {
-            this.turnInputTokens += chunk.usage.input_tokens
-            this.turnOutputTokens += chunk.usage.output_tokens
-            this.totalInputTokens += chunk.usage.input_tokens
-            this.totalOutputTokens += chunk.usage.output_tokens
-          }
-          if (chunk.finish_reason === 'stop' || chunk.finish_reason === 'end_turn') {
-            if (toolCalls.length === 0) {
-              const finalAssistantMsg: LLMMessage = {
-                role: 'assistant',
-                content: fullResponse || null,
-                reasoning_content: reasoningContent,
+          if (chunk.type === 'text' && chunk.text) {
+            if (reasoningOutput) {
+              bus.emit(EventChannels.THINKING_END, {})
+              if (!out?.suppressToolOutput) {
+                writeOut(`${RS}\n`, out)
+                writeOut(thinkBottomBorder(), out)
               }
-              this.messages.push(finalAssistantMsg)
-              printTokenStats(
-                this.turnInputTokens,
-                this.turnOutputTokens,
-                this.totalInputTokens,
-                this.totalOutputTokens,
-                this.turnApiCalls,
-                this.totalApiCalls,
-                out,
-              )
-              writeOut('\n\n', out)
-              saveTokenUsage(
-                this.config.cwd,
-                this.turnInputTokens,
-                this.turnOutputTokens,
-                this.turnApiCalls,
-              )
-              bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
-              this.save()
-              return
+              reasoningOutput = false
+              reasoningLineStart = false
+            }
+            fullResponse += chunk.text
+            writeOut(chunk.text, out)
+          } else if (chunk.type === 'tool_use' && chunk.tool_call) {
+            toolCalls.push(chunk.tool_call)
+          } else if (chunk.type === 'complete') {
+            if (chunk.usage) {
+              this.turnInputTokens += chunk.usage.input_tokens
+              this.turnOutputTokens += chunk.usage.output_tokens
+              this.totalInputTokens += chunk.usage.input_tokens
+              this.totalOutputTokens += chunk.usage.output_tokens
+            }
+            if (chunk.finish_reason === 'stop' || chunk.finish_reason === 'end_turn') {
+              if (toolCalls.length === 0) {
+                const finalAssistantMsg: LLMMessage = {
+                  role: 'assistant',
+                  content: fullResponse || null,
+                  reasoning_content: reasoningContent,
+                }
+                this.messages.push(finalAssistantMsg)
+                printTokenStats(
+                  this.turnInputTokens,
+                  this.turnOutputTokens,
+                  this.totalInputTokens,
+                  this.totalOutputTokens,
+                  this.turnApiCalls,
+                  this.totalApiCalls,
+                  out,
+                )
+                writeOut('\n\n', out)
+                saveTokenUsage(
+                  this.config.cwd,
+                  this.turnInputTokens,
+                  this.turnOutputTokens,
+                  this.turnApiCalls,
+                )
+                bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
+                this.save()
+                return
+              }
             }
           }
         }
+      } catch (e) {
+        const errMsg = fmtErr(e)
+        if (!out?.suppressToolOutput) {
+          writeOut(`\n${RE}Stream error:${RS} ${errMsg}\n`, out)
+        }
+        if (reasoningOutput) {
+          bus.emit(EventChannels.THINKING_END, {})
+          if (!out?.suppressToolOutput) {
+            writeOut(`${RS}\n`, out)
+            writeOut(thinkBottomBorder(), out)
+          }
+        }
+        bus.emit(EventChannels.LLM_STREAM_END, { iteration: iterations, toolCallCount: 0 })
+        bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
+        saveTokenUsage(
+          this.config.cwd,
+          this.turnInputTokens,
+          this.turnOutputTokens,
+          this.turnApiCalls,
+        )
+        this.save()
+        return
       }
 
       bus.emit(EventChannels.LLM_STREAM_END, {
