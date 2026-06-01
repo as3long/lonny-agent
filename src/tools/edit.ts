@@ -223,6 +223,7 @@ EXAMPLES:
       }
 
       // Validate each edit object — catch missing old_string/new_string early
+      const editErrors: string[] = []
       for (let i = 0; i < edits.length; i++) {
         const e = edits[i]
         const missing: string[] = []
@@ -230,11 +231,16 @@ EXAMPLES:
         if (typeof e.old_string !== 'string') missing.push('old_string')
         if (typeof e.new_string !== 'string') missing.push('new_string')
         if (missing.length > 0) {
-          return {
-            success: false,
-            output: '',
-            error: `edit FAILED — edit #${i} is missing required field(s): ${missing.join(', ')}. Received: ${JSON.stringify(rawInput)}. Each edit needs: { file_path: "...", old_string: "...", new_string: "..." }`,
-          }
+          editErrors.push(
+            `  edit #${i + 1}: missing ${missing.join(', ')} (has: ${Object.keys(e).join(', ')})`,
+          )
+        }
+      }
+      if (editErrors.length > 0) {
+        return {
+          success: false,
+          output: '',
+          error: `edit FAILED — ${editErrors.length} of ${edits.length} edit(s) have missing fields.\n${editErrors.join('\n')}\n\nReceived: ${JSON.stringify(rawInput)}\n\nEach edit needs: { file_path: "...", old_string: "...", new_string: "..." }`,
         }
       }
 
