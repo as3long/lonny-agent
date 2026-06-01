@@ -203,7 +203,7 @@ export class GoogleProvider implements LLMProvider {
             }
           }
         } catch {
-          // skip malformed JSON
+          console.error('[google] Failed to parse stream chunk:', jsonStr)
         }
       }
     }

@@ -150,6 +150,10 @@ export class OllamaProvider implements LLMProvider {
               try {
                 input = JSON.parse(tc.function.arguments || '{}')
               } catch {
+                console.error(
+                  '[ollama] Failed to parse tool_call arguments:',
+                  tc.function.arguments,
+                )
                 input = {}
               }
               yield {
@@ -174,7 +178,7 @@ export class OllamaProvider implements LLMProvider {
             }
           }
         } catch {
-          // skip malformed JSON
+          console.error('[ollama] Failed to parse stream line:', line)
         }
       }
     }

@@ -153,7 +153,13 @@ EXAMPLES:
     async execute(input): Promise<ToolResult> {
       // ── Auto-correction: detect common misuse patterns ────────────────
       // ── Debug: log raw input for diagnosing failures ─────────────
-      const rawInput = JSON.parse(JSON.stringify(input))
+      let rawInput: unknown = input
+      try {
+        rawInput = JSON.parse(JSON.stringify(input))
+      } catch {
+        console.error('[edit] Failed to clone input:', input)
+        rawInput = input
+      }
 
       // Pattern 0: input is an array (edits passed directly instead of wrapped)
       if (Array.isArray(input)) {
@@ -215,7 +221,7 @@ EXAMPLES:
       const edits = input.edits as SingleEdit[]
       if (edits.length === 0) {
         // Build a diagnostic: show what the AI received vs expected
-        const receivedKeys = Object.keys(rawInput)
+        const receivedKeys = Object.keys(rawInput as Record<string, unknown>)
         const hint =
           receivedKeys.length === 1 && receivedKeys[0] === 'edits'
             ? 'The edits array exists but is empty — include at least one edit object with file_path, old_string, and new_string.'

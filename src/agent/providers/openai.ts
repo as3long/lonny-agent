@@ -201,9 +201,14 @@ export class OpenAIProvider implements LLMProvider {
           if (tc.id) {
             if (currentToolCall) {
               let input: Record<string, unknown>
+              const rawArgs = currentToolCall.arguments || ''
               try {
-                input = JSON.parse(currentToolCall.arguments || '{}')
+                input = JSON.parse(rawArgs || '{}')
               } catch {
+                console.error(
+                  '[openai] Failed to parse tool_call arguments (flush on new tool):',
+                  rawArgs,
+                )
                 input = {}
               }
               yield {
@@ -230,17 +235,22 @@ export class OpenAIProvider implements LLMProvider {
 
       if (chunk.choices?.[0]?.finish_reason) {
         if (currentToolCall) {
+          const finalArgs = currentToolCall.arguments || ''
           try {
             yield {
               type: 'tool_use',
               tool_call: {
                 id: currentToolCall.id,
                 name: currentToolCall.name,
-                input: JSON.parse(currentToolCall.arguments || '{}'),
+                input: JSON.parse(finalArgs || '{}'),
               },
               reasoning_content: reasoningContent,
             }
           } catch {
+            console.error(
+              '[openai] Failed to parse tool_call arguments (finish_reason):',
+              finalArgs,
+            )
             yield {
               type: 'tool_use',
               tool_call: {
@@ -303,9 +313,11 @@ export class OpenAIProvider implements LLMProvider {
           }
         : undefined
       let input: Record<string, unknown>
+      const rawFinalArgs = currentToolCall.arguments || ''
       try {
-        input = JSON.parse(currentToolCall.arguments || '{}')
+        input = JSON.parse(rawFinalArgs || '{}')
       } catch {
+        console.error('[openai] Failed to parse tool_call arguments (final flush):', rawFinalArgs)
         input = {}
       }
       yield {

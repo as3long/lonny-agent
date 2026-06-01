@@ -603,9 +603,12 @@ export class Session {
         }
       } catch (e) {
         const errMsg = fmtErr(e)
+        const partialContent = fullResponse ? fullResponse.slice(0, 500) : '(empty)'
         if (!out?.suppressToolOutput) {
-          writeOut(`\n${RE}Stream error:${RS} ${errMsg}\n`, out)
+          writeOut(`\n${RE}Stream error:${RS} ${errMsg}`, out)
+          writeOut(`\n  ${GY}┃${RS} Partial response: ${partialContent}\n`, out)
         }
+        console.error('[session] Stream error:', errMsg, '| Partial response:', partialContent)
         if (reasoningOutput) {
           bus.emit(EventChannels.THINKING_END, {})
           if (!out?.suppressToolOutput) {

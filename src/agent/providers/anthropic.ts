@@ -117,9 +117,14 @@ export class AnthropicProvider implements LLMProvider {
       } else if (event.type === 'content_block_stop') {
         if (currentToolUse) {
           let input: Record<string, unknown>
+          const rawInput = currentToolUse.input || ''
           try {
-            input = JSON.parse(currentToolUse.input || '{}')
+            input = JSON.parse(rawInput || '{}')
           } catch {
+            console.error(
+              '[anthropic] Failed to parse tool_use input (content_block_stop):',
+              rawInput,
+            )
             input = {}
           }
           yield {
@@ -145,9 +150,11 @@ export class AnthropicProvider implements LLMProvider {
         if (event.delta.stop_reason === 'end_turn' || event.delta.stop_reason === 'stop_sequence') {
           if (currentToolUse) {
             let input: Record<string, unknown>
+            const rawInput = currentToolUse.input || ''
             try {
-              input = JSON.parse(currentToolUse.input || '{}')
+              input = JSON.parse(rawInput || '{}')
             } catch {
+              console.error('[anthropic] Failed to parse tool_use input (message_delta):', rawInput)
               input = {}
             }
             yield {
