@@ -10,7 +10,7 @@
 - **多模型支持**：兼容 Anthropic（Claude）、OpenAI（GPT）、Google（Gemini）、Ollama（本地模型），支持切换
 - **批量编辑**：单次调用支持多文件、多位置的批量编辑，优化按调用付费的成本
 - **语法高亮**：内置代码块语法高亮（TypeScript、Python、Rust、Go、Shell 等十余种语言）
-- **会话持久化**：自动保存和恢复会话（`~/.lonny/sessions/`），断线后继续之前的对话
+- **会话持久化**：自动保存和恢复会话（`~/.lonny/sessions/`），支持 mid-turn 保存防止刷新数据丢失
 - **Token 统计**：实时追踪输入/输出 token 用量和 API 调用次数
 - **技能系统**：通过 `.lonny/skills/` 加载自定义技能提示（Markdown + frontmatter）
 - **模板系统**：通过 `.lonny/prompts/` 加载可复用的提示模板，支持参数替换（`$1`, `$2`, `$@`）
@@ -22,7 +22,7 @@
 - **美观的 TUI**：像素字体 Logo、状态栏（cwd + 模式 + token 统计 + 模型）、Todo 侧边栏、实时加载动画
 - **DeepSeek 余额查询**：自动查询 DeepSeek 账户余额并显示在状态栏
 - **事件总线**：内部事件系统，支持 TUI 实时更新工具调用状态
-- **Web UI**：通过浏览器访问的 Web 聊天界面，支持流式输出、工具调用可视化和模式切换
+- **Web UI**：通过浏览器访问的 Web 聊天界面，支持流式输出、工具调用可视化、工作目录展示、DeepSeek 余额查询、斜杠命令补全、会话历史恢复和模式/模型切换
 - **代码质量管道**：内置 Biome 检查、Husky Git hooks、lint-staged 自动格式化
 
 ## 快速开始
@@ -44,9 +44,26 @@ npm install -g lonny-agent
   "baseUrl": "https://api.deepseek.com",
   "apiKey": "sk-...",
   "autoApprove": false,
-  "tavilyApiKey": "tvly-..."
+  "tavilyApiKey": "tvly-...",
+  "thinking": false,
+  "reasoningEffort": "medium",
+  "contextWindow": 256000,
+  "strictTools": true
 }
 ```
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `provider` | 模型供应商：`openai`、`anthropic`、`google`、`ollama` | `openai` |
+| `model` | 模型名称 | `deepseek-v4-flash` |
+| `baseUrl` | API 地址 | `https://api.deepseek.com` |
+| `apiKey` | API 密钥 | — |
+| `autoApprove` | 自动批准工具执行（无需确认） | `false` |
+| `tavilyApiKey` | Tavily 搜索 API 密钥 | — |
+| `thinking` | 启用推理模型的思考过程展示 | `false` |
+| `reasoningEffort` | 推理强度：`low`、`medium`、`high` | `medium` |
+| `contextWindow` | 上下文窗口大小（token） | `256000` |
+| `strictTools` | 严格模式工具调用（确保参数符合 schema） | `true` |
 
 ### 启动
 
@@ -84,6 +101,8 @@ lonny --web --port 8080
 
 当使用 DeepSeek 模型时（模型名或 base URL 包含 `deepseek`），lonny 会自动启用 `enable_cache` 以利用 DeepSeek 的缓存功能，降低 API 调用成本。
 
+DeepSeek v4 flash 的默认上下文窗口为 256K token，可通过配置文件的 `contextWindow` 调整。
+
 ## Web UI 使用指南
 
 Lonny 提供了基于 WebSocket 的 Web 聊天界面，支持所有核心功能。
@@ -105,9 +124,17 @@ lonny --web --port 8080
 - **流式输出**：实时显示 AI 回复，逐字符流式渲染
 - **工具调用可视化**：显示正在调用的工具及其结果
 - **思考过程展示**：支持 Anthropic/OpenAI 推理模型的思考过程实时展示
+- **工作目录展示**：状态栏显示当前工作目录
+- **DeepSeek 余额查询**：自动查询并显示余额
+- **会话历史恢复**：刷新后自动恢复对话历史
+- **斜杠命令补全**：输入 `/` 自动弹出可用命令列表
 - **模式切换**：通过 `/mode code|plan|ask` 切换模式
 - **模型切换**：通过 `/model <name>` 切换模型
 - **新会话**：通过 `/new` 开始新会话
+- **查看技能**：通过 `/skills` 列出已加载技能
+- **查看模板**：通过 `/prompts` 列出提示模板
+- **初始化目录**：通过 `/init` 创建 `.lonny/skills/` 和 `.lonny/prompts/`
+- **帮助**：通过 `/help` 查看所有命令
 - **自动重连**：连接断开后自动重连（最多尝试 10 次）
 - **心跳保活**：每 30 秒发送心跳保持连接
 
@@ -115,13 +142,39 @@ lonny --web --port 8080
 
 前后端通过 WebSocket 通信，消息格式为 JSON：
 
+**客户端 → 服务器：**
 ```
-客户端 → 服务器: { type: "message", text: "..." }
-服务器 → 客户端: { type: "chunk", text: "..." }
-服务器 → 客户端: { type: "tool_call", name: "...", input: {...} }
-服务器 → 客户端: { type: "tool_result", name: "...", success: true/false, output: "..." }
-服务器 → 客户端: { type: "thinking", text: "..." }
-服务器 → 客户端: { type: "done", reason: "stop" | "error" }
+{ type: "message", text: "..." }          // 发送消息
+{ type: "load_plan", planName: "..." }    // 加载计划
+{ type: "tool_confirm_response", approved: true/false }  // 工具确认
+{ type: "stop" }                           // 停止
+{ type: "ping" }                           // 心跳
+```
+
+**服务器 → 客户端：**
+```
+{ type: "hello", mode, model, provider, cwd, balance, totalIn, totalOut, totalApi }  // 初始状态
+{ type: "session_history", messages: [...] }        // 会话历史
+{ type: "chunk", text: "..." }                     // 流式文本
+{ type: "thinking", text: "..." }                   // 思考过程
+{ type: "thinking_end" }                             // 思考结束
+{ type: "turn_start" }                               // 新轮次开始
+{ type: "tool_call", name, input, id }               // 工具调用
+{ type: "tool_result", name, success, output, id }   // 工具结果
+{ type: "turn_end", iterations, toolCallCount }      // 轮次结束
+{ type: "token_stats", turnIn, turnOut, totalIn, totalOut, turnApi, totalApi }  // Token 统计
+{ type: "done", reason: "stop" | "error" }          // 完成
+{ type: "error", message }                           // 错误
+{ type: "mode_changed", mode }                       // 模式切换
+{ type: "model_changed", model }                     // 模型切换
+{ type: "session_cleared" }                          // 会话清除
+{ type: "plan_written", display }                    // 计划已写入
+{ type: "plan_data", plans, currentPlanName, todos }  // 计划/Todo 数据
+{ type: "balance_update", balance, webBalance }      // 余额更新
+{ type: "compaction", before, after }                // 上下文压缩
+{ type: "tool_confirm_request", toolCalls }          // 工具执行确认
+{ type: "help", commands }                           // 帮助信息
+{ type: "pong" }                                     // 心跳响应
 ```
 
 ## TUI 使用指南
@@ -210,7 +263,7 @@ lonny 为 AI 模型提供了以下工具：
 | `bash` | 执行 shell 命令 | code, plan |
 | `find` | 按名称搜索文件 | code, plan |
 | `git` | 执行只读 Git 操作 | code, plan |
-| `edit` | 批量编辑文件（多文件多位置） | code |
+| `edit` | 批量编辑文件（多文件多位置），提供详细的错误诊断和字段验证 | code |
 | `write_plan` | 编写计划文档 | plan |
 | `exec` | 在沙箱中执行 JavaScript 编排多个工具 | code |
 | `install_skill` | 安装 npm 包或 ClawHub 技能 | code, plan |
