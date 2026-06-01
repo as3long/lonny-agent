@@ -36,7 +36,7 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
 
   // DeepSeek 系列
   'deepseek-v4-pro': 1_000_000,
-  'deepseek-v4-flash': 1_000_000,
+  'deepseek-v4-flash': 256_000,
   'deepseek-v3.2': 160_000,
   'deepseek-r1': 128_000,
   'deepseek-chat': 128_000,

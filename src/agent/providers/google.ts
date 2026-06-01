@@ -68,7 +68,7 @@ export class GoogleProvider implements LLMProvider {
         if (m.content) {
           parts.push({ text: m.content })
         }
-        if (m.tool_calls) {
+        if (m.tool_calls && m.tool_calls.length > 0) {
           for (const tc of m.tool_calls) {
             parts.push({
               functionCall: {

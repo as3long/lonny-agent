@@ -14,6 +14,7 @@
   const tokenCalls = document.getElementById('token-calls')
   const balanceDisplay = document.getElementById('balance-display')
   const balanceSep = document.getElementById('balance-sep')
+  const cwdDisplay = document.getElementById('cwd-display')
   const connectionOverlay = document.getElementById('connection-overlay')
   const chatContainer = document.getElementById('chat-container')
 
@@ -591,6 +592,12 @@
           balanceDisplay.style.display = 'none'
           balanceSep.style.display = 'none'
         }
+        // Show working directory
+        if (msg.cwd) {
+          const maxLen = 35
+          cwdDisplay.textContent =
+            msg.cwd.length > maxLen ? '...' + msg.cwd.slice(-maxLen) : msg.cwd
+        }
         break
 
       case 'chunk':
@@ -677,6 +684,8 @@
 
       case 'session_history':
         renderSessionHistory(msg.messages)
+        // Scroll to bottom after all messages are rendered
+        setTimeout(scrollToBottom, 50)
         break
 
       case 'plan_data':

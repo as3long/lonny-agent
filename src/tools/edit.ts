@@ -207,10 +207,34 @@ EXAMPLES:
 
       const edits = input.edits as SingleEdit[]
       if (edits.length === 0) {
+        // Build a diagnostic: show what the AI received vs expected
+        const receivedKeys = Object.keys(rawInput)
+        const hint =
+          receivedKeys.length === 1 && receivedKeys[0] === 'edits'
+            ? 'The edits array exists but is empty — include at least one edit object with file_path, old_string, and new_string.'
+            : receivedKeys.includes('file_path')
+              ? 'Top-level file_path/old_string/new_string detected — wrap them in an edits array: { edits: [{ file_path, old_string, new_string }] }'
+              : 'No usable edit data found in the input. Provide an edits array with at least one edit.'
         return {
           success: false,
           output: '',
-          error: `edits array is empty. Example: edit({ edits: [{ file_path: "src/file.ts", old_string: "old", new_string: "new" }] })`,
+          error: `edit FAILED — no edits to apply. Raw input: ${JSON.stringify(rawInput)}. ${hint}`,
+        }
+      }
+
+      // Validate each edit object — catch missing old_string/new_string early
+      for (let i = 0; i < edits.length; i++) {
+        const e = edits[i]
+        const missing: string[] = []
+        if (typeof e.file_path !== 'string' || !e.file_path) missing.push('file_path')
+        if (typeof e.old_string !== 'string') missing.push('old_string')
+        if (typeof e.new_string !== 'string') missing.push('new_string')
+        if (missing.length > 0) {
+          return {
+            success: false,
+            output: '',
+            error: `edit FAILED — edit #${i} is missing required field(s): ${missing.join(', ')}. Received: ${JSON.stringify(rawInput)}. Each edit needs: { file_path: "...", old_string: "...", new_string: "..." }`,
+          }
         }
       }
 
@@ -239,6 +263,9 @@ EXAMPLES:
         let content =
           group.originalContent !== null ? group.originalContent.replace(/\r\n/g, '\n') : null
 
+        // Check if file was read (for stale-content diagnostics)
+        const readWarning = content !== null ? applier.checkModified(resolved) : null
+
         for (let i = group.edits.length - 1; i >= 0; i--) {
           const e = group.edits[i]
           // Normalize CRLF → LF in AI-provided strings (critical on Windows)
@@ -252,10 +279,13 @@ EXAMPLES:
                 old_string: '',
                 new_string: e.new_string,
               })
-              results.push(`  FAIL ${relPath}: File already exists — ${diag}`)
+              const suggestion = `  → Use edit with old_string to replace existing content, or choose a different path.`
+              results.push(`  FAIL ${relPath}: File already exists — Raw input: ${JSON.stringify(rawInput)}
+  Edit: ${diag}
+${suggestion}`)
               if (!anyFailed) {
                 anyFailed = true
-                firstError = `File already exists: ${relPath} — ${diag}`
+                firstError = `File already exists: ${relPath}`
               }
               break
             }
@@ -273,10 +303,13 @@ EXAMPLES:
               old_string: e.old_string,
               new_string: e.new_string,
             })
-            results.push(`  FAIL ${relPath}: File not found — ${diag}`)
+            const suggestion = `  → Check the file path, or create it first with old_string: "" (empty string).`
+            results.push(`  FAIL ${relPath}: File not found — Raw input: ${JSON.stringify(rawInput)}
+  Edit: ${diag}
+${suggestion}`)
             if (!anyFailed) {
               anyFailed = true
-              firstError = `File not found: ${relPath} — ${diag}`
+              firstError = `File not found: ${relPath}`
             }
             break
           }
@@ -296,10 +329,13 @@ EXAMPLES:
                 old_string: e.old_string,
                 new_string: e.new_string,
               })
-              results.push(`  FAIL ${relPath}: old_string appears MULTIPLE times — ${diag}`)
+              const suggestion = `  → Include more surrounding context lines (2-3 lines before and after) in old_string to make the match unique.`
+              results.push(`  FAIL ${relPath}: old_string appears MULTIPLE times — Raw input: ${JSON.stringify(rawInput)}
+  Edit: ${diag}
+${suggestion}`)
               if (!anyFailed) {
                 anyFailed = true
-                firstError = `old_string appears MULTIPLE times in ${relPath} — ${diag}`
+                firstError = `old_string appears MULTIPLE times in ${relPath}`
               }
               break
             }
@@ -335,10 +371,14 @@ EXAMPLES:
                 old_string: e.old_string,
                 new_string: e.new_string,
               })
-              results.push(`  FAIL ${relPath}: old_string not found — ${diag}${hint}`)
+              const readHint = readWarning ? `\n  ${readWarning}` : ''
+              const suggestion = `  → Read the file again with read({ paths: ["${e.file_path}"] }) to get current content, then retry with exact matching text. Include 2-3 lines of surrounding context for uniqueness.${readHint}`
+              results.push(`  FAIL ${relPath}: old_string not found — Raw input: ${JSON.stringify(rawInput)}
+  Edit: ${diag}${hint}
+${suggestion}`)
               if (!anyFailed) {
                 anyFailed = true
-                firstError = `old_string not found in ${relPath} — ${diag}`
+                firstError = `old_string not found in ${relPath}${hint}`
               }
               break
             }
@@ -348,12 +388,13 @@ EXAMPLES:
                 old_string: e.old_string,
                 new_string: e.new_string,
               })
+              const suggestion = `  → Include more surrounding context lines (2-3 lines before and after) in old_string to make the match unique.`
               results.push(
-                `  FAIL ${relPath}: old_string appears MULTIPLE times (whitespace-normalized) — ${diag}`,
+                `  FAIL ${relPath}: old_string appears MULTIPLE times (whitespace-normalized) — Raw input: ${JSON.stringify(rawInput)}\n  Edit: ${diag}\n${suggestion}`,
               )
               if (!anyFailed) {
                 anyFailed = true
-                firstError = `old_string appears MULTIPLE times in ${relPath} (whitespace-normalized) — ${diag}`
+                firstError = `old_string appears MULTIPLE times in ${relPath} (whitespace-normalized)`
               }
               break
             }
@@ -396,10 +437,12 @@ EXAMPLES:
           }
           applier.markRead(filePath)
         }
+        // Only show FAIL lines in the error (successful edits were rolled back)
+        const failLines = results.filter(r => r.startsWith('  FAIL ')).join('\n')
         return {
           success: false,
           output: '',
-          error: `Edit batch failed — all changes rolled back.\n${results.join('\n')}\n\nFirst error: ${firstError}`,
+          error: `Edit FAILED — all changes rolled back. Raw input: ${JSON.stringify(rawInput)}\n${failLines}\n\n${firstError}`,
         }
       }
 

@@ -67,11 +67,14 @@ ${getToolListForMode(config.mode)}`
   // ── Mode-specific instructions ───────────────────────────────────────────
   const modeInstructions =
     config.mode === 'plan'
-      ? `You are a planning agent. Your sole job is to investigate the codebase and produce an actionable implementation plan plus a todo list. You NEVER edit source files.
+      ? `You are a planning agent. Your ONLY job is to investigate the codebase and produce an actionable implementation plan with a todo list.
+
+You CANNOT edit files. You do NOT have access to edit, bash (write mode), exec, or install_skill.
+Any attempt to call these tools will FAIL — they are simply unavailable in this mode.
 
 RULES (plan-specific):
 1. Read first: Use read/grep/glob tools to gather all context you need before planning.
-2. You NEVER edit source files. You ONLY use read-only tools (read/glob/grep/ls/find/git/search) and bash (read-only commands only). You do NOT have access to edit, install_skill, or exec.
+2. You NEVER edit source files. You ONLY use read-only tools (read/glob/grep/ls/find/git/search) and bash (read-only commands only).
 3. Use \`bash\` for investigation only — NEVER to modify files, install packages, or run write operations.
 4. Your ONLY output is a plan file saved via \`write_plan\`. You CANNOT modify the codebase directly.
 5. You MUST persist the final plan AND todo list to a file in \`.lonny/\` using \`write_plan\`. The \`write_plan\` content MUST include both ## Plan and ## Todo List sections.
@@ -117,7 +120,40 @@ RULES (code-specific):
 7. COST OPTIMIZATION (CRITICAL): Each API call costs money. You have a hard limit of ~5 API calls per task.
 8. TODO LIST MAINTENANCE: After completing a task item, update the corresponding plan file in \`.lonny/\` by checking off the TODO item (change \`- [ ]\` to \`- [x]\`). Use \`read\` to find the plan file, then \`edit\` to update the checkbox.`
 
-  // ── Environment section (dynamic content — put LAST for prefix caching) ──
+  // ── Built-in development methodologies ─────────────────────────────────
+  // Embedded directly from Superpowers — no skill files needed.
+  const methodologySection =
+    config.mode === 'code'
+      ? `
+
+## Development Methodology
+
+### Systematic Debugging
+When investigating a bug or test failure, follow this process:
+1. **Root Cause** — Read errors carefully, reproduce consistently, check recent changes
+2. **Pattern Analysis** — Find working examples, compare with broken code
+3. **Hypothesis** — Form single hypothesis, test minimally (one change at a time)
+4. **Implementation** — Create failing test first, implement minimal fix, verify
+
+NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST.
+If you've tried 3+ fixes without success, question the architecture — don't keep guessing.
+
+### Verification Before Completion
+After ANY change, you MUST verify it actually works before claiming success:
+- Run the relevant tests and check the exit code
+- Only then report the result
+
+You CANNOT claim "tests pass" or "fix works" without having run the verification command in this same turn. Evidence before assertions, always.`
+      : config.mode === 'plan'
+        ? `
+
+## Design-First Planning
+Before writing a plan, explore the user's request thoroughly:
+1. Ask clarifying questions — understand purpose, constraints, success criteria
+2. Explore alternatives — consider 2-3 different approaches with trade-offs
+3. Break into bite-sized tasks (2-5 minutes each) with exact file paths and verification steps
+4. Save the plan via \`write_plan\``
+        : ''
   const envSection = `Environment:
 - Platform: ${platform} ${release} (${arch})
 - Shell: ${shell}
@@ -135,5 +171,5 @@ ${isWindows ? '  - Use `type` instead of `cat`, `dir` instead of `ls`, `where` i
 ${sharedRules}`
   return `${modeInstructions}
 
-${envSection}${rulesSection}${skillsSection}`
+${envSection}${rulesSection}${methodologySection}${skillsSection}`
 }

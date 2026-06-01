@@ -4,7 +4,9 @@ import * as path from 'node:path'
 import * as url from 'node:url'
 import { type WebSocket, WebSocketServer } from 'ws'
 import { resetGlobalEventBus } from '../agent/event-bus.js'
+import { ensurePromptsDir, loadPromptTemplates } from '../agent/prompt-templates.js'
 import { Session, type SessionOutput } from '../agent/session.js'
+import { ensureSkillsDir, loadSkills } from '../agent/skills.js'
 import type { Config } from '../config/index.js'
 import { fmtErr } from '../tools/errors.js'
 import { fetchDeepSeekBalance, isDeepSeekOfficial } from '../tui/balance.js'
@@ -255,6 +257,70 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
               return
             }
 
+            if (cmd === 'stop') {
+              sessionWithOutput.stop()
+              ws.send(JSON.stringify({ type: 'chunk', text: '\nStopped.\n' }))
+              ws.send(JSON.stringify({ type: 'done', reason: 'stop' }))
+              return
+            }
+
+            if (cmd === 'skills') {
+              const skills = loadSkills(config.cwd)
+              if (skills.length === 0) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'chunk',
+                    text: 'No skills loaded. Create .md files in .lonny/skills/ or run install_superpowers.',
+                  }),
+                )
+              } else {
+                let msg = `Active Skills (${skills.length}):\n`
+                for (const s of skills) {
+                  msg += `  \u2022 ${s.name}`
+                  if (s.description) msg += ` - ${s.description}`
+                  msg += '\n'
+                }
+                ws.send(JSON.stringify({ type: 'chunk', text: msg }))
+              }
+              ws.send(JSON.stringify({ type: 'done', reason: 'stop' }))
+              return
+            }
+
+            if (cmd === 'prompts') {
+              const templates = loadPromptTemplates(config.cwd)
+              if (templates.length === 0) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'chunk',
+                    text: 'No prompt templates found. Create .md files in .lonny/prompts/.',
+                  }),
+                )
+              } else {
+                let msg = `Prompt Templates (${templates.length}):\n`
+                for (const t of templates) {
+                  msg += `  \u2022 ${t.name}`
+                  if (t.description) msg += ` - ${t.description}`
+                  msg += '\n'
+                }
+                ws.send(JSON.stringify({ type: 'chunk', text: msg }))
+              }
+              ws.send(JSON.stringify({ type: 'done', reason: 'stop' }))
+              return
+            }
+
+            if (cmd === 'init') {
+              ensureSkillsDir(config.cwd)
+              ensurePromptsDir(config.cwd)
+              ws.send(
+                JSON.stringify({
+                  type: 'chunk',
+                  text: 'Initialized .lonny/skills/ and .lonny/prompts/.',
+                }),
+              )
+              ws.send(JSON.stringify({ type: 'done', reason: 'stop' }))
+              return
+            }
+
             if (cmd === 'help') {
               ws.send(
                 JSON.stringify({
@@ -263,6 +329,10 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
                     '/mode code|plan|ask - Switch mode',
                     '/model <name> - Switch model',
                     '/new - Start a new session',
+                    '/stop - Stop the running agent',
+                    '/skills - List active skills',
+                    '/prompts - List prompt templates',
+                    '/init - Create .lonny/skills/ & prompts/',
                     '/help - Show this help',
                   ],
                 }),
@@ -344,6 +414,7 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
         JSON.stringify({
           type: 'hello',
           version: 1,
+          cwd: config.cwd,
           mode: config.mode,
           model: config.model,
           provider: config.provider,

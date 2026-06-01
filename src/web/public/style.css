@@ -89,6 +89,17 @@ html, body {
   gap: 2px;
 }
 
+.cwd-text {
+  color: var(--text-dim);
+  font-size: 12px;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  font-family: var(--font-mono);
+}
+
 /* ── Chat Container ──────────────────────────────────────────── */
 #chat-container {
   flex: 1;

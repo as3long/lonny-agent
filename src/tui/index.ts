@@ -108,7 +108,13 @@ export async function startTui(config: Config): Promise<void> {
     const filtered = data.replace(/\x1b\[\?1049[hl]/g, '')
     if (filtered) origWrite(filtered)
   }
-  const tui = new TUI(terminal, false)
+  // Show hardware cursor by default so IME (Chinese input method) can
+  // position its candidate window at the correct cursor location.
+  // The cursor is hidden during agent execution via setShowHardwareCursor(false).
+  // Note: on some terminals (Windows Terminal), showing the hardware cursor
+  // can interfere with editor rendering layout. If you see editor border gap,
+  // set this to false and use PI_HARDWARE_CURSOR=1 env var to enable.
+  const tui = new TUI(terminal, true)
   tui.setClearOnShrink(true)
   terminal.setTitle(`lonny ${config.model} ${config.provider}`)
 

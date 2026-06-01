@@ -388,6 +388,8 @@ export class Session {
     const out = this.output
     printUserMessage(userPrompt, out)
     this.messages.push({ role: 'user', content: userPrompt })
+    // Save immediately after user message so page refresh doesn't lose it
+    this.save()
 
     // Reset per-turn counters
     this.turnInputTokens = 0
@@ -568,6 +570,12 @@ export class Session {
           }
           if (chunk.finish_reason === 'stop' || chunk.finish_reason === 'end_turn') {
             if (toolCalls.length === 0) {
+              const finalAssistantMsg: LLMMessage = {
+                role: 'assistant',
+                content: fullResponse || null,
+                reasoning_content: reasoningContent,
+              }
+              this.messages.push(finalAssistantMsg)
               printTokenStats(
                 this.turnInputTokens,
                 this.turnOutputTokens,
@@ -610,6 +618,12 @@ export class Session {
 
       if (toolCalls.length === 0) {
         if (fullResponse) {
+          const finalAssistantMsg: LLMMessage = {
+            role: 'assistant',
+            content: fullResponse,
+            reasoning_content: reasoningContent,
+          }
+          this.messages.push(finalAssistantMsg)
           printTokenStats(
             this.turnInputTokens,
             this.turnOutputTokens,
@@ -639,6 +653,7 @@ export class Session {
         reasoning_content: reasoningContent,
       }
       this.messages.push(assistantMsg)
+      this.save()
 
       // ── User confirmation for write-type tool calls ──
       if (!this.config.autoApprove && this.output?.confirmTool && toolCalls.length > 0) {
@@ -690,6 +705,8 @@ export class Session {
         }
         this.messages.push(resultMsg)
       }
+
+      this.save()
 
       // End the current turn before next iteration — frontend creates a new message
       bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: toolCalls.length })

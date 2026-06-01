@@ -1351,26 +1351,20 @@ export class TUI extends Container {
     const targetRow = Math.max(0, Math.min(cursorPos.row, totalLines - 1))
     const targetCol = Math.max(0, cursorPos.col)
 
-    // Move cursor from current position to target
-    const rowDelta = targetRow - this.hardwareCursorRow
-    let buffer = ''
-    if (rowDelta > 0) {
-      buffer += `\x1b[${rowDelta}B` // Move down
-    } else if (rowDelta < 0) {
-      buffer += `\x1b[${-rowDelta}A` // Move up
+    // Use absolute cursor positioning (CUP) to avoid scroll artifacts.
+    // Relative movement (\x1b[NB/\x1b[NA) with a stale baseline can
+    // cause the terminal to scroll, inserting blank lines, especially
+    // when the editor overlay cursor is far from the rendered content.
+    let buffer = `\x1b[${targetRow + 1};${targetCol + 1}H`
+
+    if (this.showHardwareCursor) {
+      buffer += '\x1b[?25h'
     }
-    // Move to absolute column (1-indexed)
-    buffer += `\x1b[${targetCol + 1}G`
 
     if (buffer) {
       this.terminal.write(buffer)
     }
 
     this.hardwareCursorRow = targetRow
-    if (this.showHardwareCursor) {
-      this.terminal.showCursor()
-    } else {
-      this.terminal.hideCursor()
-    }
   }
 }
