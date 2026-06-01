@@ -179,6 +179,7 @@ describe('edit tool', () => {
     })
 
     it('handles edits passed directly as an array (not wrapped)', async () => {
+      // @ts-expect-error — runtime accepts array, TS expects object
       const r = await tool().execute([
         { file_path: 'a.txt', old_string: 'test', new_string: 'TEST' },
       ])
