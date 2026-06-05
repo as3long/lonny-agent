@@ -284,13 +284,24 @@
 
   function renderDiffContent(text) {
     const lines = text.split('\n')
+    // Track whether we're processing old lines (first half) or new lines (second half)
+    // to correctly assign red/green colors for line-number format diffs
+    let isOldLine = true
+    const lineNumPattern = /^ {2,}\d+ /
     return lines
       .map(line => {
         const trimmed = line.trim()
         if (trimmed.startsWith('+ ')) {
+          isOldLine = false
           return `<span class="diff-added">${escapeHtml(line)}\n</span>`
         } else if (trimmed.startsWith('- ')) {
+          isOldLine = true
           return `<span class="diff-removed">${escapeHtml(line)}\n</span>`
+        } else if (lineNumPattern.test(trimmed)) {
+          // Line number format: "  1 content" - toggle between old/new
+          const className = isOldLine ? 'diff-removed' : 'diff-added'
+          isOldLine = !isOldLine
+          return `<span class="${className}">${escapeHtml(line)}\n</span>`
         }
         return escapeHtml(line) + '\n'
       })
@@ -329,7 +340,12 @@
             trimmed.startsWith('Deleted ')
           ) {
             summaryLines.push(trimmed)
-          } else if (trimmed.startsWith('- ') || trimmed.startsWith('+ ')) {
+          } else if (
+            trimmed.startsWith('- ') ||
+            trimmed.startsWith('+ ') ||
+            // Match line number format: "  1 content" (with leading spaces and number)
+            trimmed.match(/^ {2,}\d+ /)
+          ) {
             diffLines.push(line)
           }
         }
