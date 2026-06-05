@@ -292,7 +292,17 @@ export class Session {
       this.provider = new AnthropicProvider(config.apiKey, config.baseUrl, config.model)
     }
 
-    this.messages = [{ role: 'system', content: buildSystemPrompt(config) }]
+    // Placeholder until initSystemPrompt() is called
+    this.messages = [{ role: 'system', content: '' }]
+    // Initialize system prompt asynchronously
+    this.initSystemPrompt(config)
+  }
+
+  /** Initialize the system prompt asynchronously */
+  private initSystemPrompt(config: Config): void {
+    buildSystemPrompt(config).then(prompt => {
+      this.messages = [{ role: 'system', content: prompt }]
+    })
   }
 
   /** Persist the current session to ~/.lonny/sessions/ */
@@ -315,7 +325,7 @@ export class Session {
   }
 
   /** Try to load a saved session for the given cwd. Returns null if none exists. */
-  static load(config: Config, output?: SessionOutput): Session | null {
+  static async load(config: Config, output?: SessionOutput): Promise<Session | null> {
     const filePath = getSessionFilePath(config.cwd)
     let data: SessionData
     try {
@@ -341,7 +351,8 @@ export class Session {
       data.provider !== config.provider ||
       data.mode !== config.mode
     ) {
-      session.messages[0] = { role: 'system', content: buildSystemPrompt(config) }
+      const prompt = await buildSystemPrompt(config)
+      session.messages[0] = { role: 'system', content: prompt }
     }
     // Restore token stats
     session.totalInputTokens = data.totalInputTokens
@@ -360,9 +371,10 @@ export class Session {
     }
   }
 
-  setMode(mode: 'code' | 'plan' | 'ask'): void {
+  async setMode(mode: 'code' | 'plan' | 'ask'): Promise<void> {
     this.config.mode = mode
-    this.messages[0] = { role: 'system', content: buildSystemPrompt(this.config) }
+    const prompt = await buildSystemPrompt(this.config)
+    this.messages[0] = { role: 'system', content: prompt }
     this.registry.setMode(mode)
     this.save()
   }
@@ -382,6 +394,8 @@ export class Session {
   /** Reset the stopped flag for a new conversation */
   resetStopped(): void {
     this.stopped = false
+    // Create new AbortController for next conversation
+    this.abortController = new AbortController()
   }
 
   async chat(userPrompt: string): Promise<void> {

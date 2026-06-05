@@ -88,13 +88,13 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
   // Create WebSocket server
   const wss = new WebSocketServer({ server })
 
-  wss.on('connection', (ws: WebSocket) => {
+  wss.on('connection', async (ws: WebSocket) => {
     console.log('[Web UI] Client connected')
 
     // Reset event bus for new session
     resetGlobalEventBus()
 
-    const session = Session.load(config) || new Session(config)
+    const session = (await Session.load(config)) || new Session(config)
     let bridge: ReturnType<typeof startSessionBridge> | null = null
 
     // Track output to forward to WebSocket
@@ -149,7 +149,7 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
     }
 
     // Re-create session with output
-    const sessionWithOutput = Session.load(config, output) || new Session(config, output)
+    const sessionWithOutput = (await Session.load(config, output)) || new Session(config, output)
     sessionWithOutput.messages = session.messages
     sessionWithOutput.totalInputTokens = session.totalInputTokens
     sessionWithOutput.totalOutputTokens = session.totalOutputTokens
@@ -238,14 +238,14 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
             const arg = parts.slice(1).join(' ')
 
             if (cmd === 'mode' && (arg === 'code' || arg === 'plan' || arg === 'ask')) {
-              sessionWithOutput.setMode(arg as 'code' | 'plan' | 'ask')
+              await sessionWithOutput.setMode(arg as 'code' | 'plan' | 'ask')
               ws.send(JSON.stringify({ type: 'mode_changed', mode: arg }))
               return
             }
 
             if (cmd === 'model' && arg) {
               sessionWithOutput.config.model = arg
-              sessionWithOutput.setMode(sessionWithOutput.config.mode)
+              await sessionWithOutput.setMode(sessionWithOutput.config.mode)
               ws.send(JSON.stringify({ type: 'model_changed', model: arg }))
               return
             }

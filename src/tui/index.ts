@@ -225,7 +225,7 @@ export async function startTui(config: Config): Promise<void> {
 
   // Try to restore a saved session for this directory (MUST be before landing screen setup)
   let restored = false
-  const restoredSession = Session.load(config, output)
+  const restoredSession = await Session.load(config, output)
   if (restoredSession) {
     restored = true
     session = restoredSession
@@ -484,7 +484,7 @@ export async function startTui(config: Config): Promise<void> {
   }
 
   // ── Input handling ──────────────────────────────────────────────────────
-  function sendMessage(text: string): void {
+  async function sendMessage(text: string): Promise<void> {
     const trimmed = text.trim()
     if (!trimmed) return
     editor.setText('')
@@ -532,7 +532,7 @@ export async function startTui(config: Config): Promise<void> {
 
       if (cmd === 'mode') {
         if (arg === 'code' || arg === 'plan' || arg === 'ask') {
-          session.setMode(arg)
+          await session.setMode(arg)
           chatContent += `\n${colors.warn('\u21E8')} Switched to ${arg === 'ask' ? colors.success(arg) : colors.warn(arg)} mode\n`
           chatMarkdown.setText(chatContent)
           updateFooter()
@@ -547,7 +547,7 @@ export async function startTui(config: Config): Promise<void> {
         if (arg) {
           session.config.model = arg
           // Rebuild system prompt with new model context
-          session.setMode(session.config.mode) // triggers rebuild
+          await session.setMode(session.config.mode) // triggers rebuild
           chatContent += `\n${colors.warn('\u21E8')} Model switched to ${colors.warn(arg)}\n`
           chatMarkdown.setText(chatContent)
           updateFooter()
@@ -625,6 +625,7 @@ export async function startTui(config: Config): Promise<void> {
         chatContent += `\n${colors.warn('\u23F9')} Stopping agent...\n`
         chatMarkdown.setText(chatContent)
         isRunning = false
+        loader.stop()
         loader.setMessage('')
         tui.setShowHardwareCursor(true)
         updateFooter()

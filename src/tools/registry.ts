@@ -72,11 +72,6 @@ function normalizeToolInput(
     return input
   }
 
-  // If edit tool gets an empty object, some models hallucinate the call
-  if (toolName === 'edit' && Object.keys(input).length === 0) {
-    return { edits: [] }
-  }
-
   return input
 }
 

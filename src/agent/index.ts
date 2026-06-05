@@ -20,6 +20,6 @@ export async function runAgent(prompt: string, config: Config): Promise<void> {
       })
     },
   }
-  const session = Session.load(config, output) || new Session(config, output)
+  const session = (await Session.load(config, output)) || new Session(config, output)
   await session.chat(prompt)
 }
