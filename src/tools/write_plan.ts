@@ -1,10 +1,13 @@
-import * as fs from 'node:fs'
+import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { fmtErr } from './errors.js'
 import type { Tool, ToolResult } from './types.js'
 
 /** Directory where plans are stored, relative to project root */
 export const PLAN_DIR = '.lonny'
+
+/** Maximum plan content size (1MB) */
+const MAX_CONTENT_SIZE = 1_000_000
 
 function sanitizeFilename(name: string): string {
   const trimmed = name.trim()
@@ -22,7 +25,10 @@ function sanitizeFilename(name: string): string {
   return normalized
 }
 
-export function createWritePlanTool(cwd: string, onPlanWritten?: (display: string) => void): Tool {
+export function createWritePlanTool(
+  cwd: string,
+  onPlanWritten?: (display: string) => void | Promise<void>,
+): Tool {
   return {
     definition: {
       name: 'write_plan',
@@ -49,8 +55,18 @@ export function createWritePlanTool(cwd: string, onPlanWritten?: (display: strin
       if (typeof input.content !== 'string') {
         return { success: false, output: '', error: 'content is required (string)' }
       }
+
       const filename = input.filename
       const content = input.content
+
+      // Check content size
+      if (content.length > MAX_CONTENT_SIZE) {
+        return {
+          success: false,
+          output: '',
+          error: `Content too large (max ${MAX_CONTENT_SIZE} bytes)`,
+        }
+      }
 
       const safeName = sanitizeFilename(filename)
       if (!safeName) {
@@ -69,10 +85,10 @@ export function createWritePlanTool(cwd: string, onPlanWritten?: (display: strin
       }
 
       try {
-        fs.mkdirSync(path.dirname(target), { recursive: true })
-        fs.writeFileSync(target, content, 'utf8')
+        await fs.mkdir(path.dirname(target), { recursive: true })
+        await fs.writeFile(target, content, 'utf8')
         const display = path.relative(cwd, target).replace(/\\/g, '/')
-        onPlanWritten?.(display)
+        await Promise.resolve(onPlanWritten?.(display))
         return {
           success: true,
           output: `Wrote plan to ${display} (${Buffer.byteLength(content, 'utf8')} bytes)`,
