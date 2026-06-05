@@ -50,7 +50,7 @@ export async function buildSystemPrompt(config: Config): Promise<string> {
 - \`grep\`: Search file content by regex (pattern: string, include?: string, path?: string)
 - \`ls\`: List directory (path?: string)
 - \`bash\`: Execute a shell command
-- \`edit\`: Replace text in files — call with {edits: [{file_path: string, old_string: string, new_string: string}]} (array required)
+- \`edit\`: Replace text in files using markdown code block format. Use: \`edit({ content: "\`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`" })\`
 - \`install_skill\`: Install an npm package as a skill — fetches package info from npm, runs npm install, and creates a .lonny/skills/ file with usage instructions for the AI
 - \`find\`: Find files by name pattern (pattern: string, path?: string, maxResults?: number)
 - \`git\`: Run read-only git commands (command: string)
@@ -64,8 +64,7 @@ export async function buildSystemPrompt(config: Config): Promise<string> {
 RULES:
 1. Read first: Use read/grep/glob tools to gather all context you need before making any edits.
 2. Be thorough: Explore the relevant parts of the codebase.
-3. COST OPTIMIZATION (CRITICAL): Each API call costs money. You MUST maximize work per call. Use \`read(paths: [...])\` to read multiple files at once. Use \`edit({edits: [...]})\` to edit multiple files at once. Do NOT do sequential single-file reads or single-edit calls.
-4. When using \`edit\`, the \`edits\` value MUST be an array — even for a single change. Do NOT pass empty objects.
+3. COST OPTIMIZATION (CRITICAL): Each API call costs money. You MUST maximize work per call. Use \`read(paths: [...])\` to read multiple files at once. Use \`edit({ content: "..." })\` with multiple \`\`\`edit blocks to edit multiple files at once.
 
 ${getToolListForMode(config.mode)}`
 
@@ -116,9 +115,15 @@ RULES (ask-specific):
 
 RULES (code-specific):
 1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into \`edit\`.
-2. edit CALL FORMAT — you MUST call edit with exactly this JSON shape:
-   { "edits": [{ "file_path": "src/file.ts", "old_string": "text to replace", "new_string": "replacement text" }] }
-   The "edits" value is ALWAYS an array, even for a single edit. Do NOT pass file_path/old_string/new_string as top-level keys. Do NOT pass an empty object {}.
+2. edit CALL FORMAT — use markdown code block format:
+   \`\`\`edit
+   file: src/file.ts
+   old: |
+     text to replace
+   new: |
+     replacement text
+   \`\`\`
+   Use separate \`\`\`edit blocks for multiple files.
 3. After making edits to a file, if you need to make ANOTHER edit to the SAME file, you MUST re-read it first to get the updated content.
 4. If \`edit\` reports \`old_string not found\`, do NOT retry with the same old_string — re-read the file immediately to see its actual current content, then retry with correctly-copied text.
 5. When copying old_string from \`read\` output, include 2-3 lines of context BEFORE and AFTER the target change to make the string unique in the file.

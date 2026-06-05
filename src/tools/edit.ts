@@ -175,147 +175,209 @@ interface SingleEdit {
   new_string: string
 }
 
+type Edit = SingleEdit
+
+/** Parse markdown code block format into edits array */
+function parseMarkdownEdit(content: string): Edit[] {
+  const edits: Edit[] = []
+
+  // Extract content from ```edit ... ``` code blocks
+  const blockRegex = /```edit\s*([\s\S]*?)```/gi
+
+  for (const regexMatch of content.matchAll(blockRegex)) {
+    const blockContent = regexMatch[1]!
+
+    // Parse file path
+    const fileMatch = blockContent.match(/^file:\s*(.+)$/m)
+    if (!fileMatch) continue
+    const filePath = fileMatch[1]!.trim()
+
+    // Parse old string (support both "old:" and "old: |" formats)
+    let oldString = ''
+    let newString = ''
+
+    const oldMatch = blockContent.match(/^old:(?:\s*\|\s*\n)?([\s\S]*?)^new:/m)
+    const newMatch = blockContent.match(/^new:(?:\s*\|\s*\n)?([\s\S]*?)$/m)
+
+    if (oldMatch) {
+      oldString = oldMatch[1]!.replace(/^\n/, '').replace(/\n$/, '')
+    }
+    if (newMatch) {
+      newString = newMatch[1]!.replace(/^\n/, '').replace(/\n$/, '')
+    }
+
+    if (filePath) {
+      edits.push({
+        file_path: filePath,
+        old_string: oldString || '',
+        new_string: newString || '',
+      })
+    }
+  }
+
+  return edits
+}
+
+/** Extract edits from legacy JSON format (backward compatibility) */
+function extractEditsFromJSON(input: Record<string, unknown>): Edit[] {
+  // Pattern 0: input is an array (edits passed directly instead of wrapped)
+  if (Array.isArray(input)) {
+    // Preserve array for validation
+    return input as Edit[]
+  }
+
+  // Pattern 1: input has file_path, old_string, new_string at top level (missing edits array)
+  if (!Array.isArray(input.edits)) {
+    const keys = Object.keys(input)
+
+    // Check if the keys look like a single edit object (file_path + old_string + new_string)
+    const hasFilePath = typeof input.file_path === 'string'
+    const hasOldString = typeof input.old_string === 'string'
+    const hasNewString = typeof input.new_string === 'string'
+
+    if (hasFilePath && hasOldString && hasNewString) {
+      return [
+        {
+          file_path: input.file_path as string,
+          old_string: input.old_string as string,
+          new_string: input.new_string as string,
+        },
+      ]
+    } else if (hasFilePath && hasOldString) {
+      // Only file_path + old_string (missing new_string)
+      return [
+        {
+          file_path: input.file_path as string,
+          old_string: input.old_string as string,
+          new_string: (input.new_string as string) || '',
+        },
+      ]
+    } else if (keys.length === 2 && hasFilePath && typeof input.new_string === 'string') {
+      // file_path + new_string but no old_string — treat as new file creation
+      return [
+        {
+          file_path: input.file_path as string,
+          old_string: '',
+          new_string: input.new_string as string,
+        },
+      ]
+    } else if (keys.length === 1 && hasFilePath) {
+      // Only file_path — maybe they meant create file with empty content?
+      return [{ file_path: input.file_path as string, old_string: '', new_string: '' }]
+    }
+    return []
+  }
+
+  // If edits is an array (even empty), preserve for validation
+  if (Array.isArray(input.edits)) {
+    return input.edits as Edit[]
+  }
+
+  return []
+}
+
 export function createEditTool(applier: FileReadTracker, cwd: string): Tool {
   return {
     definition: {
       name: 'edit',
-      description: `Replace exact text in files. Each edit object is a COMPLETE find-and-replace pair.
-Parameter: {"edits": [{"file_path": "...", "old_string": "...", "new_string": "..."}]}
+      description: `Replace exact text in files using markdown code block format.
 
 HOW TO USE:
 1. Read the file first with \`read\`
 2. Copy the EXACT text to replace — include 2-3 lines of context before/after
-3. Call: edit({ edits: [{ file_path, old_string, new_string }] })
+3. Use markdown code block format below
 
-CRITICAL RULES:
-- Each edit MUST have BOTH old_string AND new_string (a complete find-replace pair)
-- old_string must match EXACTLY (whitespace, indentation, line breaks)
-- old_string must be UNIQUE — include enough surrounding context
-- Do NOT include the "<lineNumber>: " prefix from read output
-- \`edits\` is always an array. Never pass file_path/old_string/new_string as top-level keys.
-- To batch multiple independent edits, add multiple objects to the array
+FORMAT:
+\`\`\`edit
+file: <file_path>
+old: |
+  <exact text to find>
+new: |
+  <replacement text>
+\`\`\`
 
 EXAMPLES:
-  Single edit: edit({ edits: [{ file_path: "src/config.ts", old_string: "mode: 'code'", new_string: "mode: 'plan'" }] })
+Single edit:
+\`\`\`edit
+file: src/config.ts
+old: |
+  mode: 'code'
+new: |
+  mode: 'plan'
+\`\`\`
 
-  Batch edits: edit({ edits: [
-    { file_path: "src/a.ts", old_string: "foo", new_string: "bar" },
-    { file_path: "src/b.ts", old_string: "x", new_string: "y" }
-  ] })
+Create new file:
+\`\`\`edit
+file: src/new.ts
+old:
+new: |
+  const x = 1
+\`\`\`
 
-  Create file: edit({ edits: [{ file_path: "src/new.ts", old_string: "", new_string: "const x = 1" }] })`,
+CRITICAL RULES:
+- old and new are separated by "old:" and "new:" labels
+- Use | after label for multi-line content
+- old_string must match EXACTLY (whitespace, indentation, line breaks)
+- Do NOT include the "<lineNumber>: " prefix from read output`,
       parameters: {
-        edits: {
-          type: 'array',
-          minItems: 1,
-          description:
-            'REQUIRED. Array of complete find-replace pairs. Each edit MUST have BOTH old_string AND new_string. Example: [{ file_path: "src/file.ts", old_string: "old", new_string: "new" }]',
+        content: {
+          type: 'string',
+          description: 'Markdown code block with edit instructions. See description for format.',
           required: true,
-          items: {
-            type: 'object',
-            properties: {
-              file_path: { type: 'string', description: 'Path to the file' },
-              old_string: {
-                type: 'string',
-                description:
-                  'Text to FIND in the file. REQUIRED. Pair with new_string to form a complete find-replace. Pass "" to create a new file.',
-              },
-              new_string: {
-                type: 'string',
-                description:
-                  'Replacement text. REQUIRED. Pair with old_string to form a complete find-replace. Pass "" to delete content.',
-              },
-            },
-          },
         },
       },
     },
     async execute(input): Promise<ToolResult> {
-      // ── Auto-correction: detect common misuse patterns ────────────────
-      // ── Debug: log raw input for diagnosing failures ─────────────
-      let rawInput: unknown = input
-      try {
-        rawInput = structuredClone(input)
-      } catch {
-        console.error('[edit] Failed to clone input:', input)
-        rawInput = input
-      }
+      // ── Parse markdown format ─────────────────────────────────────────
+      let edits: Edit[] = []
 
-      // Pattern 0: input is an array (edits passed directly instead of wrapped)
-      if (Array.isArray(input)) {
-        input = { edits: input }
-      }
-
-      // Pattern 1: input has file_path, old_string, new_string at top level (missing edits array)
-      if (!Array.isArray(input.edits)) {
-        const keys = Object.keys(input)
-
-        // Check if the keys look like a single edit object (file_path + old_string + new_string)
-        const hasFilePath = typeof input.file_path === 'string'
-        const hasOldString = typeof input.old_string === 'string'
-        const hasNewString = typeof input.new_string === 'string'
-
-        if (hasFilePath && hasOldString && hasNewString) {
-          // Auto-correct: wrap into edits array
-          input = {
-            edits: [
-              {
-                file_path: input.file_path,
-                old_string: input.old_string,
-                new_string: input.new_string,
-              },
-            ],
-          }
-        } else if (hasFilePath && hasOldString) {
-          // Only file_path + old_string (missing new_string) — still try
-          input = {
-            edits: [
-              {
-                file_path: input.file_path,
-                old_string: input.old_string,
-                new_string: input.new_string || '',
-              },
-            ],
-          }
-        } else if (keys.length === 1 && hasFilePath) {
-          // Only file_path — maybe they meant create file with empty content?
-          input = { edits: [{ file_path: input.file_path, old_string: '', new_string: '' }] }
-        } else if (keys.length === 2 && hasFilePath && typeof input.new_string === 'string') {
-          // file_path + new_string but no old_string — treat as new file creation
-          input = {
-            edits: [{ file_path: input.file_path, old_string: '', new_string: input.new_string }],
-          }
-        } else {
-          // Can't auto-correct — give helpful error with examples
-          const example = hasFilePath
-            ? `edit({ edits: [{ file_path: "${input.file_path}", old_string: "...", new_string: "..." }] })`
-            : `edit({ edits: [{ file_path: "src/file.ts", old_string: "old", new_string: "new" }] })`
+      // If input has 'content' field (new markdown format)
+      if (typeof input.content === 'string') {
+        edits = parseMarkdownEdit(input.content)
+        if (edits.length === 0) {
           return {
             success: false,
             output: '',
-            error: `edit requires "edits" array. Received: ${JSON.stringify(rawInput)}. Usage: ${example}`,
+            error:
+              'Failed to parse edit format. Use: ```edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n```',
           }
         }
+      } else {
+        // Legacy JSON format (backward compatibility)
+        edits = extractEditsFromJSON(input as Record<string, unknown>)
       }
 
-      const edits = input.edits as SingleEdit[]
       if (edits.length === 0) {
-        // Build a diagnostic: show what the AI received vs expected
-        const receivedKeys = Object.keys(rawInput as Record<string, unknown>)
-        const hint =
-          receivedKeys.length === 1 && receivedKeys[0] === 'edits'
-            ? 'The edits array exists but is empty — include at least one edit object with file_path, old_string, and new_string.'
-            : receivedKeys.includes('file_path')
-              ? 'Top-level file_path/old_string/new_string detected — wrap them in an edits array: { edits: [{ file_path, old_string, new_string }] }'
-              : 'No usable edit data found in the input. Provide an edits array with at least one edit.'
+        // Check if input specifically had empty edits array (for better error message)
+        const inputEdits = (input as Record<string, unknown>).edits
+        if ('edits' in input && Array.isArray(inputEdits) && inputEdits.length === 0) {
+          return {
+            success: false,
+            output: '',
+            error: `edit FAILED — no edits to apply. The edits array exists but is empty.`,
+          }
+        }
+        // Check if input has edits key but it's not an array
+        if ('edits' in input && !Array.isArray((input as Record<string, unknown>).edits)) {
+          return {
+            success: false,
+            output: '',
+            error:
+              'edit requires "edits" array. Use markdown format: ```edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n```',
+          }
+        }
         return {
           success: false,
           output: '',
-          error: `edit FAILED — no edits to apply. Raw input: ${JSON.stringify(rawInput)}. ${hint}`,
+          error:
+            'No valid edits found (empty or invalid format). The edit array must contain objects with file_path, old_string, and new_string. Use markdown code block format: ```edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n```',
         }
       }
 
-      // Validate each edit object — catch missing old_string/new_string early
+      // Debug: keep rawInput for error messages
+      const rawInput = input
+
+      // Validate each edit object
       const editErrors: string[] = []
       for (let i = 0; i < edits.length; i++) {
         const e = edits[i]
@@ -324,8 +386,11 @@ EXAMPLES:
         if (typeof e.old_string !== 'string') missing.push('old_string')
         if (typeof e.new_string !== 'string') missing.push('new_string')
         if (missing.length > 0) {
+          const present = Object.keys(e)
+            .filter(k => typeof e[k as keyof Edit] === 'string')
+            .join(', ')
           editErrors.push(
-            `  edit #${i + 1}: missing ${missing.join(', ')} (has: ${Object.keys(e).join(', ')})`,
+            `  edit #${i + 1}: missing ${missing.join(', ')}${present ? ` (has: ${present})` : ''}`,
           )
         }
       }
@@ -333,8 +398,7 @@ EXAMPLES:
         return {
           success: false,
           output: '',
-          error: `edit FAILED — ${editErrors.length} of ${edits.length} edit(s) have missing fields.\n${editErrors.join('\n')}\n\nReceived: ${JSON.stringify(rawInput)}\n\nEach edit object must be a COMPLETE find-replace pair with BOTH old_string AND new_string.
-Do NOT split old_string (text to find) and new_string (replacement) across different edit objects.`,
+          error: `edit FAILED — ${editErrors.length} of ${edits.length} edit(s) have missing fields.\n${editErrors.join('\n')}\n\nReceived: ${JSON.stringify(rawInput)}\n\nEach edit object must be a COMPLETE find-replace pair with BOTH old_string AND new_string.`,
         }
       }
 
