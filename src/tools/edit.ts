@@ -4,22 +4,101 @@ import type { FileReadTracker } from '../diff/apply.js'
 import { fmtErr } from './errors.js'
 import type { Tool, ToolResult } from './types.js'
 
-// ── ANSI colors for diff output ─────────────────────────────────────────
+// ── Diff types ────────────────────────────────────────────────────────────
+export type DiffLineType = 'old' | 'new'
+
+export interface DiffLine {
+  lineNum: number
+  type: DiffLineType
+  content: string
+}
+
+// ── ANSI colors for terminal output ───────────────────────────────────────
 const DIFF_RED = '\x1b[38;2;255;80;80m'
 const DIFF_GREEN = '\x1b[38;2;0;200;100m'
 const DIFF_RESET = '\x1b[0m'
 
-function generateDiff(oldStr: string, newStr: string): string {
+// ── ANSI colors for HTML output ───────────────────────────────────────────
+const HTML_RED = '#ff5050'
+const HTML_GREEN = '#00c864'
+
+/** Build diagnostic JSON for error messages */
+function buildDiag(edit: SingleEdit): string {
+  return JSON.stringify({
+    file_path: edit.file_path,
+    old_string: edit.old_string,
+    new_string: edit.new_string,
+  })
+}
+
+/** Compute diff lines (pure data, no rendering) */
+export function computeDiff(oldStr: string, newStr: string, startLine = 0): DiffLine[] {
   const oldLines = oldStr === '' ? [] : oldStr.split('\n')
   const newLines = newStr.split('\n')
-  const lines: string[] = []
-  for (const line of oldLines) {
-    lines.push(`  ${DIFF_RED}- ${line}${DIFF_RESET}`)
+  const lines: DiffLine[] = []
+
+  for (let i = 0; i < oldLines.length; i++) {
+    lines.push({ lineNum: startLine + i, type: 'old', content: oldLines[i] })
   }
-  for (const line of newLines) {
-    lines.push(`  ${DIFF_GREEN}+ ${line}${DIFF_RESET}`)
+  for (let i = 0; i < newLines.length; i++) {
+    lines.push({ lineNum: startLine + i, type: 'new', content: newLines[i] })
   }
-  return lines.join('\n')
+
+  return lines
+}
+
+/** Terminal renderer */
+export function renderDiffTerminal(lines: DiffLine[]): string {
+  if (lines.length === 0) return ''
+
+  const maxLineNum = Math.max(...lines.map(l => l.lineNum))
+  const lineNumWidth = String(maxLineNum).length
+  const fmtLineNum = (n: number) => String(n).padStart(lineNumWidth, ' ')
+
+  const output: string[] = []
+  for (const line of lines) {
+    const color = line.type === 'old' ? DIFF_RED : DIFF_GREEN
+    const reset = DIFF_RESET
+    output.push(`  ${fmtLineNum(line.lineNum)} ${color}${line.content}${reset}`)
+  }
+  return output.join('\n')
+}
+
+/** HTML renderer for web output */
+export function renderDiffHtml(lines: DiffLine[]): string {
+  if (lines.length === 0) return ''
+
+  const maxLineNum = Math.max(...lines.map(l => l.lineNum))
+  const lineNumWidth = String(maxLineNum).length
+  const fmtLineNum = (n: number) => String(n).padStart(lineNumWidth, ' ')
+
+  const output: string[] = []
+  for (const line of lines) {
+    const color = line.type === 'old' ? HTML_RED : HTML_GREEN
+    const style = `color: ${color};`
+    output.push(
+      `  <span style="${style}">${fmtLineNum(line.lineNum)} ${escapeHtml(line.content)}</span>`,
+    )
+  }
+  return output.join('\n')
+}
+
+/** Escape HTML special characters */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+/**
+ * Generate diff output (backward compatible).
+ * Delegates to terminal renderer by default.
+ */
+export function generateDiff(oldStr: string, newStr: string, startLine = 0): string {
+  const lines = computeDiff(oldStr, newStr, startLine)
+  return renderDiffTerminal(lines)
 }
 
 /**
@@ -128,6 +207,7 @@ EXAMPLES:
       parameters: {
         edits: {
           type: 'array',
+          minItems: 1,
           description:
             'REQUIRED. Array of complete find-replace pairs. Each edit MUST have BOTH old_string AND new_string. Example: [{ file_path: "src/file.ts", old_string: "old", new_string: "new" }]',
           required: true,
@@ -155,7 +235,7 @@ EXAMPLES:
       // ── Debug: log raw input for diagnosing failures ─────────────
       let rawInput: unknown = input
       try {
-        rawInput = JSON.parse(JSON.stringify(input))
+        rawInput = structuredClone(input)
       } catch {
         console.error('[edit] Failed to clone input:', input)
         rawInput = input
@@ -294,11 +374,7 @@ Do NOT split old_string (text to find) and new_string (replacement) across diffe
 
           if (e.old_string === '') {
             if (content !== null) {
-              const diag = JSON.stringify({
-                file_path: e.file_path,
-                old_string: '',
-                new_string: e.new_string,
-              })
+              const diag = buildDiag({ ...e, old_string: '' })
               const suggestion = `  → Use edit with old_string to replace existing content, or choose a different path.`
               results.push(`  FAIL ${relPath}: File already exists — Raw input: ${JSON.stringify(rawInput)}
   Edit: ${diag}
@@ -318,11 +394,7 @@ ${suggestion}`)
           }
 
           if (content === null) {
-            const diag = JSON.stringify({
-              file_path: e.file_path,
-              old_string: e.old_string,
-              new_string: e.new_string,
-            })
+            const diag = buildDiag(e)
             const suggestion = `  → Check the file path, or create it first with old_string: "" (empty string).`
             results.push(`  FAIL ${relPath}: File not found — Raw input: ${JSON.stringify(rawInput)}
   Edit: ${diag}
@@ -344,11 +416,7 @@ ${suggestion}`)
             // Exact match found — check for duplicates
             const lastIdx = content.lastIndexOf(e.old_string)
             if (exactIdx !== lastIdx) {
-              const diag = JSON.stringify({
-                file_path: e.file_path,
-                old_string: e.old_string,
-                new_string: e.new_string,
-              })
+              const diag = buildDiag(e)
               const suggestion = `  → Include more surrounding context lines (2-3 lines before and after) in old_string to make the match unique.`
               results.push(`  FAIL ${relPath}: old_string appears MULTIPLE times — Raw input: ${JSON.stringify(rawInput)}
   Edit: ${diag}
@@ -386,11 +454,7 @@ ${suggestion}`)
                 const lines = contentLines.slice(0, Math.min(contentLines.length, 5))
                 hint = `\n  File content (first ${lines.length} lines):\n  """\n${lines.join('\n')}\n  """`
               }
-              const diag = JSON.stringify({
-                file_path: e.file_path,
-                old_string: e.old_string,
-                new_string: e.new_string,
-              })
+              const diag = buildDiag(e)
               const readHint = readWarning ? `\n  ${readWarning}` : ''
               const suggestion = `  → Read the file again with read({ paths: ["${e.file_path}"] }) to get current content, then retry with exact matching text. Include 2-3 lines of surrounding context for uniqueness.${readHint}`
               results.push(`  FAIL ${relPath}: old_string not found — Raw input: ${JSON.stringify(rawInput)}
@@ -403,11 +467,7 @@ ${suggestion}`)
               break
             }
             if (tolerant.length > 1) {
-              const diag = JSON.stringify({
-                file_path: e.file_path,
-                old_string: e.old_string,
-                new_string: e.new_string,
-              })
+              const diag = buildDiag(e)
               const suggestion = `  → Include more surrounding context lines (2-3 lines before and after) in old_string to make the match unique.`
               results.push(
                 `  FAIL ${relPath}: old_string appears MULTIPLE times (whitespace-normalized) — Raw input: ${JSON.stringify(rawInput)}\n  Edit: ${diag}\n${suggestion}`,
@@ -426,7 +486,8 @@ ${suggestion}`)
           }
 
           const strategyLabel = matchInfo.strategy === 'tolerant' ? ' (whitespace-normalized)' : ''
-          const diff = generateDiff(e.old_string, e.new_string)
+          const matchLineNum = content.substring(0, matchInfo.index).split('\n').length
+          const diff = generateDiff(e.old_string, e.new_string, matchLineNum - 1)
           results.push(`  Edited ${relPath}${strategyLabel}:\n${diff}`)
           content =
             content.slice(0, matchInfo.index) +
