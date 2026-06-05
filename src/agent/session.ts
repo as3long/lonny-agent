@@ -632,6 +632,19 @@ export class Session {
         }
         bus.emit(EventChannels.LLM_STREAM_END, { iteration: iterations, toolCallCount: 0 })
         bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
+
+        // If there are pending toolCalls that weren't executed due to abort,
+        // add an assistant message so the model knows they weren't executed
+        if (toolCalls.length > 0) {
+          const interruptedMsg: LLMMessage = {
+            role: 'assistant',
+            content: null,
+            tool_calls: toolCalls,
+            reasoning_content: reasoningContent,
+          }
+          this.messages.push(interruptedMsg)
+        }
+
         saveTokenUsage(
           this.config.cwd,
           this.turnInputTokens,
@@ -718,9 +731,20 @@ export class Session {
         }
       }
 
-      for (const tc of toolCalls) {
+      for (let i = 0; i < toolCalls.length; i++) {
+        const tc = toolCalls[i]
         // Check if stop was requested after each tool call
         if (this.isStopped()) {
+          // Add assistant message with remaining tool_calls so model knows they weren't executed
+          const remainingToolCalls = toolCalls.slice(i)
+          if (remainingToolCalls.length > 0) {
+            const interruptedMsg: LLMMessage = {
+              role: 'assistant',
+              content: null,
+              tool_calls: remainingToolCalls,
+            }
+            this.messages.push(interruptedMsg)
+          }
           bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: toolCalls.length })
           this.save()
           return
