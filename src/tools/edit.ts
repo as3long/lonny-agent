@@ -34,7 +34,7 @@ function buildDiag(edit: SingleEdit): string {
 /** Compute diff lines (pure data, no rendering) */
 export function computeDiff(oldStr: string, newStr: string, startLine = 0): DiffLine[] {
   const oldLines = oldStr === '' ? [] : oldStr.split('\n')
-  const newLines = newStr.split('\n')
+  const newLines = newStr === '' ? [] : newStr.split('\n')
   const lines: DiffLine[] = []
 
   for (let i = 0; i < oldLines.length; i++) {
@@ -84,7 +84,7 @@ export function renderDiffHtml(lines: DiffLine[]): string {
 }
 
 /** Escape HTML special characters */
-function escapeHtml(str: string): string {
+export function escapeHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -111,7 +111,8 @@ export function generateDiff(oldStr: string, newStr: string, startLine = 0): str
  * - Extra internal spaces → `"foo  bar"` → `"foo bar"`
  * - Blank lines with spaces → `"   "` → `""`
  */
-function normalizeLine(s: string): string {
+/** Export for testing */
+export function normalizeLine(s: string): string {
   return s.trim().replace(/[ \t]{2,}/g, ' ')
 }
 
@@ -128,7 +129,8 @@ interface MatchPos {
  * so the caller can do content.slice(match.index, match.index + match.length)
  * to extract the actual matched text (with its original whitespace).
  */
-function findAllLinesTolerant(content: string, oldString: string): MatchPos[] {
+/** Export for testing */
+export function findAllLinesTolerant(content: string, oldString: string): MatchPos[] {
   if (oldString === '') return []
 
   const contentLines = content.split('\n')
@@ -177,8 +179,8 @@ interface SingleEdit {
 
 type Edit = SingleEdit
 
-/** Parse markdown code block format into edits array */
-function parseMarkdownEdit(content: string): Edit[] {
+/** Export for testing */
+export function parseMarkdownEdit(content: string): Edit[] {
   const edits: Edit[] = []
 
   // Extract content from ```edit ... ``` code blocks
@@ -197,7 +199,7 @@ function parseMarkdownEdit(content: string): Edit[] {
     let newString = ''
 
     const oldMatch = blockContent.match(/^old:(?:\s*\|\s*\n)?([\s\S]*?)^new:/m)
-    const newMatch = blockContent.match(/^new:(?:\s*\|\s*\n)?([\s\S]*?)$/m)
+    const newMatch = blockContent.match(/^new:(?:\s*\|\s*\n)?([\s\S]*)$/m)
 
     if (oldMatch) {
       oldString = oldMatch[1]!.replace(/^\n/, '').replace(/\n$/, '')
