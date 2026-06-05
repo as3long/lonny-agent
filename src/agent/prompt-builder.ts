@@ -1,12 +1,13 @@
 import * as os from 'node:os'
 import type { Config } from '../config/index.js'
+import { discoverProject, formatProjectContext } from './project.js'
 import { formatSkillsForPrompt, loadSkills } from './skills.js'
 
 /**
  * Build the system prompt for the current configuration.
  * Extracted from session.ts to keep module size manageable (<500 LoC target).
  */
-export function buildSystemPrompt(config: Config): string {
+export async function buildSystemPrompt(config: Config): Promise<string> {
   const platform = os.platform()
   const release = os.release()
   const shell = process.env.SHELL || process.env.ComSpec || 'unknown'
@@ -17,6 +18,10 @@ export function buildSystemPrompt(config: Config): string {
   // ── Load skills ────────────────────────────────────────────────────────
   const skills = loadSkills(cwd)
   const skillsSection = formatSkillsForPrompt(skills)
+
+  // ── Load project context ─────────────────────────────────────────────────
+  const projectInfo = await discoverProject(cwd)
+  const projectSection = formatProjectContext(projectInfo)
 
   // ── Mode-specific tool list ───────────────────────────────────────────
   function getToolListForMode(mode: string): string {
@@ -172,5 +177,5 @@ ${isWindows ? '  - Use `type` instead of `cat`, `dir` instead of `ls`, `where` i
 ${sharedRules}`
   return `${modeInstructions}
 
-${envSection}${rulesSection}${methodologySection}${skillsSection}`
+${envSection}${rulesSection}${methodologySection}${projectSection}${skillsSection}`
 }
