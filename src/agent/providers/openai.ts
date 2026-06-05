@@ -21,6 +21,38 @@ interface ExtendedCreateParams {
   enable_cache?: boolean
 }
 
+/** Try to parse JSON, and attempt to repair common issues like unescaped quotes */
+function tryParseJSON(input: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(input)
+  } catch {
+    // Try to repair common JSON issues from LLM output
+    let repaired = input
+
+    // Fix unescaped quotes in string values:
+    // Pattern: key="unquoted text" -> key="escaped text"
+    // This regex finds ="<not properly escaped>" and adds escaping
+    // It handles: ="<content with spaces and 中文">
+    repaired = repaired.replace(/= "([^"\\]*(?:\\.[^"\\]*)*)"/g, (match, content) => {
+      // Escape any unescaped quotes within the content
+      const escaped = content.replace(/(?<!\\)"/g, '\\"')
+      return `= "${escaped}"`
+    })
+
+    // Also try escaping quotes after @ (for @click="...")
+    repaired = repaired.replace(/@(\w+)="([^"\\]*(?:\\.[^"\\]*)*)"/g, (match, attr, content) => {
+      const escaped = content.replace(/(?<!\\)"/g, '\\"')
+      return `@${attr}="${escaped}"`
+    })
+
+    try {
+      return JSON.parse(repaired)
+    } catch {
+      return null
+    }
+  }
+}
+
 export class OpenAIProvider implements LLMProvider {
   private client: OpenAI
   private model: string
@@ -203,7 +235,7 @@ export class OpenAIProvider implements LLMProvider {
               let input: Record<string, unknown>
               const rawArgs = currentToolCall.arguments || ''
               try {
-                input = JSON.parse(rawArgs || '{}')
+                input = tryParseJSON(rawArgs || '{}') || {}
               } catch {
                 console.error(
                   '[openai] Failed to parse tool_call arguments (flush on new tool):',
@@ -237,12 +269,13 @@ export class OpenAIProvider implements LLMProvider {
         if (currentToolCall) {
           const finalArgs = currentToolCall.arguments || ''
           try {
+            const parsed = tryParseJSON(finalArgs || '{}')
             yield {
               type: 'tool_use',
               tool_call: {
                 id: currentToolCall.id,
                 name: currentToolCall.name,
-                input: JSON.parse(finalArgs || '{}'),
+                input: parsed || {},
               },
               reasoning_content: reasoningContent,
             }
@@ -315,7 +348,7 @@ export class OpenAIProvider implements LLMProvider {
       let input: Record<string, unknown>
       const rawFinalArgs = currentToolCall.arguments || ''
       try {
-        input = JSON.parse(rawFinalArgs || '{}')
+        input = tryParseJSON(rawFinalArgs || '{}') || {}
       } catch {
         console.error('[openai] Failed to parse tool_call arguments (final flush):', rawFinalArgs)
         input = {}
