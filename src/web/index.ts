@@ -8,6 +8,7 @@ import { ensurePromptsDir, loadPromptTemplates } from '../agent/prompt-templates
 import { Session, type SessionOutput } from '../agent/session.js'
 import { ensureSkillsDir, loadSkills } from '../agent/skills.js'
 import type { Config } from '../config/index.js'
+import { resetTokenUsage } from '../config/tokens.js'
 import { fmtErr } from '../tools/errors.js'
 import { fetchDeepSeekBalance, isDeepSeekOfficial } from '../tui/balance.js'
 import { listPlans, type PlanEntry } from '../tui/components.js'
@@ -149,7 +150,7 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
     }
 
     // Re-create session with output
-    const sessionWithOutput = (await Session.load(config, output)) || new Session(config, output)
+    let sessionWithOutput = (await Session.load(config, output)) || new Session(config, output)
     sessionWithOutput.messages = session.messages
     sessionWithOutput.totalInputTokens = session.totalInputTokens
     sessionWithOutput.totalOutputTokens = session.totalOutputTokens
@@ -251,7 +252,28 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
             }
 
             if (cmd === 'new') {
+              // Stop any running agent first
+              sessionWithOutput.stop()
+              // Close old bridge
+              if (bridge) bridge.close()
+              // Clear persisted state
               Session.clearSavedSession(config.cwd)
+              resetTokenUsage(config.cwd)
+              resetGlobalEventBus()
+              // Create fresh session with empty context
+              sessionWithOutput = new Session(config, output)
+              sessionWithOutput.onPlanWritten = (display: string) => {
+                ws.send(JSON.stringify({ type: 'plan_written', display }))
+                sendPlanData()
+              }
+              // Create new bridge for the fresh session
+              bridge = startSessionBridge(sessionWithOutput, config, (msg: WsMessage) => {
+                if (ws.readyState === ws.OPEN) {
+                  ws.send(JSON.stringify(msg))
+                }
+              })
+              // Reset pending confirmation state
+              pendingConfirm = null
               ws.send(JSON.stringify({ type: 'session_cleared' }))
               ws.send(JSON.stringify({ type: 'done', reason: 'stop' }))
               return
@@ -428,11 +450,11 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
       sendPlanData()
     })()
 
-    // Send full session history (exclude system prompt, strip ANSI from tool results)
+    // Send full session history (exclude system prompt, strip ANSI from non-edit tool results)
     const historyMessages = sessionWithOutput.messages
       .filter(m => m.role !== 'system')
       .map(m => {
-        if (m.role === 'tool' && typeof m.content === 'string') {
+        if (m.role === 'tool' && typeof m.content === 'string' && m.name !== 'edit') {
           return { ...m, content: stripAnsi(m.content) }
         }
         return m

@@ -11,7 +11,6 @@ import {
   generateDiff,
   normalizeLine,
   parseMarkdownEdit,
-  renderDiffHtml,
   renderDiffTerminal,
 } from '../edit.js'
 import { makeTempDir } from './helpers.js'
@@ -26,7 +25,7 @@ function makeApplier(): FileReadTracker {
     checkModified(f: string): string | null {
       return readSet.has(f) ? null : `Warning: file was not read first.`
     },
-  }
+  } as FileReadTracker
 }
 
 // ── Tests for pure functions ─────────────────────────────────────────────
@@ -131,30 +130,34 @@ describe('computeDiff', () => {
     expect(computeDiff('', '')).toEqual([])
   })
 
-  it('returns only old lines when new is empty', () => {
+  it('returns delete lines when new is empty', () => {
     const result = computeDiff('a\nb', '')
     expect(result).toHaveLength(2)
-    expect(result.every(l => l.type === 'old')).toBe(true)
+    expect(result.every(l => l.type === 'delete')).toBe(true)
   })
 
-  it('returns only new lines when old is empty', () => {
+  it('returns insert lines when old is empty', () => {
     const result = computeDiff('', 'a\nb')
     expect(result).toHaveLength(2)
-    expect(result.every(l => l.type === 'new')).toBe(true)
+    expect(result.every(l => l.type === 'insert')).toBe(true)
   })
 
-  it('uses provided startLine', () => {
-    const result = computeDiff('a', 'b', 10)
-    expect(result[0]!.lineNum).toBe(10)
-    expect(result[1]!.lineNum).toBe(10)
+  it('returns equal lines for unchanged content', () => {
+    const result = computeDiff('hello\nworld', 'hello\nworld')
+    expect(result).toHaveLength(2)
+    expect(result.every(l => l.type === 'equal')).toBe(true)
   })
 
-  it('preserves content exactly', () => {
-    const result = computeDiff('hello\nworld', 'hi\nthere')
+  it('produces mixed diff for changed content', () => {
+    const result = computeDiff('hello\nworld', 'hi\nworld')
+    // hello→hi should be delete+insert, world should be equal
+    expect(result).toHaveLength(3)
+    expect(result[0]!.type).toBe('delete')
     expect(result[0]!.content).toBe('hello')
-    expect(result[1]!.content).toBe('world')
-    expect(result[2]!.content).toBe('hi')
-    expect(result[3]!.content).toBe('there')
+    expect(result[1]!.type).toBe('insert')
+    expect(result[1]!.content).toBe('hi')
+    expect(result[2]!.type).toBe('equal')
+    expect(result[2]!.content).toBe('world')
   })
 })
 
@@ -163,74 +166,37 @@ describe('renderDiffTerminal', () => {
     expect(renderDiffTerminal([])).toBe('')
   })
 
-  it('renders old lines in red', () => {
+  it('renders delete lines in red with - prefix', () => {
     const lines = computeDiff('old', '')
     const output = renderDiffTerminal(lines)
     expect(output).toContain('\x1b[38;2;255;80;80m')
-    expect(output).toContain('old')
+    expect(output).toContain('- old')
     expect(output).toContain('\x1b[0m')
   })
 
-  it('renders new lines in green', () => {
+  it('renders insert lines in green with + prefix', () => {
     const lines = computeDiff('', 'new')
     const output = renderDiffTerminal(lines)
     expect(output).toContain('\x1b[38;2;0;200;100m')
-    expect(output).toContain('new')
+    expect(output).toContain('+ new')
   })
 
-  it('right-aligns line numbers', () => {
-    // 10 lines = max lineNum is 9 → width 1 → no padding needed
-    const lines = computeDiff('a\nb\nc\nd\ne\nf\ng\nh\ni\nj', '')
+  it('renders equal lines in dim with space prefix', () => {
+    const lines = computeDiff('same', 'same')
     const output = renderDiffTerminal(lines)
-    expect(output).toContain(' 0')
-    expect(output).toContain(' 9')
-  })
-})
-
-describe('renderDiffHtml', () => {
-  it('returns empty string for empty input', () => {
-    expect(renderDiffHtml([])).toBe('')
-  })
-
-  it('renders old lines in red', () => {
-    const lines = computeDiff('old', '')
-    const output = renderDiffHtml(lines)
-    expect(output).toContain('color: #ff5050')
-    expect(output).toContain('old')
-  })
-
-  it('renders new lines in green', () => {
-    const lines = computeDiff('', 'new')
-    const output = renderDiffHtml(lines)
-    expect(output).toContain('color: #00c864')
-    expect(output).toContain('new')
-  })
-
-  it('escapes HTML in content', () => {
-    const lines = computeDiff('', '<script>alert("x")</script>')
-    const output = renderDiffHtml(lines)
-    expect(output).toContain('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;')
-    expect(output).not.toContain('<script>')
-  })
-
-  it('right-aligns line numbers', () => {
-    const lines = computeDiff('a\nb\nc\nd\ne\nf\ng\nh\ni\nj', '')
-    const output = renderDiffHtml(lines)
-    expect(output).toContain('0 a')
-    expect(output).toContain('9 j')
+    expect(output).toContain('\x1b[38;2;100;100;100m')
+    expect(output).toContain('  same')
+    expect(output).toContain('\x1b[0m')
   })
 })
 
 describe('generateDiff', () => {
-  it('delegates to terminal renderer by default', () => {
+  it('returns terminal-colored unified diff', () => {
     const output = generateDiff('old', 'new')
-    expect(output).toContain('\x1b[38;2;255;80;80mold')
-    expect(output).toContain('\x1b[38;2;0;200;100mnew')
-  })
-
-  it('uses startLine offset', () => {
-    const output = generateDiff('old', 'new', 42)
-    expect(output).toContain('42')
+    expect(output).toContain('\x1b[38;2;255;80;80m')
+    expect(output).toContain('- old')
+    expect(output).toContain('\x1b[38;2;0;200;100m')
+    expect(output).toContain('+ new')
   })
 })
 
@@ -276,6 +242,23 @@ describe('parseMarkdownEdit', () => {
     const edits = parseMarkdownEdit(input)
     expect(edits).toHaveLength(1)
     expect(edits[0]!.file_path).toBe('src/new.ts')
+    expect(edits[0]!.old_string).toBe('')
+    // Pipe format preserves leading whitespace
+    expect(edits[0]!.new_string).toBe('  const x = 1')
+  })
+
+  it('parses create file with pipe (old: | empty content)', () => {
+    const input = [
+      '```edit',
+      'file: src/new-pipe.ts',
+      'old: |',
+      'new: |',
+      '  const x = 1',
+      '```',
+    ].join('\n')
+    const edits = parseMarkdownEdit(input)
+    expect(edits).toHaveLength(1)
+    expect(edits[0]!.file_path).toBe('src/new-pipe.ts')
     expect(edits[0]!.old_string).toBe('')
     // Pipe format preserves leading whitespace
     expect(edits[0]!.new_string).toBe('  const x = 1')

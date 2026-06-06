@@ -1,14 +1,14 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { DIFF_DELETE, DIFF_INSERT, diffLinesRaw } from 'jest-diff'
 import type { FileReadTracker } from '../diff/apply.js'
 import { fmtErr } from './errors.js'
 import type { Tool, ToolResult } from './types.js'
 
 // ── Diff types ────────────────────────────────────────────────────────────
-export type DiffLineType = 'old' | 'new'
+export type DiffLineType = 'delete' | 'insert' | 'equal'
 
 export interface DiffLine {
-  lineNum: number
   type: DiffLineType
   content: string
 }
@@ -16,11 +16,13 @@ export interface DiffLine {
 // ── ANSI colors for terminal output ───────────────────────────────────────
 const DIFF_RED = '\x1b[38;2;255;80;80m'
 const DIFF_GREEN = '\x1b[38;2;0;200;100m'
+const DIFF_DIM = '\x1b[38;2;100;100;100m'
 const DIFF_RESET = '\x1b[0m'
 
-// ── ANSI colors for HTML output ───────────────────────────────────────────
+// ── Colors for HTML output ────────────────────────────────────────────────
 const HTML_RED = '#ff5050'
 const HTML_GREEN = '#00c864'
+const HTML_DIM = '#888888'
 
 /** Build diagnostic JSON for error messages */
 function buildDiag(edit: SingleEdit): string {
@@ -31,35 +33,38 @@ function buildDiag(edit: SingleEdit): string {
   })
 }
 
-/** Compute diff lines (pure data, no rendering) */
-export function computeDiff(oldStr: string, newStr: string, startLine = 0): DiffLine[] {
+/** Compute diff lines using jest-diff for proper line-level diffs */
+export function computeDiff(oldStr: string, newStr: string): DiffLine[] {
   const oldLines = oldStr === '' ? [] : oldStr.split('\n')
   const newLines = newStr === '' ? [] : newStr.split('\n')
-  const lines: DiffLine[] = []
 
-  for (let i = 0; i < oldLines.length; i++) {
-    lines.push({ lineNum: startLine + i, type: 'old', content: oldLines[i] })
-  }
-  for (let i = 0; i < newLines.length; i++) {
-    lines.push({ lineNum: startLine + i, type: 'new', content: newLines[i] })
-  }
+  if (oldLines.length === 0 && newLines.length === 0) return []
 
-  return lines
+  const rawDiff = diffLinesRaw(oldLines, newLines)
+  return rawDiff.map(d => ({
+    type:
+      d[0] === DIFF_DELETE
+        ? ('delete' as const)
+        : d[0] === DIFF_INSERT
+          ? ('insert' as const)
+          : ('equal' as const),
+    content: d[1],
+  }))
 }
 
-/** Terminal renderer */
+/** Terminal renderer — unified-diff format with color */
 export function renderDiffTerminal(lines: DiffLine[]): string {
   if (lines.length === 0) return ''
 
-  const maxLineNum = Math.max(...lines.map(l => l.lineNum))
-  const lineNumWidth = String(maxLineNum).length
-  const fmtLineNum = (n: number) => String(n).padStart(lineNumWidth, ' ')
-
   const output: string[] = []
   for (const line of lines) {
-    const color = line.type === 'old' ? DIFF_RED : DIFF_GREEN
-    const reset = DIFF_RESET
-    output.push(`  ${fmtLineNum(line.lineNum)} ${color}${line.content}${reset}`)
+    if (line.type === 'delete') {
+      output.push(`  ${DIFF_RED}- ${line.content}${DIFF_RESET}`)
+    } else if (line.type === 'insert') {
+      output.push(`  ${DIFF_GREEN}+ ${line.content}${DIFF_RESET}`)
+    } else {
+      output.push(`  ${DIFF_DIM}  ${line.content}${DIFF_RESET}`)
+    }
   }
   return output.join('\n')
 }
@@ -68,17 +73,15 @@ export function renderDiffTerminal(lines: DiffLine[]): string {
 export function renderDiffHtml(lines: DiffLine[]): string {
   if (lines.length === 0) return ''
 
-  const maxLineNum = Math.max(...lines.map(l => l.lineNum))
-  const lineNumWidth = String(maxLineNum).length
-  const fmtLineNum = (n: number) => String(n).padStart(lineNumWidth, ' ')
-
   const output: string[] = []
   for (const line of lines) {
-    const color = line.type === 'old' ? HTML_RED : HTML_GREEN
-    const style = `color: ${color};`
-    output.push(
-      `  <span style="${style}">${fmtLineNum(line.lineNum)} ${escapeHtml(line.content)}</span>`,
-    )
+    if (line.type === 'delete') {
+      output.push(`  <span style="color: ${HTML_RED};">- ${escapeHtml(line.content)}</span>`)
+    } else if (line.type === 'insert') {
+      output.push(`  <span style="color: ${HTML_GREEN};">+ ${escapeHtml(line.content)}</span>`)
+    } else {
+      output.push(`  <span style="color: ${HTML_DIM};">  ${escapeHtml(line.content)}</span>`)
+    }
   }
   return output.join('\n')
 }
@@ -93,11 +96,11 @@ export function escapeHtml(str: string): string {
 }
 
 /**
- * Generate diff output (backward compatible).
- * Delegates to terminal renderer by default.
+ * Generate diff output using jest-diff.
+ * Returns terminal-colored unified-diff format.
  */
-export function generateDiff(oldStr: string, newStr: string, startLine = 0): string {
-  const lines = computeDiff(oldStr, newStr, startLine)
+export function generateDiff(oldStr: string, newStr: string): string {
+  const lines = computeDiff(oldStr, newStr)
   return renderDiffTerminal(lines)
 }
 
@@ -311,7 +314,7 @@ new: |
 Create new file:
 \`\`\`edit
 file: src/new.ts
-old:
+old: |
 new: |
   const x = 1
 \`\`\`
@@ -330,6 +333,9 @@ CRITICAL RULES:
       },
     },
     async execute(input): Promise<ToolResult> {
+      // Debug: keep rawInput for error messages (capture early for all error paths)
+      const rawInput = input
+
       // ── Parse markdown format ─────────────────────────────────────────
       let edits: Edit[] = []
 
@@ -340,8 +346,7 @@ CRITICAL RULES:
           return {
             success: false,
             output: '',
-            error:
-              'Failed to parse edit format. Use: ```edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n```',
+            error: `Failed to parse edit format. Raw input: ${JSON.stringify(rawInput)}\nUse: \`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\``,
           }
         }
       } else {
@@ -356,7 +361,7 @@ CRITICAL RULES:
           return {
             success: false,
             output: '',
-            error: `edit FAILED — no edits to apply. The edits array exists but is empty.`,
+            error: `edit FAILED — no edits to apply. The edits array exists but is empty. Raw input: ${JSON.stringify(rawInput)}`,
           }
         }
         // Check if input has edits key but it's not an array
@@ -364,20 +369,15 @@ CRITICAL RULES:
           return {
             success: false,
             output: '',
-            error:
-              'edit requires "edits" array. Use markdown format: ```edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n```',
+            error: `edit requires "edits" array. Use markdown format: \`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`\nRaw input: ${JSON.stringify(rawInput)}`,
           }
         }
         return {
           success: false,
           output: '',
-          error:
-            'No valid edits found (empty or invalid format). The edit array must contain objects with file_path, old_string, and new_string. Use markdown code block format: ```edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n```',
+          error: `No valid edits found (empty or invalid format). The edit array must contain objects with file_path, old_string, and new_string. Use markdown code block format: \`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`\nRaw input: ${JSON.stringify(rawInput)}`,
         }
       }
-
-      // Debug: keep rawInput for error messages
-      const rawInput = input
 
       // Validate each edit object
       const editErrors: string[] = []
@@ -551,10 +551,8 @@ ${suggestion}`)
             }
           }
 
-          const strategyLabel = matchInfo.strategy === 'tolerant' ? ' (whitespace-normalized)' : ''
-          const matchLineNum = content.substring(0, matchInfo.index).split('\n').length
-          const diff = generateDiff(e.old_string, e.new_string, matchLineNum - 1)
-          results.push(`  Edited ${relPath}${strategyLabel}:\n${diff}`)
+          const diff = generateDiff(e.old_string, e.new_string)
+          results.push(`  Edited ${relPath}:\n${diff}`)
           content =
             content.slice(0, matchInfo.index) +
             e.new_string +

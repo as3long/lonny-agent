@@ -2,7 +2,6 @@ import type { FileReadTracker } from '../diff/apply.js'
 import { bashTool } from './bash.js'
 import { createEditTool } from './edit.js'
 import { fmtErr } from './errors.js'
-import { createExecTool, updateExecToolDefinition } from './exec.js'
 import { fetchTool } from './fetch.js'
 import { createFindTool } from './find.js'
 import { createGitTool } from './git.js'
@@ -50,9 +49,6 @@ function normalizeToolInput(
     if (toolName === 'write_plan') {
       return { filename: input, content: input }
     }
-    if (toolName === 'exec') {
-      return { code: input }
-    }
     // For tools that take a single string param, guess from the definition
     const params = Object.keys(_definition.parameters)
     if (params.length === 1) {
@@ -97,8 +93,6 @@ export class ToolRegistry {
   private tools: Map<string, Tool> = new Map()
   private context: ToolContext
   private plugins: Map<string, ToolPlugin> = new Map()
-  /** Reference to the exec tool for dynamic description updates */
-  private execTool: Tool | null = null
 
   constructor(context: ToolContext) {
     this.context = context
@@ -107,7 +101,7 @@ export class ToolRegistry {
 
   /** Register all built-in tools */
   private registerBuiltins(): void {
-    // ask mode: only fetch and search + exec (exec works with any toolset)
+    // ask mode: only fetch and search
     if (this.context.mode === 'ask') {
       this.register(fetchTool)
       this.register(searchTool)
@@ -128,24 +122,9 @@ export class ToolRegistry {
       this.register(createGitTool(this.context.cwd))
       this.register(createInstallSkillTool(this.context.cwd))
       this.register(createEditTool(this.context.applier, this.context.cwd))
-      this.registerExecTool()
     } else {
       // Plan mode: read-only investigation + write_plan
       this.register(createWritePlanTool(this.context.cwd, this.context.onPlanWritten))
-    }
-  }
-
-  /** Register the exec tool with dynamic type declarations for all registered tools */
-  private registerExecTool(): void {
-    const execTool = createExecTool(() => Array.from(this.tools.values()))
-    this.execTool = execTool
-    this.register(execTool)
-  }
-
-  /** Refresh the exec tool's description to include current tool type declarations */
-  private refreshExecDescription(): void {
-    if (this.execTool) {
-      updateExecToolDefinition(this.execTool, this.getDefinitions())
     }
   }
 
@@ -158,20 +137,16 @@ export class ToolRegistry {
     if (mode === 'code') {
       // Re-register all built-in tools for code mode
       this.tools.clear()
-      this.execTool = null
       this.registerBuiltins()
     } else if (mode === 'plan') {
-      // Keep existing tools but swap edit/write_plan, remove exec
+      // Keep existing tools but swap edit/write_plan
       if (!this.tools.has('write_plan')) {
         this.register(createWritePlanTool(this.context.cwd, this.context.onPlanWritten))
       }
       this.tools.delete('edit')
-      this.tools.delete('exec')
-      this.execTool = null
     } else if (mode === 'ask') {
       // Ask mode: only fetch and search
       this.tools.clear()
-      this.execTool = null
       this.register(fetchTool)
       this.register(searchTool)
     }
@@ -180,10 +155,6 @@ export class ToolRegistry {
   /** Register a single tool */
   register(tool: Tool): void {
     this.tools.set(tool.definition.name, tool)
-    // Refresh exec tool description to include the new tool's type declarations
-    if (this.execTool && tool.definition.name !== 'exec') {
-      this.refreshExecDescription()
-    }
   }
 
   /** Register a tool plugin (lazy creation pattern) */

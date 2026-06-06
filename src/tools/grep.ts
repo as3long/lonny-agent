@@ -1,16 +1,20 @@
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { fmtErr } from './errors.js'
 import type { Tool, ToolResult } from './types.js'
 
+let _hasRg: boolean | undefined
+
 function hasRg(): boolean {
+  if (_hasRg !== undefined) return _hasRg
   try {
-    execSync('rg --version', { stdio: 'pipe' })
-    return true
+    execFileSync('rg', ['--version'], { stdio: 'pipe' })
+    _hasRg = true
   } catch {
-    return false
+    _hasRg = false
   }
+  return _hasRg
 }
 
 /** Simple glob-to-regex for the `include` parameter (e.g. "*.ts", "*.{ts,tsx}"). */
@@ -25,9 +29,11 @@ function includeRe(include: string): RegExp {
       continue
     }
     if (ch === '*') {
+      // Handle ** (match across dirs) and * (match within a single dir segment)
       if (include[i + 1] === '*') {
         re += '.*'
-        i += 2
+        // Skip all consecutive asterisks so `***` doesn't leave a trailing literal `*`
+        while (i < include.length && include[i] === '*') i++
         continue
       }
       re += '[^/]*'
@@ -48,6 +54,12 @@ function includeRe(include: string): RegExp {
       i++
       continue
     }
+    // Escape special regex characters (except those we handle above)
+    if (/[.+^${}()|[\]\\]/.test(ch)) {
+      re += '\\' + ch
+      i++
+      continue
+    }
     re += ch
     i++
   }
@@ -64,32 +76,38 @@ async function nodeGrep(dir: string, re: RegExp, incRe: RegExp | null): Promise<
   const results: NodeGrepMatch[] = []
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true })
-    const subResults: Promise<NodeGrepMatch[]>[] = []
+    const promises: Promise<void>[] = []
+
     for (const e of entries) {
       const full = path.join(dir, e.name)
       if (e.isDirectory()) {
         if (e.name === '.git' || e.name === 'node_modules') continue
-        subResults.push(nodeGrep(full, re, incRe))
+        promises.push(
+          nodeGrep(full, re, incRe).then(sub => {
+            for (const m of sub) results.push(m)
+          }),
+        )
       } else if (e.isFile()) {
         if (incRe && !incRe.test(e.name)) continue
-        try {
-          const content = await fs.readFile(full, 'utf-8')
-          const lines = content.split('\n')
-          for (let i = 0; i < lines.length; i++) {
-            if (re.test(lines[i])) {
-              results.push({ file: full, line: i + 1, text: lines[i] })
+        promises.push(
+          (async () => {
+            try {
+              const content = await fs.readFile(full, 'utf-8')
+              const lines = content.split('\n')
+              for (let i = 0; i < lines.length; i++) {
+                if (re.test(lines[i])) {
+                  results.push({ file: full, line: i + 1, text: lines[i] })
+                }
+              }
+            } catch {
+              /* permission denied etc */
             }
-          }
-        } catch {
-          /* permission denied etc */
-        }
+          })(),
+        )
       }
     }
-    // Await all subdirectory results concurrently
-    const subMatches = await Promise.all(subResults)
-    for (const sm of subMatches) {
-      results.push(...sm)
-    }
+
+    await Promise.all(promises)
   } catch {
     /* permission denied etc */
   }
@@ -120,11 +138,23 @@ export function createGrepTool(cwd: string): Tool {
 
       try {
         if (useRg) {
-          let cmd = `rg -n "${pattern.replace(/"/g, '\\"')}"`
-          if (include) cmd += ` -g "${include}"`
-          cmd += ` "${searchPath}"`
-          const output = execSync(cmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] })
-          return { success: true, output: output || 'No matches found.' }
+          const args = ['-n', '--no-heading', pattern]
+          if (include) args.push('-g', include)
+          args.push(searchPath)
+          try {
+            const output = execFileSync('rg', args, {
+              encoding: 'utf-8',
+              stdio: ['pipe', 'pipe', 'pipe'],
+            })
+            return { success: true, output: output || 'No matches found.' }
+          } catch (rgErr: unknown) {
+            const rgMsg = fmtErr(rgErr)
+            // ripgrep exit code 1 = no matches, exit code 2 = error
+            if (rgMsg.includes('exit code 1')) {
+              return { success: true, output: 'No matches found.' }
+            }
+            throw rgErr
+          }
         }
 
         const re = new RegExp(pattern)
@@ -141,9 +171,6 @@ export function createGrepTool(cwd: string): Tool {
         return { success: true, output }
       } catch (err) {
         const msg = fmtErr(err)
-        if (useRg && msg.includes('exit code 1')) {
-          return { success: true, output: 'No matches found.' }
-        }
         return { success: false, output: '', error: `Grep failed: ${msg}` }
       }
     },

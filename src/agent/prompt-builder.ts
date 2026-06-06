@@ -49,13 +49,12 @@ export async function buildSystemPrompt(config: Config): Promise<string> {
 - \`glob\`: Find files by glob pattern (pattern: string)
 - \`grep\`: Search file content by regex (pattern: string, include?: string, path?: string)
 - \`ls\`: List directory (path?: string)
-- \`bash\`: Execute a shell command
+      - \`bash\`: Execute a shell command — for running commands (NOT for creating or modifying files — use \`edit\` for that)
 - \`edit\`: Replace text in files using markdown code block format. Use: \`edit({ content: "\`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`" })\`
 - \`install_skill\`: Install an npm package as a skill — fetches package info from npm, runs npm install, and creates a .lonny/skills/ file with usage instructions for the AI
 - \`find\`: Find files by name pattern (pattern: string, path?: string, maxResults?: number)
 - \`git\`: Run read-only git commands (command: string)
 - \`search\`: Search the web using Tavily (query: string, search_depth?: string, include_answer?: boolean, max_results?: number, topic?: string, days?: number)
-- \`exec\`: Run JavaScript in a sandbox to orchestrate multiple tool calls — all tools are available as \`await tools.xxx(args)\` inside exec (code mode only)
 `
   }
 
@@ -73,7 +72,7 @@ ${getToolListForMode(config.mode)}`
     config.mode === 'plan'
       ? `You are a planning agent. Your ONLY job is to investigate the codebase and produce an actionable implementation plan with a todo list.
 
-You CANNOT edit files. You do NOT have access to edit, bash (write mode), exec, or install_skill.
+You CANNOT edit files. You do NOT have access to edit, bash (write mode), or install_skill.
 Any attempt to call these tools will FAIL — they are simply unavailable in this mode.
 
 RULES (plan-specific):

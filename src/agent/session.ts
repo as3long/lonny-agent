@@ -712,7 +712,7 @@ export class Session {
 
       // ── User confirmation for write-type tool calls ──
       if (!this.config.autoApprove && this.output?.confirmTool && toolCalls.length > 0) {
-        const writeTools = ['edit', 'bash', 'write_plan', 'exec', 'install_skill']
+        const writeTools = ['edit', 'bash', 'write_plan', 'install_skill']
         const needsConfirm = toolCalls.filter(tc => writeTools.includes(tc.name))
         if (needsConfirm.length > 0) {
           const approved = await this.output.confirmTool(needsConfirm)

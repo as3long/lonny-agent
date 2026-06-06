@@ -59,7 +59,7 @@ export function startSessionBridge(
       name: d.name,
       id: d.id,
       success: true,
-      output: stripAnsi(d.output),
+      output: d.name === 'edit' ? d.output : stripAnsi(d.output),
     })
   })
 
@@ -123,13 +123,6 @@ export function startSessionBridge(
             session.config.model = arg
             session.setMode(session.config.mode)
             send({ type: 'model_changed', model: arg })
-            return
-          }
-
-          if (cmd === 'new') {
-            const { Session } = await import('../agent/session.js')
-            Session.clearSavedSession(config.cwd)
-            send({ type: 'session_cleared' })
             return
           }
 
