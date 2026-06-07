@@ -10,8 +10,8 @@
   },
   "scripts": {
     "build": "tsc && npm run copy:web && npm run copy:native",
-    "copy:web": "node -e \"const fs=require('fs'),p=require('path');const src=p.join('src','web','public');const dst=p.join('dist','web','public');if(fs.existsSync(src)){if(!fs.existsSync(dst))fs.mkdirSync(dst,{recursive:true});for(const f of fs.readdirSync(src)){fs.copyFileSync(p.join(src,f),p.join(dst,f))}}\"",
-    "copy:native": "node -e \"const fs=require('fs'),p=require('path');function cpDir(s,d){fs.mkdirSync(d,{recursive:true});for(const e of fs.readdirSync(s)){const sp=p.join(s,e),dp=p.join(d,e);fs.statSync(sp).isDirectory()?cpDir(sp,dp):fs.copyFileSync(sp,dp)}}const src=p.join('src','pi-tui','native');const dst=p.join('dist','pi-tui','native');if(fs.existsSync(src))cpDir(src,dst)\"",
+    "copy:web": "node scripts/copy-web.mjs",
+    "copy:native": "node scripts/copy-native.mjs",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "test": "vitest run",

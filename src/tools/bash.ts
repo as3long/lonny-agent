@@ -10,24 +10,14 @@ import type { Tool, ToolResult } from './types.js'
 function detectShell(): string {
   const platform = os.platform()
   const release = os.release()
+  const arch = process.arch
 
   if (platform === 'win32') {
-    const shellEnv = process.env.SHELL || ''
-    if (shellEnv.includes('bash') || shellEnv.includes('sh')) {
-      return `Windows ${release} | Shell: Git Bash / MSYS2 (${shellEnv})`
-    }
-    if (shellEnv.includes('pwsh') || shellEnv.includes('powershell')) {
-      return `Windows ${release} | Shell: PowerShell (${shellEnv})`
-    }
-    if (process.env.PSModulePath) {
-      return `Windows ${release} | Shell: PowerShell`
-    }
-    const comspec = process.env.COMSPEC || 'C:\\Windows\\system32\\cmd.exe'
-    return `Windows ${release} | Shell: Command Prompt (${comspec})`
+    return `Windows ${release} (${arch})`
   }
 
   const osName = platform === 'darwin' ? 'macOS' : platform === 'linux' ? 'Linux' : platform
-  return `${osName} ${release} | Shell: ${process.env.SHELL || 'unknown'}`
+  return `${osName} ${release} (${arch})`
 }
 
 const envInfo = detectShell()
