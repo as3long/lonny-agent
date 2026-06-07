@@ -33,6 +33,13 @@ function buildDiag(edit: SingleEdit): string {
   })
 }
 
+/** Summarize raw input for error messages to avoid dumping huge strings into the LLM context. */
+function summarizeRawInput(rawInput: unknown): string {
+  const s = JSON.stringify(rawInput)
+  if (s.length <= 500) return s
+  return `${s.slice(0, 500)}... [truncated, total ${s.length} chars]`
+}
+
 /** Compute diff lines using jest-diff for proper line-level diffs */
 export function computeDiff(oldStr: string, newStr: string): DiffLine[] {
   const oldLines = oldStr === '' ? [] : oldStr.split('\n')
@@ -99,6 +106,7 @@ export function escapeHtml(str: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 /**
@@ -342,12 +350,13 @@ function extractEditsFromJSON(input: Record<string, unknown>): Edit[] {
         },
       ]
     } else if (hasFilePath && hasOldString) {
-      // Only file_path + old_string (missing new_string)
+      // Only file_path + old_string (missing new_string) — use a sentinel
+      // value so validation catches this as an error instead of silently deleting content.
       return [
         {
           file_path: input.file_path as string,
           old_string: input.old_string as string,
-          new_string: (input.new_string as string) || '',
+          new_string: (input.new_string as string) || '__MISSING_NEW_STRING__',
         },
       ]
     } else if (keys.length === 2 && hasFilePath && typeof input.new_string === 'string') {
@@ -451,7 +460,7 @@ CRITICAL RULES:
           return {
             success: false,
             output: '',
-            error: `Failed to parse edit format. Raw input: ${JSON.stringify(rawInput)}\nUse: \`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\``,
+            error: `Failed to parse edit format. Raw input: ${summarizeRawInput(rawInput)}\nUse: \`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\``,
           }
         }
       } else {
@@ -466,7 +475,7 @@ CRITICAL RULES:
           return {
             success: false,
             output: '',
-            error: `edit FAILED — no edits to apply. The edits array exists but is empty. Raw input: ${JSON.stringify(rawInput)}`,
+            error: `edit FAILED — no edits to apply. The edits array exists but is empty. Raw input: ${summarizeRawInput(rawInput)}`,
           }
         }
         // Check if input has edits key but it's not an array
@@ -474,13 +483,13 @@ CRITICAL RULES:
           return {
             success: false,
             output: '',
-            error: `edit requires "edits" array. Use markdown format: \`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`\nRaw input: ${JSON.stringify(rawInput)}`,
+            error: `edit requires "edits" array. Use markdown format: \`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`\nRaw input: ${summarizeRawInput(rawInput)}`,
           }
         }
         return {
           success: false,
           output: '',
-          error: `No valid edits found (empty or invalid format). The edit array must contain objects with file_path, old_string, and new_string. Use markdown code block format: \`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`\nRaw input: ${JSON.stringify(rawInput)}`,
+          error: `No valid edits found (empty or invalid format). The edit array must contain objects with file_path, old_string, and new_string. Use markdown code block format: \`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`\nRaw input: ${summarizeRawInput(rawInput)}`,
         }
       }
 
@@ -492,6 +501,9 @@ CRITICAL RULES:
         if (typeof e.file_path !== 'string' || !e.file_path) missing.push('file_path')
         if (typeof e.old_string !== 'string') missing.push('old_string')
         if (typeof e.new_string !== 'string') missing.push('new_string')
+        if (e.new_string === '__MISSING_NEW_STRING__') {
+          missing.push('new_string (required — LLM must provide a non-empty replacement)')
+        }
         if (missing.length > 0) {
           const present = Object.keys(e)
             .filter(k => typeof e[k as keyof Edit] === 'string')
@@ -505,7 +517,7 @@ CRITICAL RULES:
         return {
           success: false,
           output: '',
-          error: `edit FAILED — ${editErrors.length} of ${edits.length} edit(s) have missing fields.\n${editErrors.join('\n')}\n\nReceived: ${JSON.stringify(rawInput)}\n\nEach edit object must be a COMPLETE find-replace pair with BOTH old_string AND new_string.`,
+          error: `edit FAILED — ${editErrors.length} of ${edits.length} edit(s) have missing fields.\n${editErrors.join('\n')}\n\nReceived: ${summarizeRawInput(rawInput)}\n\nEach edit object must be a COMPLETE find-replace pair with BOTH old_string AND new_string.`,
         }
       }
 
@@ -545,14 +557,14 @@ CRITICAL RULES:
 
           if (e.old_string === '') {
             if (content !== null) {
-              const diag = buildDiag({ ...e, old_string: '' })
-              const suggestion = `  → Use edit with old_string to replace existing content, or choose a different path.`
-              results.push(`  FAIL ${relPath}: File already exists — Raw input: ${JSON.stringify(rawInput)}
-  Edit: ${diag}
-${suggestion}`)
+              // File already exists in-memory (from prior edit in this batch)
+              // or on disk — treat as error to prevent silent overwrites.
+              results.push(
+                `  FAIL ${relPath}: Cannot create — file already exists (duplicate create in batch or file on disk)`,
+              )
               if (!anyFailed) {
                 anyFailed = true
-                firstError = `File already exists: ${relPath}`
+                firstError = `Cannot create file "${relPath}": file already exists`
               }
               break
             }
@@ -567,7 +579,7 @@ ${suggestion}`)
           if (content === null) {
             const diag = buildDiag(e)
             const suggestion = `  → Check the file path, or create it first with old_string: "" (empty string).`
-            results.push(`  FAIL ${relPath}: File not found — Raw input: ${JSON.stringify(rawInput)}
+            results.push(`  FAIL ${relPath}: File not found
   Edit: ${diag}
 ${suggestion}`)
             if (!anyFailed) {
@@ -589,7 +601,7 @@ ${suggestion}`)
             if (exactIdx !== lastIdx) {
               const diag = buildDiag(e)
               const suggestion = `  → Include more surrounding context lines (2-3 lines before and after) in old_string to make the match unique.`
-              results.push(`  FAIL ${relPath}: old_string appears MULTIPLE times — Raw input: ${JSON.stringify(rawInput)}
+              results.push(`  FAIL ${relPath}: old_string appears MULTIPLE times
   Edit: ${diag}
 ${suggestion}`)
               if (!anyFailed) {
@@ -628,8 +640,8 @@ ${suggestion}`)
               const diag = buildDiag(e)
               const readHint = readWarning ? `\n  ${readWarning}` : ''
               const suggestion = `  → Read the file again with read({ paths: ["${e.file_path}"] }) to get current content, then retry with exact matching text. Include 2-3 lines of surrounding context for uniqueness.${readHint}`
-              results.push(`  FAIL ${relPath}: old_string not found — Raw input: ${JSON.stringify(rawInput)}
-  Edit: ${diag}${hint}
+              results.push(`  FAIL ${relPath}: old_string not found${hint}
+  Edit: ${diag}
 ${suggestion}`)
               if (!anyFailed) {
                 anyFailed = true
@@ -641,7 +653,7 @@ ${suggestion}`)
               const diag = buildDiag(e)
               const suggestion = `  → Include more surrounding context lines (2-3 lines before and after) in old_string to make the match unique.`
               results.push(
-                `  FAIL ${relPath}: old_string appears MULTIPLE times (whitespace-normalized) — Raw input: ${JSON.stringify(rawInput)}\n  Edit: ${diag}\n${suggestion}`,
+                `  FAIL ${relPath}: old_string appears MULTIPLE times (whitespace-normalized)\n  Edit: ${diag}\n${suggestion}`,
               )
               if (!anyFailed) {
                 anyFailed = true
@@ -656,9 +668,15 @@ ${suggestion}`)
             }
           }
 
+          // For tolerant matching, use the actual file text at the match position
+          // so the diff reflects what was really in the file (with original whitespace).
+          const matchedOld =
+            matchInfo.strategy === 'tolerant'
+              ? content.slice(matchInfo.index, matchInfo.index + matchInfo.length)
+              : e.old_string
           const diff = generateDiffWithContext(
             content,
-            e.old_string,
+            matchedOld,
             e.new_string,
             matchInfo.index,
             matchInfo.length,
@@ -698,7 +716,7 @@ ${suggestion}`)
         return {
           success: false,
           output: '',
-          error: `Edit FAILED — all changes rolled back. Raw input: ${JSON.stringify(rawInput)}\n${failLines}\n\n${firstError}`,
+          error: `Edit FAILED — all changes rolled back.\n${failLines}\n\n${firstError}`,
         }
       }
 
@@ -714,7 +732,7 @@ ${suggestion}`)
           return {
             success: false,
             output: '',
-            error: `Failed to write ${path.relative(cwd, resolved).replace(/\\/g, '/')}: ${fmtErr(err)}. Input: ${JSON.stringify(rawInput)}`,
+            error: `Failed to write ${path.relative(cwd, resolved).replace(/\\/g, '/')}: ${fmtErr(err)}. Input: ${summarizeRawInput(rawInput)}`,
           }
         }
         applier.markRead(resolved)

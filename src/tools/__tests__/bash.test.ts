@@ -17,7 +17,7 @@ describe('bash tool', () => {
   it('returns error for invalid command', async () => {
     const result = await bashTool.execute({ command: 'some_nonexistent_command_xyz' })
     expect(result.success).toBe(false)
-    expect(result.error).toContain('Command failed')
+    expect(result.error).toContain('Command exited with code 1')
   })
 
   it('accepts custom timeout', async () => {

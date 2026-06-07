@@ -94,14 +94,35 @@ export function addToolCall(name, input, id) {
     if (Array.isArray(input?.edits)) {
       paths = input.edits.map(e => e.file_path).filter(Boolean)
     } else if (input?.content) {
-      const fileMatch = input.content.match(/^file:\s*(.+)$/gm)
-      if (fileMatch) paths = fileMatch.map(m => m.replace(/^file:\s*/, '').trim())
+      const content = input.content
+      // Parse Markdown edit blocks to extract file paths
+      // Use RegExp constructor to avoid backtick issues
+      const bt = '\x60'
+      const blockRegex = new RegExp(bt + bt + bt + 'edit\\s*([\\s\\S]*?)' + bt + bt + bt, 'gi')
+      for (const blockMatch of content.matchAll(blockRegex)) {
+        const blockContent = blockMatch[1] || ''
+        const fileMatch = blockContent.match(/^file:\s*(.+)$/m)
+        if (fileMatch) paths.push(fileMatch[1].trim())
+        // Detect create-file blocks (empty/missing old:)
+        const oldMatch = blockContent.match(/^old:([\s\S]*?)^new:/m)
+        if (!oldMatch || !oldMatch[1].trim()) {
+          hasEmptyOld = true
+        }
+      }
+      // Fallback: no edit markers -- try raw file: lines
+      if (paths.length === 0) {
+        const fileMatch = content.match(/^file:\s*(.+)$/gm)
+        if (fileMatch) paths = fileMatch.map(m => m.replace(/^file:\s*/, '').trim())
+      }
     }
     const uniquePaths = [...new Set(paths)]
     const pathsStr =
       uniquePaths.length > 0 ? uniquePaths.map(p => escapeHtml(p)).join(', ') : '(no files)'
 
-    const hasEmptyOld = Array.isArray(input?.edits) && input.edits.some(e => e.old_string === '')
+    // Also check JSON-format edits for create-file detection
+    if (!hasEmptyOld && Array.isArray(input?.edits)) {
+      hasEmptyOld = input.edits.some(e => e.old_string === '')
+    }
     const badge = hasEmptyOld ? 'create' : 'edit'
     div.innerHTML = `<span class="tool-name tool-name-edit">✏ edit</span><span class="tool-change-badge tool-change-${badge}">${badge}</span> <span class="tool-input tool-input-edit">${pathsStr}</span>`
   } else {
