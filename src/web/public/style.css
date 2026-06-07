@@ -80,6 +80,7 @@ html, body {
 .token-out { color: var(--success); }
 .token-sep { color: var(--text-dim); margin: 0 1px; }
 .token-calls { color: var(--text-secondary); margin-left: 4px; }
+.token-cache { color: var(--accent-dim); font-size: 12px; margin-left: 4px; }
 
 .balance-display {
   color: var(--warning);

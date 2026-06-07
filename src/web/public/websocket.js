@@ -28,6 +28,7 @@ import {
   RECONNECT_DELAY,
   setStatus,
   state,
+  tokenCache,
   tokenCalls,
   tokenIn,
   tokenOut,
@@ -47,6 +48,14 @@ function handleMessage(msg) {
         tokenIn.textContent = formatTokenCount(msg.totalIn || 0)
         tokenOut.textContent = formatTokenCount(msg.totalOut || 0)
         tokenCalls.textContent = `(${msg.totalApi || 0})`
+        const cacheHit = msg.totalCacheHit ?? 0
+        const cacheMiss = msg.totalCacheMiss ?? 0
+        const cacheTotal = cacheHit + cacheMiss
+        if (cacheTotal > 0) {
+          const pct = Math.round((cacheHit / cacheTotal) * 100)
+          tokenCache.textContent = `| 缓存 ${pct}%`
+          tokenCache.classList.remove('hidden')
+        }
       }
       if (msg.webBalance) {
         balanceDisplay.textContent = `余额：${msg.webBalance}`
@@ -170,7 +179,16 @@ function handleMessage(msg) {
       break
 
     case 'token_stats':
-      addTokenStats(msg.turnIn, msg.turnOut, msg.totalIn, msg.totalOut, msg.turnApi, msg.totalApi)
+      addTokenStats(
+        msg.turnIn,
+        msg.turnOut,
+        msg.totalIn,
+        msg.totalOut,
+        msg.turnApi,
+        msg.totalApi,
+        msg.totalCacheHit,
+        msg.totalCacheMiss,
+      )
       break
 
     case 'tool_confirm_request': {

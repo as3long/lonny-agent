@@ -38,6 +38,8 @@ export function startSessionBridge(
     totalIn: session.totalInputTokens,
     totalOut: session.totalOutputTokens,
     totalApi: session.totalApiCalls,
+    totalCacheHit: session.totalCacheHitTokens || undefined,
+    totalCacheMiss: session.totalCacheMissTokens || undefined,
   })
 
   // ── Subscribe to EventBus ──

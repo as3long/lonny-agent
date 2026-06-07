@@ -1,6 +1,14 @@
 /* ── Message Rendering ── */
 
-import { messagesEl, pendingToolCalls, state, tokenCalls, tokenIn, tokenOut } from './state.js'
+import {
+  messagesEl,
+  pendingToolCalls,
+  state,
+  tokenCache,
+  tokenCalls,
+  tokenIn,
+  tokenOut,
+} from './state.js'
 import {
   escapeHtml,
   formatTimestamp,
@@ -321,16 +329,40 @@ export function renderSessionHistory(messages) {
   }
 }
 
-export function addTokenStats(turnIn, turnOut, totalIn, totalOut, turnApi, totalApi) {
+export function addTokenStats(
+  turnIn,
+  turnOut,
+  totalIn,
+  totalOut,
+  turnApi,
+  totalApi,
+  totalCacheHit,
+  totalCacheMiss,
+) {
   const div = document.createElement('div')
+  const cacheHit = totalCacheHit ?? 0
+  const cacheMiss = totalCacheMiss ?? 0
+  const cacheTotal = cacheHit + cacheMiss
+  let statsText = `▴${turnIn} ▾${turnOut}  total ${totalIn + totalOut}  calls ${turnApi}(${totalApi})`
+  if (cacheTotal > 0) {
+    const pct = Math.round((cacheHit / cacheTotal) * 100)
+    statsText += `  cached ${pct}%`
+  }
   div.className = 'token-stats-bar'
-  div.textContent = `▴${turnIn} ▾${turnOut}  total ${totalIn + totalOut}  calls ${turnApi}(${totalApi})`
+  div.textContent = statsText
   messagesEl.appendChild(div)
   scrollToBottom()
 
   tokenIn.textContent = formatTokenCount(totalIn)
   tokenOut.textContent = formatTokenCount(totalOut)
   tokenCalls.textContent = `(${totalApi})`
+  if (cacheTotal > 0) {
+    const pct = Math.round((cacheHit / cacheTotal) * 100)
+    tokenCache.textContent = `| 缓存 ${pct}%`
+    tokenCache.classList.remove('hidden')
+  } else {
+    tokenCache.classList.add('hidden')
+  }
 }
 
 export function addErrorMessage(text) {
