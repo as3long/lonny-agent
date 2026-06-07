@@ -288,6 +288,12 @@ function loadJsonConfig(): JsonConfig {
   }
 }
 
+function saveJsonConfig(config: JsonConfig): void {
+  const configPath = path.join(os.homedir(), '.lonny', 'config.json')
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
+  cachedJsonConfig = config
+}
+
 /** Check if the model is a DeepSeek model (supports enable_cache). */
 function isDeepSeekModel(model: string, baseUrl?: string): boolean {
   if (/deepseek/i.test(model)) return true
@@ -304,6 +310,11 @@ export function loadConfig(options?: {
 
   const model = jsonConfig.model || 'deepseek-v4-flash'
   const baseUrl = process.env.LONNY_BASE_URL || jsonConfig.baseUrl || undefined
+  const provider = (process.env.LONNY_PROVIDER || jsonConfig.provider || 'openai') as
+    | 'openai'
+    | 'anthropic'
+    | 'google'
+    | 'ollama'
 
   // Auto-enable cache for DeepSeek models unless explicitly disabled
   const enableCache = jsonConfig.enableCache ?? (isDeepSeekModel(model, baseUrl) || undefined)
@@ -314,11 +325,7 @@ export function loadConfig(options?: {
   return {
     apiKey: jsonConfig.apiKey || '',
     baseUrl,
-    provider: (process.env.LONNY_PROVIDER || jsonConfig.provider || 'openai') as
-      | 'openai'
-      | 'anthropic'
-      | 'google'
-      | 'ollama',
+    provider,
     mode: options?.mode || 'code',
     model,
     contextWindow,

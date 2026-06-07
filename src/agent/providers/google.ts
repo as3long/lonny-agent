@@ -130,7 +130,6 @@ export class GoogleProvider implements LLMProvider {
     if (systemInstruction) {
       body.system_instruction = { parts: [{ text: systemInstruction }] }
     }
-
     // Make streaming API call
     const url = `${this.baseUrl}/models/${this.model}:streamGenerateContent?alt=sse`
     const response = await fetch(url, {
