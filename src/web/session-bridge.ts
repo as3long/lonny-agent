@@ -95,6 +95,10 @@ export function startSessionBridge(
       totalOut: number
       turnApi: number
       totalApi: number
+      turnCacheHit?: number
+      turnCacheMiss?: number
+      totalCacheHit?: number
+      totalCacheMiss?: number
     }
     send({ type: 'token_stats', ...d })
   })

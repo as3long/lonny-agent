@@ -178,7 +178,14 @@ export class OpenAIProvider implements LLMProvider {
     } | null = null
     let fullText = ''
     let reasoningContent: string | undefined
-    let lastUsage: { prompt_tokens?: number; completion_tokens?: number } | undefined
+    let lastUsage:
+      | {
+          prompt_tokens?: number
+          completion_tokens?: number
+          prompt_cache_hit_tokens?: number
+          prompt_cache_miss_tokens?: number
+        }
+      | undefined
 
     // Track a pending "complete" yield — OpenAI sends finish_reason in a content
     // chunk but sends usage in a *separate final chunk* with no choices/delta.
@@ -191,7 +198,15 @@ export class OpenAIProvider implements LLMProvider {
     for await (const chunk of stream) {
       // Capture usage info if present (may come in a chunk without choices)
       // OpenAI uses prompt_tokens/completion_tokens; map to our input_tokens/output_tokens
-      const rawChunk = chunk as { usage?: { prompt_tokens?: number; completion_tokens?: number } }
+      // DeepSeek also returns prompt_cache_hit_tokens & prompt_cache_miss_tokens
+      const rawChunk = chunk as {
+        usage?: {
+          prompt_tokens?: number
+          completion_tokens?: number
+          prompt_cache_hit_tokens?: number
+          prompt_cache_miss_tokens?: number
+        }
+      }
       if (rawChunk.usage) {
         lastUsage = rawChunk.usage
         // If we have a pending complete, yield it now with usage
@@ -203,6 +218,8 @@ export class OpenAIProvider implements LLMProvider {
             usage: {
               input_tokens: rawChunk.usage.prompt_tokens ?? 0,
               output_tokens: rawChunk.usage.completion_tokens ?? 0,
+              prompt_cache_hit_tokens: rawChunk.usage.prompt_cache_hit_tokens,
+              prompt_cache_miss_tokens: rawChunk.usage.prompt_cache_miss_tokens,
             },
           }
           pendingComplete = null
@@ -307,6 +324,8 @@ export class OpenAIProvider implements LLMProvider {
             usage: {
               input_tokens: lastUsage.prompt_tokens ?? 0,
               output_tokens: lastUsage.completion_tokens ?? 0,
+              prompt_cache_hit_tokens: lastUsage.prompt_cache_hit_tokens,
+              prompt_cache_miss_tokens: lastUsage.prompt_cache_miss_tokens,
             },
           }
           reasoningContent = undefined
@@ -327,6 +346,8 @@ export class OpenAIProvider implements LLMProvider {
         ? {
             input_tokens: lastUsage.prompt_tokens ?? 0,
             output_tokens: lastUsage.completion_tokens ?? 0,
+            prompt_cache_hit_tokens: lastUsage.prompt_cache_hit_tokens,
+            prompt_cache_miss_tokens: lastUsage.prompt_cache_miss_tokens,
           }
         : undefined
       yield {
@@ -343,6 +364,8 @@ export class OpenAIProvider implements LLMProvider {
         ? {
             input_tokens: lastUsage.prompt_tokens ?? 0,
             output_tokens: lastUsage.completion_tokens ?? 0,
+            prompt_cache_hit_tokens: lastUsage.prompt_cache_hit_tokens,
+            prompt_cache_miss_tokens: lastUsage.prompt_cache_miss_tokens,
           }
         : undefined
       let input: Record<string, unknown>

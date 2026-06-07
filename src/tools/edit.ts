@@ -53,17 +53,23 @@ export function computeDiff(oldStr: string, newStr: string): DiffLine[] {
 }
 
 /** Terminal renderer — unified-diff format with color */
-export function renderDiffTerminal(lines: DiffLine[]): string {
+export function renderDiffTerminal(lines: DiffLine[], startLineNum?: number): string {
   if (lines.length === 0) return ''
 
   const output: string[] = []
+  let oldLn = startLineNum ?? 1
+  let newLn = startLineNum ?? 1
   for (const line of lines) {
     if (line.type === 'delete') {
-      output.push(`  ${DIFF_RED}- ${line.content}${DIFF_RESET}`)
+      output.push(`  ${DIFF_RED}- ${oldLn}  ${line.content}${DIFF_RESET}`)
+      oldLn++
     } else if (line.type === 'insert') {
-      output.push(`  ${DIFF_GREEN}+ ${line.content}${DIFF_RESET}`)
+      output.push(`  ${DIFF_GREEN}+ ${newLn}  ${line.content}${DIFF_RESET}`)
+      newLn++
     } else {
-      output.push(`  ${DIFF_DIM}  ${line.content}${DIFF_RESET}`)
+      output.push(`  ${DIFF_DIM}  ${oldLn}  ${line.content}${DIFF_RESET}`)
+      oldLn++
+      newLn++
     }
   }
   return output.join('\n')
@@ -97,11 +103,84 @@ export function escapeHtml(str: string): string {
 
 /**
  * Generate diff output using jest-diff.
- * Returns terminal-colored unified-diff format.
+ * Returns terminal-colored unified-diff format with line numbers.
  */
-export function generateDiff(oldStr: string, newStr: string): string {
+export function generateDiff(oldStr: string, newStr: string, startLineNum?: number): string {
   const lines = computeDiff(oldStr, newStr)
-  return renderDiffTerminal(lines)
+  return renderDiffTerminal(lines, startLineNum)
+}
+
+/**
+ * Generate diff with surrounding context lines (1 before, 1 after)
+ * and line numbers. Context lines are extracted from the full file content.
+ */
+export function generateDiffWithContext(
+  fullContent: string,
+  oldStr: string,
+  newStr: string,
+  matchIndex: number,
+  matchLength: number,
+): string {
+  // Calculate 1-based line number of the first matched line
+  const firstLineNum = fullContent.slice(0, matchIndex).split('\n').length
+
+  const contentLines = fullContent.split('\n')
+
+  // Find 0-based line index where matchIndex falls
+  let charPos = 0
+  let matchStartLineIdx = 0
+  for (let i = 0; i < contentLines.length; i++) {
+    if (charPos <= matchIndex && matchIndex < charPos + contentLines[i].length + 1) {
+      matchStartLineIdx = i
+      break
+    }
+    charPos += contentLines[i].length + 1 // +1 for \n
+  }
+
+  // How many lines does oldStr span in the original content?
+  const oldLines = oldStr === '' ? [] : oldStr.split('\n')
+  const oldLineCount = oldLines.length
+  const matchEndLineIdx = matchStartLineIdx + oldLineCount - 1
+
+  // Context before (1 line) and after (1 line)
+  const beforeLineIdx = matchStartLineIdx > 0 ? matchStartLineIdx - 1 : -1
+  const afterLineIdx = matchEndLineIdx < contentLines.length - 1 ? matchEndLineIdx + 1 : -1
+
+  // Compute diff between oldStr and newStr
+  const diffLines = computeDiff(oldStr, newStr)
+
+  const output: string[] = []
+
+  // Context before
+  if (beforeLineIdx !== -1) {
+    const lineNum = beforeLineIdx + 1
+    output.push(`  ${DIFF_DIM}  ${lineNum}  ${contentLines[beforeLineIdx]}${DIFF_RESET}`)
+  }
+
+  // Diff lines with line numbers
+  let oldLn = firstLineNum
+  let newLn = firstLineNum
+  for (const line of diffLines) {
+    if (line.type === 'delete') {
+      output.push(`  ${DIFF_RED}- ${oldLn}  ${line.content}${DIFF_RESET}`)
+      oldLn++
+    } else if (line.type === 'insert') {
+      output.push(`  ${DIFF_GREEN}+ ${newLn}  ${line.content}${DIFF_RESET}`)
+      newLn++
+    } else {
+      output.push(`  ${DIFF_DIM}  ${oldLn}  ${line.content}${DIFF_RESET}`)
+      oldLn++
+      newLn++
+    }
+  }
+
+  // Context after
+  if (afterLineIdx !== -1) {
+    const lineNum = afterLineIdx + 1
+    output.push(`  ${DIFF_DIM}  ${lineNum}  ${contentLines[afterLineIdx]}${DIFF_RESET}`)
+  }
+
+  return output.join('\n')
 }
 
 /**
@@ -197,12 +276,13 @@ export function parseMarkdownEdit(content: string): Edit[] {
     if (!fileMatch) continue
     const filePath = fileMatch[1]!.trim()
 
-    // Parse old string (support both "old:" and "old: |" formats)
+    // Parse old string (support "old:", "old: |", "old: |2" etc.)
+    // The |N syntax is YAML literal block scalar with explicit indentation (e.g. |2 means 2-space indent).
     let oldString = ''
     let newString = ''
 
-    const oldMatch = blockContent.match(/^old:(?:\s*\|\s*\n)?([\s\S]*?)^new:/m)
-    const newMatch = blockContent.match(/^new:(?:\s*\|\s*\n)?([\s\S]*)$/m)
+    const oldMatch = blockContent.match(/^old:(?:\s*\|\d*\s*\n)?([\s\S]*?)^new:/m)
+    const newMatch = blockContent.match(/^new:(?:\s*\|\d*\s*\n)?([\s\S]*)$/m)
 
     if (oldMatch) {
       oldString = oldMatch[1]!.replace(/^\n/, '').replace(/\n$/, '')
@@ -454,7 +534,7 @@ ${suggestion}`)
             const newLines = e.new_string.split('\n').length
             content = e.new_string
             results.push(
-              `  Created ${relPath} (${newLines} lines):\n${generateDiff('', e.new_string)}`,
+              `  Created ${relPath} (${newLines} lines):\n${generateDiff('', e.new_string, 1)}`,
             )
             continue
           }
@@ -551,7 +631,13 @@ ${suggestion}`)
             }
           }
 
-          const diff = generateDiff(e.old_string, e.new_string)
+          const diff = generateDiffWithContext(
+            content,
+            e.old_string,
+            e.new_string,
+            matchInfo.index,
+            matchInfo.length,
+          )
           results.push(`  Edited ${relPath}:\n${diff}`)
           content =
             content.slice(0, matchInfo.index) +

@@ -191,12 +191,19 @@ describe('renderDiffTerminal', () => {
 })
 
 describe('generateDiff', () => {
-  it('returns terminal-colored unified diff', () => {
+  it('returns terminal-colored unified diff with line numbers', () => {
     const output = generateDiff('old', 'new')
     expect(output).toContain('\x1b[38;2;255;80;80m')
-    expect(output).toContain('- old')
+    expect(output).toContain('- 1  old')
     expect(output).toContain('\x1b[38;2;0;200;100m')
-    expect(output).toContain('+ new')
+    expect(output).toContain('+ 1  new')
+    expect(output).toContain('1')
+  })
+
+  it('returns terminal-colored unified diff with custom start line number', () => {
+    const output = generateDiff('old', 'new', 10)
+    expect(output).toContain('- 10  old')
+    expect(output).toContain('+ 10  new')
   })
 })
 

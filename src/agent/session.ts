@@ -25,6 +25,8 @@ interface SessionData {
   totalInputTokens: number
   totalOutputTokens: number
   totalApiCalls: number
+  totalCacheHitTokens?: number
+  totalCacheMissTokens?: number
   mode: 'code' | 'plan' | 'ask'
   model: string
   provider: string
@@ -222,13 +224,36 @@ function printTokenStats(
   turnApi: number,
   totalApi: number,
   output?: SessionOutput,
+  turnCacheHit?: number,
+  turnCacheMiss?: number,
+  totalCacheHit?: number,
+  totalCacheMiss?: number,
 ): void {
   const bus = getGlobalEventBus()
-  bus.emit(EventChannels.TOKEN_STATS, { turnIn, turnOut, totalIn, totalOut, turnApi, totalApi })
+  bus.emit(EventChannels.TOKEN_STATS, {
+    turnIn,
+    turnOut,
+    totalIn,
+    totalOut,
+    turnApi,
+    totalApi,
+    turnCacheHit,
+    turnCacheMiss,
+    totalCacheHit,
+    totalCacheMiss,
+  })
   // Skip terminal output in Web UI mode
   if (output?.suppressToolOutput) return
   const total = totalIn + totalOut
-  const msg = `  ${GY}┃${RS} ${GY}${BLD}▴${RS}${GY}${turnIn}${RS} ${GY}${BLD}▾${RS}${GY}${turnOut}${RS}  ${GY}total${RS} ${total}  ${GY}calls${RS} ${turnApi}(${totalApi})`
+  let msg = `  ${GY}┃${RS} ${GY}${BLD}▴${RS}${GY}${turnIn}${RS} ${GY}${BLD}▾${RS}${GY}${turnOut}${RS}  ${GY}total${RS} ${total}  ${GY}calls${RS} ${turnApi}(${totalApi})`
+  // Show cache hit rate if available
+  const cacheHit = totalCacheHit ?? 0
+  const cacheMiss = totalCacheMiss ?? 0
+  const cacheTotal = cacheHit + cacheMiss
+  if (cacheTotal > 0) {
+    const pct = Math.round((cacheHit / cacheTotal) * 100)
+    msg += `  ${GY}cached${RS} ${pct}%`
+  }
   writeOut(`\n${msg}\n`, output)
 }
 
@@ -259,6 +284,10 @@ export class Session {
   turnOutputTokens: number = 0
   turnApiCalls: number = 0
   totalApiCalls: number = 0
+  turnCacheHitTokens: number = 0
+  turnCacheMissTokens: number = 0
+  totalCacheHitTokens: number = 0
+  totalCacheMissTokens: number = 0
   private stopped: boolean = false
   private abortController: AbortController | null = null
 
@@ -316,6 +345,8 @@ export class Session {
       totalInputTokens: this.totalInputTokens,
       totalOutputTokens: this.totalOutputTokens,
       totalApiCalls: this.totalApiCalls,
+      totalCacheHitTokens: this.totalCacheHitTokens || undefined,
+      totalCacheMissTokens: this.totalCacheMissTokens || undefined,
       mode: this.config.mode,
       model: this.config.model,
       provider: this.config.provider,
@@ -358,6 +389,8 @@ export class Session {
     session.totalInputTokens = data.totalInputTokens
     session.totalOutputTokens = data.totalOutputTokens
     session.totalApiCalls = data.totalApiCalls
+    session.totalCacheHitTokens = data.totalCacheHitTokens ?? 0
+    session.totalCacheMissTokens = data.totalCacheMissTokens ?? 0
     return session
   }
 
@@ -410,6 +443,8 @@ export class Session {
     this.turnInputTokens = 0
     this.turnOutputTokens = 0
     this.turnApiCalls = 0
+    this.turnCacheHitTokens = 0
+    this.turnCacheMissTokens = 0
 
     let iterations = 0
     const maxIterations = 30
@@ -583,6 +618,15 @@ export class Session {
               this.turnOutputTokens += chunk.usage.output_tokens
               this.totalInputTokens += chunk.usage.input_tokens
               this.totalOutputTokens += chunk.usage.output_tokens
+              // Accumulate DeepSeek cache hit/miss tokens
+              if (chunk.usage.prompt_cache_hit_tokens != null) {
+                this.turnCacheHitTokens += chunk.usage.prompt_cache_hit_tokens
+                this.totalCacheHitTokens += chunk.usage.prompt_cache_hit_tokens
+              }
+              if (chunk.usage.prompt_cache_miss_tokens != null) {
+                this.turnCacheMissTokens += chunk.usage.prompt_cache_miss_tokens
+                this.totalCacheMissTokens += chunk.usage.prompt_cache_miss_tokens
+              }
             }
             if (chunk.finish_reason === 'stop' || chunk.finish_reason === 'end_turn') {
               if (toolCalls.length === 0) {
@@ -600,6 +644,10 @@ export class Session {
                   this.turnApiCalls,
                   this.totalApiCalls,
                   out,
+                  this.turnCacheHitTokens,
+                  this.turnCacheMissTokens,
+                  this.totalCacheHitTokens,
+                  this.totalCacheMissTokens,
                 )
                 writeOut('\n\n', out)
                 saveTokenUsage(
@@ -687,6 +735,10 @@ export class Session {
             this.turnApiCalls,
             this.totalApiCalls,
             out,
+            this.turnCacheHitTokens,
+            this.turnCacheMissTokens,
+            this.totalCacheHitTokens,
+            this.totalCacheMissTokens,
           )
           writeOut('\n\n', out)
         }
@@ -802,6 +854,10 @@ export class Session {
         this.turnApiCalls,
         this.totalApiCalls,
         out,
+        this.turnCacheHitTokens,
+        this.turnCacheMissTokens,
+        this.totalCacheHitTokens,
+        this.totalCacheMissTokens,
       )
       writeOut('\nAgent reached maximum iterations. Stopping.\n', out)
     }

@@ -20,6 +20,10 @@ export interface LLMProvider {
 export interface TokenUsage {
   input_tokens: number
   output_tokens: number
+  /** DeepSeek-specific: tokens read from cache */
+  prompt_cache_hit_tokens?: number
+  /** DeepSeek-specific: tokens not in cache */
+  prompt_cache_miss_tokens?: number
 }
 
 export interface LLMChunk {

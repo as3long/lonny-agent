@@ -214,7 +214,7 @@ export function addToolResult(name, success, outputOrError, id) {
           edits.push(currentEdit)
         } else if (
           currentEdit &&
-          (stripped.startsWith('- ') || stripped.startsWith('+ ') || stripped.match(/^\d+ /))
+          (stripped.startsWith('- ') || stripped.startsWith('+ ') || stripped.match(/^\s*\d+ /))
         ) {
           currentEdit.diffLines.push(line)
         }
