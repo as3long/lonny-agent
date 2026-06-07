@@ -265,39 +265,52 @@ type Edit = SingleEdit
 export function parseMarkdownEdit(content: string): Edit[] {
   const edits: Edit[] = []
 
-  // Extract content from ```edit ... ``` code blocks
-  const blockRegex = /```edit\s*([\s\S]*?)```/gi
+  function parseEditBlock(raw: string): Edit | null {
+    // Remove stray ``` lines (model may close the block early before new:)
+    const cleaned = raw.replace(/^```\s*$/gm, '')
 
-  for (const regexMatch of content.matchAll(blockRegex)) {
-    const blockContent = regexMatch[1]!
-
-    // Parse file path
-    const fileMatch = blockContent.match(/^file:\s*(.+)$/m)
-    if (!fileMatch) continue
+    const fileMatch = cleaned.match(/^file:\s*(.+)$/m)
+    if (!fileMatch) return null
     const filePath = fileMatch[1]!.trim()
 
-    // Parse old string (support "old:", "old: |", "old: |2" etc.)
-    // The |N syntax is YAML literal block scalar with explicit indentation (e.g. |2 means 2-space indent).
     let oldString = ''
     let newString = ''
 
-    const oldMatch = blockContent.match(/^old:(?:\s*\|\d*\s*\n)?([\s\S]*?)^new:/m)
-    const newMatch = blockContent.match(/^new:(?:\s*\|\d*\s*\n)?([\s\S]*)$/m)
+    const oldMatch = cleaned.match(/^old:(?:\s*\|\d*\s*\n)?([\s\S]*?)^new:/m)
+    const newMatch = cleaned.match(/^new:(?:\s*\|\d*\s*\n)?([\s\S]*)$/m)
 
     if (oldMatch) {
-      oldString = oldMatch[1]!.replace(/^\n/, '').replace(/\n$/, '')
+      oldString = oldMatch[1]!.replace(/^\n+/, '').replace(/\n+$/, '')
     }
     if (newMatch) {
-      newString = newMatch[1]!.replace(/^\n/, '').replace(/\n$/, '')
+      newString = newMatch[1]!.replace(/^\n+/, '').replace(/\n+$/, '')
     }
 
-    if (filePath) {
-      edits.push({
-        file_path: filePath,
-        old_string: oldString || '',
-        new_string: newString || '',
-      })
+    return { file_path: filePath, old_string: oldString || '', new_string: newString || '' }
+  }
+
+  // Strategy 1: Non-greedy block regex (handles multi-edit, correct formatting)
+  const blockRegex = /```edit\s*([\s\S]*?)```/gi
+  for (const regexMatch of content.matchAll(blockRegex)) {
+    const edit = parseEditBlock(regexMatch[1]!)
+    if (edit) edits.push(edit)
+  }
+
+  // Strategy 2: If no edit with new_string found (model likely closed ``` before new:),
+  // retry with greedy matching to capture everything up to the last ```
+  if (!edits.some(e => e.new_string)) {
+    edits.length = 0
+    const greedyRegex = /```edit\s*([\s\S]*)```/g
+    for (const regexMatch of content.matchAll(greedyRegex)) {
+      const edit = parseEditBlock(regexMatch[1]!)
+      if (edit) edits.push(edit)
     }
+  }
+
+  // Strategy 3: No block markers at all — try parsing raw content directly
+  if (edits.length === 0) {
+    const edit = parseEditBlock(content)
+    if (edit) edits.push(edit)
   }
 
   return edits
@@ -421,7 +434,19 @@ CRITICAL RULES:
 
       // If input has 'content' field (new markdown format)
       if (typeof input.content === 'string') {
-        edits = parseMarkdownEdit(input.content)
+        // Compat: handle double-JSON-wrapped content
+        let contentStr = input.content
+        try {
+          const parsed = JSON.parse(contentStr)
+          if (typeof parsed === 'string') {
+            contentStr = parsed
+          } else if (parsed && typeof parsed === 'object' && typeof parsed.content === 'string') {
+            contentStr = parsed.content
+          }
+        } catch {
+          // Not JSON — use as-is
+        }
+        edits = parseMarkdownEdit(contentStr)
         if (edits.length === 0) {
           return {
             success: false,

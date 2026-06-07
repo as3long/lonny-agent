@@ -170,7 +170,7 @@ describe('renderDiffTerminal', () => {
     const lines = computeDiff('old', '')
     const output = renderDiffTerminal(lines)
     expect(output).toContain('\x1b[38;2;255;80;80m')
-    expect(output).toContain('- old')
+    expect(output).toContain('- 1  old')
     expect(output).toContain('\x1b[0m')
   })
 
@@ -178,7 +178,7 @@ describe('renderDiffTerminal', () => {
     const lines = computeDiff('', 'new')
     const output = renderDiffTerminal(lines)
     expect(output).toContain('\x1b[38;2;0;200;100m')
-    expect(output).toContain('+ new')
+    expect(output).toContain('+ 1  new')
   })
 
   it('renders equal lines in dim with space prefix', () => {
@@ -354,6 +354,44 @@ describe('parseMarkdownEdit', () => {
     const edits = parseMarkdownEdit(input)
     expect(edits).toHaveLength(1)
     expect(edits[0]!.file_path).toBe('a.ts')
+  })
+
+  it('handles early-``` closing (new: outside the block)', () => {
+    // Model may close ``` before new: — common mistake
+    const input = [
+      '```edit',
+      'file: a.ts',
+      'old: |',
+      '  hello',
+      '```',
+      'new: |',
+      '  world',
+      '```',
+    ].join('\n')
+    const edits = parseMarkdownEdit(input)
+    expect(edits).toHaveLength(1)
+    expect(edits[0]!.file_path).toBe('a.ts')
+    expect(edits[0]!.old_string).toBe('  hello')
+    expect(edits[0]!.new_string).toBe('  world')
+  })
+
+  it('handles raw file:/old:/new: without ``` markers', () => {
+    // Model outputs edit without ```edit / ``` wrappers
+    const input = 'file: a.ts\nold: |\n  hello\nnew: |\n  world\n'
+    const edits = parseMarkdownEdit(input)
+    expect(edits).toHaveLength(1)
+    expect(edits[0]!.file_path).toBe('a.ts')
+    expect(edits[0]!.old_string).toBe('  hello')
+    expect(edits[0]!.new_string).toBe('  world')
+  })
+
+  it('handles edit block without any ``` markers (raw file:/old:/new: content)', () => {
+    const input = 'file: a.ts\nold: |\n  hello\nnew: |\n  world\n'
+    const edits = parseMarkdownEdit(input)
+    expect(edits).toHaveLength(1)
+    expect(edits[0]!.file_path).toBe('a.ts')
+    expect(edits[0]!.old_string).toBe('  hello')
+    expect(edits[0]!.new_string).toBe('  world')
   })
 })
 
