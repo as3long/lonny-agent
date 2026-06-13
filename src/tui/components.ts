@@ -223,7 +223,12 @@ export class HeaderBar implements Component {
       this.agentStatus === 'running' ? colors.running('\u25CF') : colors.dim('\u25CB')
     const statusLabel =
       this.agentStatus === 'running' ? colors.running('running') : colors.dim('idle')
-    const modeLabel = this.mode === 'ask' ? colors.success(this.mode) : colors.warn(this.mode)
+    const modeLabel =
+      this.mode === 'ask'
+        ? colors.success(this.mode)
+        : this.mode === 'loop'
+          ? colors.accent(this.mode)
+          : colors.warn(this.mode)
     const modelInfo = colors.dim(`${this.provider}/${this.model}`)
 
     let rightPart = `${statusDot} ${statusLabel}  ${modeLabel}  ${modelInfo}`
@@ -343,7 +348,9 @@ export class RichFooter implements Component {
         ? `\x1b[38;2;255;200;50m${this.mode}\x1b[0m`
         : this.mode === 'ask'
           ? `\x1b[38;2;0;200;100m${this.mode}\x1b[0m`
-          : `\x1b[38;2;0;200;255m${this.mode}\x1b[0m`
+          : this.mode === 'loop'
+            ? `\x1b[38;2;200;100;255m${this.mode}\x1b[0m`
+            : `\x1b[38;2;0;200;255m${this.mode}\x1b[0m`
     segments.push(modeTag)
 
     // Model/provider

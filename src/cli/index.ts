@@ -20,7 +20,7 @@ export async function parseArgs(argv: string[]): Promise<CliOptions> {
 
   let prompt: string | undefined
   let autoApprove: boolean | undefined
-  let mode: 'code' | 'plan' | 'ask' | undefined
+  let mode: 'code' | 'plan' | 'ask' | 'loop' | undefined
   let web = false
   let port: number | undefined
 
@@ -31,7 +31,7 @@ export async function parseArgs(argv: string[]): Promise<CliOptions> {
     } else if (arg === '--auto-approve') {
       autoApprove = true
     } else if (arg === '--mode') {
-      mode = args[++i] as 'code' | 'plan' | 'ask'
+      mode = args[++i] as 'code' | 'plan' | 'ask' | 'loop'
     } else if (arg === '--web') {
       web = true
     } else if (arg === '--port') {

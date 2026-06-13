@@ -238,8 +238,11 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
             const cmd = parts[0]
             const arg = parts.slice(1).join(' ')
 
-            if (cmd === 'mode' && (arg === 'code' || arg === 'plan' || arg === 'ask')) {
-              await sessionWithOutput.setMode(arg as 'code' | 'plan' | 'ask')
+            if (
+              cmd === 'mode' &&
+              (arg === 'code' || arg === 'plan' || arg === 'ask' || arg === 'loop')
+            ) {
+              await sessionWithOutput.setMode(arg as 'code' | 'plan' | 'ask' | 'loop')
               ws.send(JSON.stringify({ type: 'mode_changed', mode: arg }))
               return
             }
@@ -348,7 +351,7 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
                 JSON.stringify({
                   type: 'help',
                   commands: [
-                    '/mode code|plan|ask - Switch mode',
+                    '/mode code|plan|ask|loop - Switch mode',
                     '/model <name> - Switch model',
                     '/new - Start a new session',
                     '/stop - Stop the running agent',

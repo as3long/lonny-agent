@@ -131,7 +131,11 @@ export async function startTui(config: Config): Promise<void> {
 
   // Chat input — Editor with multi-line support, history, and autocomplete
   const slashCommands: SlashCommand[] = [
-    { name: 'mode', description: 'Switch mode (code|plan|ask)', argumentHint: 'code|plan|ask' },
+    {
+      name: 'mode',
+      description: 'Switch mode (code|plan|ask|loop)',
+      argumentHint: 'code|plan|ask|loop',
+    },
     { name: 'model', description: 'Switch model', argumentHint: '<name>' },
     { name: 'plans', description: 'Show plans overlay' },
     { name: 'prompts', description: 'List prompt templates' },
@@ -415,7 +419,7 @@ export async function startTui(config: Config): Promise<void> {
       colors.accent('\u2501').repeat(20) +
       '\n\n' +
       ` ${colors.dim('Commands:')}\n` +
-      ` ${colors.inputPrompt('/mode')} code|plan|ask  ${colors.dim('Switch mode')}\n` +
+      ` ${colors.inputPrompt('/mode')} code|plan|ask|loop  ${colors.dim('Switch mode')}\n` +
       `   ${colors.inputPrompt('/model')} <name>    ${colors.dim('Switch model')}\n` +
       `   ${colors.inputPrompt('/plans')}          ${colors.dim('Show plans overlay')}\n` +
       `   ${colors.inputPrompt('/new')}            ${colors.dim('Start a new session')}\n` +
@@ -446,7 +450,13 @@ export async function startTui(config: Config): Promise<void> {
     const plans = listPlans(config.cwd)
     footer.setAgentStatus(isRunning ? 'running' : 'idle')
     footer.setMode(
-      session?.config.mode === 'plan' ? 'plan' : session?.config.mode === 'ask' ? 'ask' : 'code',
+      session?.config.mode === 'plan'
+        ? 'plan'
+        : session?.config.mode === 'ask'
+          ? 'ask'
+          : session?.config.mode === 'loop'
+            ? 'loop'
+            : 'code',
     )
     footer.setModel(config.model, config.provider)
     const tokenStats = loadTokenUsage(config.cwd)
@@ -531,13 +541,19 @@ export async function startTui(config: Config): Promise<void> {
       }
 
       if (cmd === 'mode') {
-        if (arg === 'code' || arg === 'plan' || arg === 'ask') {
+        if (arg === 'code' || arg === 'plan' || arg === 'ask' || arg === 'loop') {
           await session.setMode(arg)
-          chatContent += `\n${colors.warn('\u21E8')} Switched to ${arg === 'ask' ? colors.success(arg) : colors.warn(arg)} mode\n`
+          const modeColor =
+            arg === 'ask'
+              ? colors.success(arg)
+              : arg === 'loop'
+                ? colors.accent(arg)
+                : colors.warn(arg)
+          chatContent += `\n${colors.warn('\u21E8')} Switched to ${modeColor} mode\n`
           chatMarkdown.setText(chatContent)
           updateFooter()
         } else {
-          chatContent += `\n${colors.error('\u2716')} Usage: ${colors.inputPrompt('/mode code|plan|ask')}  (current: ${session.config.mode})\n`
+          chatContent += `\n${colors.error('\u2716')} Usage: ${colors.inputPrompt('/mode code|plan|ask|loop')}  (current: ${session.config.mode})\n`
           chatMarkdown.setText(chatContent)
         }
         return

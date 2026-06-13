@@ -27,7 +27,7 @@ interface SessionData {
   totalApiCalls: number
   totalCacheHitTokens?: number
   totalCacheMissTokens?: number
-  mode: 'code' | 'plan' | 'ask'
+  mode: 'code' | 'plan' | 'ask' | 'loop'
   model: string
   provider: string
   updatedAt: string
@@ -404,7 +404,19 @@ export class Session {
     }
   }
 
-  async setMode(mode: 'code' | 'plan' | 'ask'): Promise<void> {
+  /** Get a continuation message for loop mode — feeds the model a new user message to continue working */
+  private getContinuationMessage(): string {
+    const firstUserMsg = this.messages.find(m => m.role === 'user')
+    const taskHint =
+      firstUserMsg && typeof firstUserMsg.content === 'string'
+        ? firstUserMsg.content.slice(0, 200)
+        : 'the original task'
+    return `[auto-continuation] The previous turn completed. Continue working on the original task: ${taskHint}
+
+If you believe the task is complete, provide a clear summary of what was accomplished and the system will detect this. Otherwise, continue with the next steps.`
+  }
+
+  async setMode(mode: 'code' | 'plan' | 'ask' | 'loop'): Promise<void> {
     this.config.mode = mode
     const prompt = await buildSystemPrompt(this.config)
     this.messages[0] = { role: 'system', content: prompt }
@@ -447,7 +459,7 @@ export class Session {
     this.turnCacheMissTokens = 0
 
     let iterations = 0
-    const maxIterations = 30
+    const maxIterations = this.config.mode === 'loop' ? 500 : 30
 
     // Reset stopped flag for new conversation
     this.resetStopped()
@@ -658,6 +670,18 @@ export class Session {
                 )
                 bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
                 this.save()
+                // Loop mode: automatically continue with a continuation prompt
+                if (this.config.mode === 'loop' && !this.isStopped()) {
+                  const contMsg = this.getContinuationMessage()
+                  this.messages.push({ role: 'user', content: contMsg })
+                  // Reset per-turn counters for the next iteration
+                  this.turnInputTokens = 0
+                  this.turnOutputTokens = 0
+                  this.turnApiCalls = 0
+                  this.turnCacheHitTokens = 0
+                  this.turnCacheMissTokens = 0
+                  continue
+                }
                 return
               }
             }
@@ -750,6 +774,18 @@ export class Session {
         )
         bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
         this.save()
+        // Loop mode: automatically continue with a continuation prompt
+        if (this.config.mode === 'loop' && !this.isStopped()) {
+          const contMsg = this.getContinuationMessage()
+          this.messages.push({ role: 'user', content: contMsg })
+          // Reset per-turn counters for the next iteration
+          this.turnInputTokens = 0
+          this.turnOutputTokens = 0
+          this.turnApiCalls = 0
+          this.turnCacheHitTokens = 0
+          this.turnCacheMissTokens = 0
+          continue
+        }
         return
       }
 

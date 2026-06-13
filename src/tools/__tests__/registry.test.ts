@@ -51,6 +51,44 @@ describe('ToolRegistry', () => {
     expect(names).toContain('fetch')
   })
 
+  it('registers all tools in loop mode (same as code)', () => {
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'loop',
+    })
+    const defs = reg.getDefinitions()
+    const names = defs.map(d => d.name)
+    expect(names).toContain('read')
+    expect(names).toContain('glob')
+    expect(names).toContain('grep')
+    expect(names).toContain('ls')
+    expect(names).toContain('bash')
+    expect(names).toContain('edit')
+    expect(names).toContain('fetch')
+    expect(names).toContain('search')
+    expect(names).toContain('find')
+    expect(names).toContain('git')
+    expect(names).toContain('install_skill')
+    expect(names).not.toContain('write_plan')
+  })
+
+  it('setMode handles loop mode correctly', () => {
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'code',
+    })
+    reg.setMode('loop')
+    const names = reg.getDefinitions().map(d => d.name)
+    expect(names).toContain('edit')
+    expect(names).toContain('bash')
+    expect(names).toContain('read')
+    expect(names).not.toContain('write_plan')
+  })
+
   it('setMode adds edit when switching to code', () => {
     const reg = new ToolRegistry({
       cwd: tmpDir,

@@ -75,7 +75,7 @@ export interface ToolContext {
   cwd: string
   autoApprove: boolean
   applier: FileReadTracker
-  mode: 'code' | 'plan' | 'ask'
+  mode: 'code' | 'plan' | 'ask' | 'loop'
   onPlanWritten?: (display: string) => void
 }
 
@@ -116,8 +116,8 @@ export class ToolRegistry {
     this.register(fetchTool)
     this.register(searchTool)
 
-    if (this.context.mode === 'code') {
-      // Code mode: full toolset including write operations
+    if (this.context.mode === 'code' || this.context.mode === 'loop') {
+      // Code/Loop mode: full toolset including write operations
       this.register(bashTool)
       this.register(createGitTool(this.context.cwd))
       this.register(createInstallSkillTool(this.context.cwd))
@@ -128,14 +128,14 @@ export class ToolRegistry {
     }
   }
 
-  setMode(mode: 'code' | 'plan' | 'ask'): void {
+  setMode(mode: 'code' | 'plan' | 'ask' | 'loop'): void {
     // Update context.mode FIRST so registerBuiltins() and mode-based logic
     // use the NEW mode, not the stale one (fixes bug when switching from
     // ask→code or plan→code where all tools would be missing)
     this.context.mode = mode
 
-    if (mode === 'code') {
-      // Re-register all built-in tools for code mode
+    if (mode === 'code' || mode === 'loop') {
+      // Code/Loop mode: Re-register all built-in tools for full toolset
       this.tools.clear()
       this.registerBuiltins()
     } else if (mode === 'plan') {

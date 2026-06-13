@@ -5,7 +5,7 @@ import * as path from 'node:path'
 export interface Config {
   apiKey: string
   baseUrl?: string
-  mode: 'code' | 'plan' | 'ask'
+  mode: 'code' | 'plan' | 'ask' | 'loop'
   provider: 'openai' | 'anthropic' | 'google' | 'ollama'
   model: string
   contextWindow: number
@@ -302,7 +302,7 @@ function isDeepSeekModel(model: string, baseUrl?: string): boolean {
 }
 
 export function loadConfig(options?: {
-  mode?: 'code' | 'plan' | 'ask'
+  mode?: 'code' | 'plan' | 'ask' | 'loop'
   autoApprove?: boolean
   cwd?: string
 }): Config {
