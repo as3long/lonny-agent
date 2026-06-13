@@ -27,6 +27,8 @@ export function createReadTool(applier: FileReadTracker, cwd: string): Tool {
   return {
     definition: {
       name: 'read',
+      category: 'Codebase Exploration',
+      group: 'File Reading',
       description:
         'Read the contents of one or more files. Always read a file before editing it. Each line is prefixed with "<lineNumber>: " for accurate line references; the prefix is a display aid only — do NOT include it in batch_edit patch content. Supports pagination via startLine and maxLines for large files.',
       parameters: {

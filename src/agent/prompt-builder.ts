@@ -1,13 +1,23 @@
 import * as os from 'node:os'
 import type { Config } from '../config/index.js'
+import { formatToolTreeForPrompt } from '../tools/tree.js'
+import type { ToolDefinition } from '../tools/types.js'
+import { formatMemoryForPrompt, loadMemory } from './memory.js'
 import { discoverProject, formatProjectContext } from './project.js'
 import { formatSkillsForPrompt, loadSkills } from './skills.js'
 
 /**
  * Build the system prompt for the current configuration.
  * Extracted from session.ts to keep module size manageable (<500 LoC target).
+ *
+ * @param config - Current configuration
+ * @param definitions - Optional tool definitions for dynamic tree generation.
+ *   When provided, replaces the hardcoded tool lists with a hierarchical tree.
  */
-export async function buildSystemPrompt(config: Config): Promise<string> {
+export async function buildSystemPrompt(
+  config: Config,
+  definitions?: ToolDefinition[],
+): Promise<string> {
   const platform = os.platform()
   const release = os.release()
   const shell = process.env.SHELL || process.env.ComSpec || 'unknown'
@@ -19,12 +29,28 @@ export async function buildSystemPrompt(config: Config): Promise<string> {
   const skills = loadSkills(cwd)
   const skillsSection = formatSkillsForPrompt(skills)
 
+  // ── Load long-term memory (persistent) ─────────────────────────────────
+  const memories = loadMemory(cwd)
+  const memorySection = formatMemoryForPrompt(memories)
+
   // ── Load project context ─────────────────────────────────────────────────
   const projectInfo = await discoverProject(cwd)
   const projectSection = formatProjectContext(projectInfo)
 
   // ── Mode-specific tool list ───────────────────────────────────────────
   function getToolListForMode(mode: string): string {
+    // When tool definitions are available, use the dynamic tree
+    if (definitions && definitions.length > 0) {
+      const header =
+        mode === 'plan'
+          ? 'Available tools (read-only investigation + write_plan):'
+          : mode === 'ask'
+            ? 'Available tools:'
+            : 'Available tools:'
+      return `${header}\n${formatToolTreeForPrompt(definitions)}\n`
+    }
+
+    // Fallback hardcoded lists (when definitions not available)
     if (mode === 'ask') {
       return `Available tools:
 - \`fetch\`: Fetch content from a URL
@@ -51,10 +77,11 @@ export async function buildSystemPrompt(config: Config): Promise<string> {
 - \`ls\`: List directory (path?: string)
       - \`bash\`: Execute a shell command — for running commands (NOT for creating or modifying files — use \`edit\` for that)
 - \`edit\`: Replace text in files using markdown code block format. Use: \`edit({ content: "\`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`" })\`
-- \`install_skill\`: Install an npm package as a skill — fetches package info from npm, runs npm install, and creates a .lonny/skills/ file with usage instructions for the AI
-- \`find\`: Find files by name pattern (pattern: string, path?: string, maxResults?: number)
-- \`git\`: Run read-only git commands (command: string)
-- \`search\`: Search the web using Tavily (query: string, search_depth?: string, include_answer?: boolean, max_results?: number, topic?: string, days?: number)
+  - \`install_skill\`: Install an npm package as a skill — fetches package info from npm, runs npm install, and creates a .lonny/skills/ file with usage instructions for the AI
+  - \`save_memory\`: Save a memory entry to long-term memory (content: string, tags?: string[])
+  - \`find\`: Find files by name pattern (pattern: string, path?: string, maxResults?: number)
+  - \`git\`: Run read-only git commands (command: string)
+  - \`search\`: Search the web using Tavily (query: string, search_depth?: string, include_answer?: boolean, max_results?: number, topic?: string, days?: number)
 `
   }
 
@@ -65,25 +92,20 @@ RULES:
 2. Be thorough: Explore the relevant parts of the codebase.
 3. COST OPTIMIZATION (CRITICAL): Each API call costs money. You MUST maximize work per call. Use \`read(paths: [...])\` to read multiple files at once. Use \`edit({ content: "..." })\` with multiple \`\`\`edit blocks to edit multiple files at once.
 
-${getToolListForMode(config.mode)}`
+${getToolListForMode(config.mode)}
+`
+  // ── Memory section (appended to system prompt to provide long-term context) ──
+  const memoryPromptSection = memorySection ? `\n## Long-term Memory\n\n${memorySection}` : ''
+
+  // NOTE: Mention save_memory in loop/code mode tool lists only if the tool exists at runtime.
+  // The tool may be provided via plugin or future implementation.
 
   // ── Mode-specific instructions ───────────────────────────────────────────
   const modeInstructions =
     config.mode === 'loop'
       ? `You are an autonomous coding agent operating in LOOP mode. You will CONTINUE working on the task automatically after each turn — you do NOT need to ask for confirmation between steps.
 
-Available tools:
-- \`read\`: Read file contents (paths: string[])
-- \`glob\`: Find files by glob pattern (pattern: string)
-- \`grep\`: Search file content by regex (pattern: string, include?: string, path?: string)
-- \`ls\`: List directory (path?: string)
-      - \`bash\`: Execute a shell command — for running commands (NOT for creating or modifying files — use \`edit\` for that)
-- \`edit\`: Replace text in files using markdown code block format. Use: \`edit({ content: "\`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`" })\`
-- \`install_skill\`: Install an npm package as a skill — fetches package info from npm, runs npm install, and creates a .lonny/skills/ file with usage instructions for the AI
-- \`find\`: Find files by name pattern (pattern: string, path?: string, maxResults?: number)
-- \`git\`: Run read-only git commands (command: string)
-- \`search\`: Search the web using Tavily (query: string, search_depth?: string, include_answer?: boolean, max_results?: number, topic?: string, days?: number)
-
+${getToolListForMode('loop')}
 RULES (loop-specific):
 1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into \`edit\`.
 2. edit CALL FORMAT — use markdown code block format:
@@ -136,9 +158,7 @@ End your response by telling the user where the plan was saved and asking whethe
 If the user's request is a question rather than a change request, answer it directly and skip the plan/todo sections.`
         : config.mode === 'ask'
           ? `You are a Q&A assistant. You can ONLY use the following tools to search for information:
-- \`fetch\`: Fetch content from a URL
-- \`search\`: Search the web using Tavily
-
+${getToolListForMode('ask')}
 You CANNOT execute any shell commands (\`bash\`), read local files, or make any changes to the codebase.
 
 RULES (ask-specific):
@@ -216,5 +236,5 @@ ${isWindows ? '  - Use `type` instead of `cat`, `dir` instead of `ls`, `where` i
 ${sharedRules}`
   return `${modeInstructions}
 
-${envSection}${rulesSection}${methodologySection}${projectSection}${skillsSection}`
+${envSection}${rulesSection}${methodologySection}${projectSection}${memoryPromptSection}${skillsSection}`
 }

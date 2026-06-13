@@ -5,6 +5,8 @@ import type { Tool, ToolResult } from './types.js'
 export const globTool: Tool = {
   definition: {
     name: 'glob',
+    category: 'Codebase Exploration',
+    group: 'File Search',
     description: 'Find files by glob pattern (e.g. "src/**/*.ts"). Returns matching file paths.',
     parameters: {
       pattern: { type: 'string', description: 'Glob pattern to search for', required: true },

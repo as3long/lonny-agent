@@ -1,5 +1,6 @@
 import type { FileReadTracker } from '../diff/apply.js'
 import { bashTool } from './bash.js'
+import { createDeleteMemoryTool } from './delete_memory.js'
 import { createEditTool } from './edit.js'
 import { fmtErr } from './errors.js'
 import { fetchTool } from './fetch.js'
@@ -8,8 +9,10 @@ import { createGitTool } from './git.js'
 import { globTool } from './glob.js'
 import { createGrepTool } from './grep.js'
 import { createInstallSkillTool } from './install_skill.js'
+import { createListMemoryTool } from './list_memory.js'
 import { createLsTool } from './ls.js'
 import { createReadTool } from './read.js'
+import { createSaveMemoryTool } from './save_memory.js'
 import { searchTool } from './search.js'
 import type { Tool, ToolCall, ToolDefinition, ToolResult } from './types.js'
 import { createWritePlanTool } from './write_plan.js'
@@ -122,6 +125,15 @@ export class ToolRegistry {
       this.register(createGitTool(this.context.cwd))
       this.register(createInstallSkillTool(this.context.cwd))
       this.register(createEditTool(this.context.applier, this.context.cwd))
+      // Register save_memory tool (simple on-disk writer)
+      try {
+        this.register(createSaveMemoryTool(this.context.cwd))
+        this.register(createListMemoryTool(this.context.cwd))
+        this.register(createDeleteMemoryTool(this.context.cwd))
+      } catch (err) {
+        // If for some reason the tool can't be created, ignore — not critical
+        console.error('[ToolRegistry] Failed to register memory tools:', err)
+      }
     } else {
       // Plan mode: read-only investigation + write_plan
       this.register(createWritePlanTool(this.context.cwd, this.context.onPlanWritten))

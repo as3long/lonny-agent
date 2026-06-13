@@ -4,6 +4,8 @@ import type { Tool, ToolDefinition } from './types.js'
 export const createGitTool = (cwd: string): Tool => {
   const definition: ToolDefinition = {
     name: 'git',
+    category: 'Execution',
+    group: 'Version Control',
     description:
       'Run git commands for repository operations. Supports status, diff, log, show, branch, and other read-only git operations.',
     parameters: {

@@ -4,6 +4,8 @@ import type { Tool, ToolDefinition } from './types.js'
 export const createFindTool = (cwd: string): Tool => {
   const definition: ToolDefinition = {
     name: 'find',
+    category: 'Codebase Exploration',
+    group: 'File Search',
     description: 'Find files by name pattern. Uses glob internally. Returns matching file paths.',
     parameters: {
       pattern: {

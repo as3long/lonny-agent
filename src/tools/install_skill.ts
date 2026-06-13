@@ -253,6 +253,8 @@ export function createInstallSkillTool(cwd: string): Tool {
   return {
     definition: {
       name: 'install_skill',
+      category: 'Tools',
+      group: 'Package Management',
       description: `Install an npm package or ClawHub skill. This tool:
 1. For npm packages: fetches info from npm registry, runs \`npm install\`, creates a skill file
 2. For ClawHub skills: fetches skill metadata from clawhub.ai, downloads the skill bundle, writes SKILL.md

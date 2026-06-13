@@ -329,7 +329,7 @@ export class Session {
 
   /** Initialize the system prompt asynchronously */
   private initSystemPrompt(config: Config): void {
-    buildSystemPrompt(config).then(prompt => {
+    buildSystemPrompt(config, this.registry.getDefinitions()).then(prompt => {
       this.messages = [{ role: 'system', content: prompt }]
     })
   }
@@ -382,7 +382,7 @@ export class Session {
       data.provider !== config.provider ||
       data.mode !== config.mode
     ) {
-      const prompt = await buildSystemPrompt(config)
+      const prompt = await buildSystemPrompt(config, session.registry.getDefinitions())
       session.messages[0] = { role: 'system', content: prompt }
     }
     // Restore token stats
@@ -418,9 +418,10 @@ If you believe the task is complete, provide a clear summary of what was accompl
 
   async setMode(mode: 'code' | 'plan' | 'ask' | 'loop'): Promise<void> {
     this.config.mode = mode
-    const prompt = await buildSystemPrompt(this.config)
-    this.messages[0] = { role: 'system', content: prompt }
+    // Update registry mode FIRST so getDefinitions() returns the correct tool set
     this.registry.setMode(mode)
+    const prompt = await buildSystemPrompt(this.config, this.registry.getDefinitions())
+    this.messages[0] = { role: 'system', content: prompt }
     this.save()
   }
 

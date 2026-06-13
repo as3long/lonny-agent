@@ -30,6 +30,8 @@ const TAVILY_API_URL = 'https://api.tavily.com/search'
 export const searchTool: Tool = {
   definition: {
     name: 'search',
+    category: 'Web',
+    group: 'Search Engine',
     description:
       'Search the web using the Tavily search engine. Returns a summary answer and a list of relevant results with titles, URLs, and content snippets.',
     parameters: {

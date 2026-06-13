@@ -4,6 +4,8 @@ import type { Tool, ToolResult } from './types.js'
 export const fetchTool: Tool = {
   definition: {
     name: 'fetch',
+    category: 'Web',
+    group: 'HTTP',
     description: 'Fetch content from a URL. Returns the response body as text.',
     parameters: {
       url: { type: 'string', description: 'URL to fetch', required: true },

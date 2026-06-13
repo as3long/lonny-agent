@@ -387,6 +387,7 @@ export function createEditTool(applier: FileReadTracker, cwd: string): Tool {
   return {
     definition: {
       name: 'edit',
+      category: 'Code Editing',
       description: `Replace exact text in files using markdown code block format.
 
 HOW TO USE:
@@ -518,6 +519,26 @@ CRITICAL RULES:
           success: false,
           output: '',
           error: `edit FAILED — ${editErrors.length} of ${edits.length} edit(s) have missing fields.\n${editErrors.join('\n')}\n\nReceived: ${summarizeRawInput(rawInput)}\n\nEach edit object must be a COMPLETE find-replace pair with BOTH old_string AND new_string.`,
+        }
+      }
+
+      // ── Path traversal security check ──────────────────────────────────
+      const resolvedCwd = path.resolve(cwd)
+      for (let i = 0; i < edits.length; i++) {
+        const e = edits[i]
+        const resolved = path.resolve(cwd, e.file_path)
+        const relative = path.relative(resolvedCwd, resolved)
+        if (relative.startsWith('..') || path.isAbsolute(relative)) {
+          return {
+            success: false,
+            output: '',
+            error:
+              'edit FAILED — Path traversal detected: "' +
+              e.file_path +
+              '" resolves outside the working directory "' +
+              resolvedCwd +
+              '". All file paths must be within the project directory.',
+          }
         }
       }
 
