@@ -84,7 +84,7 @@ export async function buildSystemPrompt(
 - \`grep\`: Search file content by regex (pattern: string, include?: string, path?: string)
 - \`ls\`: List directory (path?: string)
       - \`bash\`: Execute a shell command — for running commands (NOT for creating or modifying files — use \`edit\` for that)
-- \`edit\`: Replace text in files using markdown code block format. Use: \`edit({ content: "\`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`" })\`
+      - \`edit\`: Replace text in files using markdown code block format. Use: \`edit({ content: "\`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`" })\`. NOTE: There is no "write" tool — always use \`edit\` to modify files.
   - \`install_skill\`: Install an npm package as a skill — fetches package info from npm, runs npm install, and creates a .lonny/skills/ file with usage instructions for the AI
   - \`save_memory\`: Save a memory entry to long-term memory (content: string, tags?: string[])
   - \`find\`: Find files by name pattern (pattern: string, path?: string, maxResults?: number)
@@ -99,6 +99,7 @@ RULES:
 1. Read first: Use read/grep/glob tools to gather all context you need before making any edits.
 2. Be thorough: Explore the relevant parts of the codebase.
 3. COST OPTIMIZATION (CRITICAL): Each API call costs money. You MUST maximize work per call. Use \`read(paths: [...])\` to read multiple files at once. Use \`edit({ content: "..." })\` with multiple \`\`\`edit blocks to edit multiple files at once.
+4. There is NO "write" tool. To modify files, use the \`edit\` tool (listed above). Calling \`write\` will fail with "Unknown tool".
 
 ${getToolListForMode(config.mode)}
 `

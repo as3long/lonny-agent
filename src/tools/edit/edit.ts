@@ -394,6 +394,7 @@ export function createEditTool(applier: FileReadTracker, cwd: string): Tool {
       category: 'Edit',
       group: 'File',
       description: `Replace exact text in files using markdown code block format.
+IMPORTANT: There is no "write" tool — always use this tool ("edit") to modify files.
 
 HOW TO USE:
 1. Read the file first with \`read\`
