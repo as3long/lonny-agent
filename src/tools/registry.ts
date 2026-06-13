@@ -271,6 +271,13 @@ Examples:
 
   /** Get definitions for the core tool set + gateway (for LLM API's tools parameter) */
   getCoreDefinitions(): ToolDefinition[] {
+    // Ask mode has only 2 tools – pass them directly, no gateway needed
+    if (this.context.mode === 'ask') {
+      return Array.from(this.tools.values())
+        .filter(t => t.definition.name !== 'tool')
+        .map(t => t.definition)
+    }
+
     const core: ToolDefinition[] = []
     for (const [name, tool] of this.tools) {
       if (CORE_TOOL_NAMES.has(name)) {

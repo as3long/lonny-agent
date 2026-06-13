@@ -138,4 +138,141 @@ describe('ToolRegistry', () => {
     expect(result.success).toBe(false)
     expect(result.error).toContain('Unknown tool')
   })
+
+  // ── Tiered access tests ──────────────────────────────────────────────
+
+  it('getCoreDefinitions returns only core tools + gateway in code mode', () => {
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'code',
+    })
+    const core = reg.getCoreDefinitions()
+    const names = core.map(d => d.name)
+    // Core tools
+    expect(names).toContain('read')
+    expect(names).toContain('edit')
+    expect(names).toContain('bash')
+    expect(names).toContain('glob')
+    expect(names).toContain('grep')
+    // Gateway tool
+    expect(names).toContain('tool')
+    // Extended tools should NOT be in core
+    expect(names).not.toContain('ls')
+    expect(names).not.toContain('find')
+    expect(names).not.toContain('git')
+    expect(names).not.toContain('fetch')
+    expect(names).not.toContain('search')
+    expect(names).not.toContain('install_skill')
+    expect(names).not.toContain('write_plan')
+    expect(names).not.toContain('save_memory')
+    expect(names).not.toContain('list_memory')
+    expect(names).not.toContain('delete_memory')
+    // Exactly 6 tools in core set (5 core + 1 gateway)
+    expect(names.length).toBe(6)
+  })
+
+  it('getDefinitions still returns all tools including extended ones', () => {
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'code',
+    })
+    const all = reg.getDefinitions()
+    const names = all.map(d => d.name)
+    expect(names).toContain('read')
+    expect(names).toContain('edit')
+    expect(names).toContain('ls')
+    expect(names).toContain('find')
+    expect(names).toContain('git')
+    expect(names).toContain('fetch')
+    expect(names).toContain('tool') // gateway is always in the registry
+    expect(names.length).toBeGreaterThan(6)
+  })
+
+  it('tool() gateway dispatches to an extended tool (ls)', async () => {
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'code',
+    })
+    // Simulate what the LLM would do: call tool({ name: "ls", params: { path: tmpDir } })
+    const result = await reg.dispatch({
+      id: 'gateway-test',
+      name: 'tool',
+      input: { name: 'ls', params: { path: tmpDir } },
+    })
+    expect(result.success).toBe(true)
+    expect(result.output).toContain('a.txt')
+  })
+
+  it('tool() gateway rejects recursive call', async () => {
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'code',
+    })
+    const result = await reg.dispatch({
+      id: 'gateway-test',
+      name: 'tool',
+      input: { name: 'tool', params: {} },
+    })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('recursively')
+  })
+
+  it('tool() gateway rejects missing name', async () => {
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'code',
+    })
+    const result = await reg.dispatch({
+      id: 'gateway-test',
+      name: 'tool',
+      input: { params: {} },
+    })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('name')
+  })
+
+  it('getCoreDefinitions returns core-only in plan mode', () => {
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'plan',
+    })
+    const core = reg.getCoreDefinitions()
+    const names = core.map(d => d.name)
+    expect(names).toContain('read')
+    expect(names).toContain('glob')
+    expect(names).toContain('grep')
+    expect(names).toContain('tool')
+    // write_plan is extended → not in core
+    expect(names).not.toContain('write_plan')
+    // edit is not in plan mode at all
+    expect(names).not.toContain('edit')
+  })
+
+  it('getCoreDefinitions returns only fetch/search in ask mode', () => {
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'ask',
+    })
+    const core = reg.getCoreDefinitions()
+    const names = core.map(d => d.name)
+    expect(names).toContain('fetch')
+    expect(names).toContain('search')
+    expect(names).not.toContain('read')
+    expect(names).not.toContain('edit')
+    expect(names).not.toContain('tool') // ask mode doesn't need the gateway
+  })
 })
