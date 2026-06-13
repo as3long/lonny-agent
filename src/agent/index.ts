@@ -2,7 +2,11 @@ import * as readline from 'node:readline'
 import type { Config } from '../config/index.js'
 import { Session, type SessionOutput } from './session.js'
 
-export async function runAgent(prompt: string, config: Config): Promise<void> {
+export async function runAgent(
+  prompt: string,
+  config: Config,
+  preloadedSession?: Session,
+): Promise<void> {
   const output: SessionOutput = {
     write: text => process.stdout.write(text),
     confirmTool: async toolCalls => {
@@ -20,6 +24,7 @@ export async function runAgent(prompt: string, config: Config): Promise<void> {
       })
     },
   }
-  const session = (await Session.load(config, output)) || new Session(config, output)
+  const session =
+    preloadedSession ?? (await Session.load(config, output)) ?? new Session(config, output)
   await session.chat(prompt)
 }

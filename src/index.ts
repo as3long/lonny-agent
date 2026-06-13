@@ -44,21 +44,25 @@ async function main() {
     process.exit(1)
   }
 
+  let loadedSession: Session | null = null
+
   // Handle --continue and --session flags
   if (continueSession || sessionId) {
     if (sessionId) {
-      const loaded = await Session.loadById(sessionId, config)
-      if (loaded) {
-        console.log(`${BLD}Resuming session:${RS} ${loaded.sessionTitle || loaded.sessionId}`)
+      loadedSession = await Session.loadById(sessionId, config)
+      if (loadedSession) {
+        console.log(
+          `${BLD}Resuming session:${RS} ${loadedSession.sessionTitle || loadedSession.sessionId}`,
+        )
       } else {
         console.error(`${RE}Error:${RS} Session not found: ${sessionId}`)
         process.exit(1)
       }
     } else {
-      const loaded = await Session.load(config)
-      if (loaded) {
+      loadedSession = await Session.load(config)
+      if (loadedSession) {
         console.log(
-          `${BLD}Continuing last session:${RS} ${loaded.sessionTitle || loaded.sessionId}`,
+          `${BLD}Continuing last session:${RS} ${loadedSession.sessionTitle || loadedSession.sessionId}`,
         )
       }
     }
@@ -67,9 +71,9 @@ async function main() {
   if (web) {
     await startWebUi(config, port || 15090)
   } else if (prompt) {
-    await runAgent(prompt, config)
+    await runAgent(prompt, config, loadedSession ?? undefined)
   } else {
-    await startTui(config)
+    await startTui(config, loadedSession ?? undefined)
   }
 }
 

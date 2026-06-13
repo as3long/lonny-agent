@@ -52,7 +52,7 @@ class Spacer {
   invalidate(): void {}
 }
 
-export async function startTui(config: Config): Promise<void> {
+export async function startTui(config: Config, preloadedSession?: Session): Promise<void> {
   let chatContent = ''
   let isRunning = false
   let session: Session
@@ -236,7 +236,11 @@ export async function startTui(config: Config): Promise<void> {
 
   // Try to restore a saved session for this directory (MUST be before landing screen setup)
   let restored = false
-  const restoredSession = await Session.load(config, output)
+  // Use preloaded session if provided (e.g. via --continue or --session flags)
+  let restoredSession: Session | null = preloadedSession ?? null
+  if (!restoredSession) {
+    restoredSession = await Session.load(config, output)
+  }
   if (restoredSession) {
     restored = true
     session = restoredSession
