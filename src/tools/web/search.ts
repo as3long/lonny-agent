@@ -1,8 +1,8 @@
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { fmtErr } from './errors.js'
-import type { Tool, ToolResult } from './types.js'
+import { fmtErr } from '../errors.js'
+import type { Tool, ToolResult } from '../types.js'
 
 interface TavilyConfig {
   tavilyApiKey?: string

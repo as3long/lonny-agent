@@ -1,7 +1,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { globTool } from '../glob.js'
+import { globTool } from '../codebase/glob.js'
 import { makeTempDir } from './helpers.js'
 
 describe('glob tool', () => {

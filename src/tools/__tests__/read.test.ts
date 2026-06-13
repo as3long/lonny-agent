@@ -2,7 +2,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { FileReadTracker } from '../../diff/apply.js'
-import { createReadTool } from '../read.js'
+import { createReadTool } from '../codebase/read.js'
 import { makeTempDir } from './helpers.js'
 
 describe('read tool', () => {

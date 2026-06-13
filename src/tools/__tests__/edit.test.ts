@@ -13,7 +13,7 @@ import {
   normalizeLine,
   parseMarkdownEdit,
   renderDiffTerminal,
-} from '../edit.js'
+} from '../edit/edit.js'
 import { makeTempDir } from './helpers.js'
 
 // ── Minimal mock for FileReadTracker ─────────────────────────────────────

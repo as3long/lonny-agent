@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process'
-import type { Tool, ToolDefinition } from './types.js'
+import type { Tool, ToolDefinition } from '../types.js'
 
 export const createGitTool = (cwd: string): Tool => {
   const definition: ToolDefinition = {

@@ -3,8 +3,8 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 // @ts-expect-error - adm-zip has no types
 import AdmZip from 'adm-zip'
-import { fmtErr } from './errors.js'
-import type { Tool, ToolResult } from './types.js'
+import { fmtErr } from '../errors.js'
+import type { Tool, ToolResult } from '../types.js'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 

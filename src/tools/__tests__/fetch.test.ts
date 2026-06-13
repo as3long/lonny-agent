@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fetchTool } from '../fetch.js'
+import { fetchTool } from '../web/fetch.js'
 
 describe('fetch tool', () => {
   it('rejects missing url', async () => {

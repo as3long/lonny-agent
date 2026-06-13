@@ -1,8 +1,8 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import type { FileReadTracker } from '../diff/apply.js'
-import { fmtErr } from './errors.js'
-import type { Tool, ToolResult } from './types.js'
+import type { FileReadTracker } from '../../diff/apply.js'
+import { fmtErr } from '../errors.js'
+import type { Tool, ToolResult } from '../types.js'
 
 // ── Configuration ─────────────────────────────────────────────────────────
 const MAX_FILE_SIZE = 1_000_000 // 1MB

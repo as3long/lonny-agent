@@ -1,9 +1,9 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { DIFF_DELETE, DIFF_INSERT, diffLinesRaw } from 'jest-diff'
-import type { FileReadTracker } from '../diff/apply.js'
-import { fmtErr } from './errors.js'
-import type { Tool, ToolResult } from './types.js'
+import type { FileReadTracker } from '../../diff/apply.js'
+import { fmtErr } from '../errors.js'
+import type { Tool, ToolResult } from '../types.js'
 
 // ── Diff types ────────────────────────────────────────────────────────────
 export type DiffLineType = 'delete' | 'insert' | 'equal'

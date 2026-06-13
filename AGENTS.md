@@ -28,9 +28,17 @@ src/
 ├── cli/            # CLI argument parsing (commander)
 ├── config/         # Configuration loading (env, file, defaults)
 ├── diff/           # File read tracking (prevents editing unread/external-modified files)
-├── tools/          # Tool implementations (read, edit, bash, glob, grep, etc.)
-│   ├── tree.ts     # Hierarchical tool tree builder (category → group → tool)
-│   └── types.ts    # ToolDefinition, ToolTreeNode interfaces with category/group
+├── tools/          # Tool implementations, organized by category
+│   ├── codebase/   # read, glob, grep, find, ls
+│   ├── edit/       # edit, write_plan
+│   ├── execute/    # bash, git
+│   ├── web/        # fetch, search
+│   ├── memory/     # save_memory, list_memory, delete_memory
+│   ├── install/    # install_skill
+│   ├── tree.ts     # Hierarchical tool tree builder
+│   ├── types.ts    # ToolDefinition, ToolTreeNode interfaces
+│   ├── errors.ts   # Error formatting utilities
+│   └── registry.ts # ToolRegistry with registration & dispatch
 ├── tui/            # Terminal UI components
 ├── web/            # Web UI (WebSocket server + frontend)
 └── pi-tui/         # Customized terminal UI library (copied, modified)

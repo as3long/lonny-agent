@@ -1,5 +1,5 @@
-import { fmtErr } from './errors.js'
-import type { Tool, ToolDefinition } from './types.js'
+import { fmtErr } from '../errors.js'
+import type { Tool, ToolDefinition } from '../types.js'
 
 export const createFindTool = (cwd: string): Tool => {
   const definition: ToolDefinition = {

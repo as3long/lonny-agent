@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import { fmtErr } from './errors.js'
-import type { Tool, ToolResult } from './types.js'
+import { fmtErr } from '../errors.js'
+import type { Tool, ToolResult } from '../types.js'
 
 /** Directory where plans are stored, relative to project root */
 export const PLAN_DIR = '.lonny'

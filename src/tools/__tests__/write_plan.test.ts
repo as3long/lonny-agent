@@ -1,7 +1,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createWritePlanTool } from '../write_plan.js'
+import { createWritePlanTool } from '../edit/write_plan.js'
 import { makeTempDir } from './helpers.js'
 
 describe('write_plan tool', () => {
