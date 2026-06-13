@@ -235,7 +235,10 @@ Before writing a plan, explore the user's request thoroughly:
 - OS: ${isWindows ? 'Windows' : 'Linux/macOS'}
 - Available shell commands: ${isWindows ? 'PowerShell (cmd is also available but PowerShell is preferred)' : 'bash'}
 ${isWindows ? '  - Use PowerShell. Do NOT use Unix commands like `cat`, `ls`, `grep`, `which`, `chmod`, `mv`, `cp`, `rm`, `touch`, `mkdir`, `uname`, etc.' : ''}
-${isWindows ? '  - Use `type` instead of `cat`, `dir` instead of `ls`, `where` instead of `which`' : ''}`
+${isWindows ? '  - Use `type` instead of `cat`, `dir` instead of `ls`, `where` instead of `which`' : ''}
+${isWindows ? '  - Use `;` (semicolon) instead of `&&` to chain commands' : ''}
+${isWindows ? '  - Use `Select-Object -First` instead of `head`' : ''}
+${isWindows ? '  - ⚠️  `Select-String` exits with code 1 when no match is found (e.g. `Select-String -Pattern "FAIL"` returns code 1 if no line contains FAIL). This is NORMAL — it does NOT mean the command failed. Append `; $LASTEXITCODE = 0` to suppress this.' : ''}`
 
   // Plan mode uses its own standalone tool list inside modeInstructions — skip sharedRules
   const rulesSection =
