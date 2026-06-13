@@ -43,14 +43,25 @@ export function buildToolTree(definitions: ToolDefinition[]): ToolTreeNode[] {
 
   for (const def of definitions) {
     const category = normalizeLabel(def.category, 'Other')
-    const group = normalizeLabel(def.group, 'Unclassified')
-    const categoryNode = getOrCreate([category], 0)
+    const rawGroup = normalizeLabel(def.group, 'Unclassified')
 
-    if (group && group !== 'Unclassified') {
-      const groupNode = getOrCreate([category, group], 1)
-      groupNode.children?.push(createToolNode(def, 2))
-    } else {
-      categoryNode.children?.push(createToolNode(def, 1))
+    // Build path: category first, then split group by '/' for multi-level nesting
+    const parts = [category]
+    if (rawGroup && rawGroup !== 'Unclassified') {
+      parts.push(
+        ...rawGroup
+          .split('/')
+          .map(p => p.trim())
+          .filter(Boolean),
+      )
+    }
+
+    // Create all intermediate group nodes (parents before children)
+    for (let i = 1; i <= parts.length; i++) {
+      const node = getOrCreate(parts.slice(0, i), i - 1)
+      if (i === parts.length) {
+        node.children?.push(createToolNode(def, i))
+      }
     }
   }
 

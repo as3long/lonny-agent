@@ -51,24 +51,27 @@ organized tool list in the system prompt (falls back to hardcoded lists if defin
 Current classification:
 
 ```
-Codebase Exploration
-├── File Reading      → read
-├── File Search       → glob, grep, find
-└── Directory Listing → ls
-Code Editing          → edit
-Execution
+Codebase
+├── Read              → read
+├── Search
+│   ├── By Pattern    → glob, find
+│   └── By Content    → grep
+└── List              → ls
+Edit
+├── File              → edit
+└── Plan              → write_plan
+Execute
 ├── Shell             → bash
-└── Version Control   → git
+└── Git               → git
 Web
-├── HTTP              → fetch
+├── Fetch             → fetch
 └── Search Engine     → search
 Memory
-├── Write             → save_memory
+├── Save              → save_memory
 ├── Query             → list_memory
-└── Manage            → delete_memory
-Tools
-└── Package Management → install_skill
-Planning              → write_plan
+└── Delete            → delete_memory
+Install
+└── Skill             → install_skill
 ```
 
 ## Git hooks

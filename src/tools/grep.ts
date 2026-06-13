@@ -120,8 +120,8 @@ export function createGrepTool(cwd: string): Tool {
   return {
     definition: {
       name: 'grep',
-      category: 'Codebase Exploration',
-      group: 'File Search',
+      category: 'Codebase',
+      group: 'Search/By Content',
       description: 'Search file contents using a regular expression. Supports full regex syntax.',
       parameters: {
         pattern: { type: 'string', description: 'Regex pattern to search for', required: true },

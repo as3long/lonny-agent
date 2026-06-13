@@ -32,7 +32,8 @@ export function createWritePlanTool(
   return {
     definition: {
       name: 'write_plan',
-      category: 'Planning',
+      category: 'Edit',
+      group: 'Plan',
       description: `Write a plan/todo document to the project's "${PLAN_DIR}/" folder. Use this in plan mode to persist the generated plan. The file is always created under "${PLAN_DIR}/" relative to the working directory; do NOT include the folder prefix in filename. Existing files with the same name will be overwritten.`,
       parameters: {
         filename: {

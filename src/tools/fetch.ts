@@ -5,7 +5,7 @@ export const fetchTool: Tool = {
   definition: {
     name: 'fetch',
     category: 'Web',
-    group: 'HTTP',
+    group: 'Fetch',
     description: 'Fetch content from a URL. Returns the response body as text.',
     parameters: {
       url: { type: 'string', description: 'URL to fetch', required: true },

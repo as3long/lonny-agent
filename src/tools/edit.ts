@@ -387,7 +387,8 @@ export function createEditTool(applier: FileReadTracker, cwd: string): Tool {
   return {
     definition: {
       name: 'edit',
-      category: 'Code Editing',
+      category: 'Edit',
+      group: 'File',
       description: `Replace exact text in files using markdown code block format.
 
 HOW TO USE:

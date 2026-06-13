@@ -722,7 +722,7 @@ function buildErrorMsg(
 export const bashTool: Tool = {
   definition: {
     name: 'bash',
-    category: 'Execution',
+    category: 'Execute',
     group: 'Shell',
     description: `Execute a shell command. Returns stdout and stderr.
 

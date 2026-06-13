@@ -7,8 +7,8 @@ export function createLsTool(cwd: string): Tool {
   return {
     definition: {
       name: 'ls',
-      category: 'Codebase Exploration',
-      group: 'Directory Listing',
+      category: 'Codebase',
+      group: 'List',
       description: 'List files and directories at a given path.',
       parameters: {
         path: { type: 'string', description: 'Directory path to list (default: cwd)' },
