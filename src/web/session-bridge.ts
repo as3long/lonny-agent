@@ -28,10 +28,12 @@ export function startSessionBridge(
 ): { close: () => void; sendMessage: (text: string) => Promise<void> } {
   const bus = getGlobalEventBus()
 
-  // Send initial handshake with current token stats
+  // Send initial handshake with current token stats and session info
   send({
     type: 'hello',
     version: WS_PROTOCOL_VERSION,
+    sessionId: session.sessionId,
+    sessionTitle: session.sessionTitle || undefined,
     mode: config.mode,
     model: config.model,
     provider: config.provider,
@@ -141,10 +143,84 @@ export function startSessionBridge(
               commands: [
                 '/mode code|plan|ask|loop - Switch mode',
                 '/model <name> - Switch model',
+                '/sessions - List saved sessions',
+                '/session - Show current session info',
+                '/session title <name> - Name current session',
+                '/session delete <id> - Delete a session',
+                '/fork - Fork a new session from current context',
                 '/new - Start a new session',
                 '/help - Show this help',
               ],
             })
+            return
+          }
+
+          if (cmd === 'sessions') {
+            const { Session } = await import('../agent/session.js')
+            const allSessions = Session.listSessions()
+            send({
+              type: 'sessions',
+              sessions: allSessions.map(s => ({
+                id: s.id,
+                cwd: s.cwd,
+                title: s.title,
+                messageCount: s.messageCount,
+                mode: s.mode,
+                model: s.model,
+                provider: s.provider,
+                totalInputTokens: s.totalInputTokens,
+                totalOutputTokens: s.totalOutputTokens,
+                totalApiCalls: s.totalApiCalls,
+                createdAt: s.createdAt,
+                updatedAt: s.updatedAt,
+              })),
+            })
+            return
+          }
+
+          if (cmd === 'session') {
+            if (arg === 'delete' || arg.startsWith('delete ')) {
+              const { Session } = await import('../agent/session.js')
+              const id = arg.slice(arg.startsWith('delete ') ? 7 : 6).trim()
+              const deleted = id ? Session.deleteSession(id) : false
+              send({ type: 'session_deleted', id, success: deleted })
+            } else if (arg.startsWith('title ')) {
+              const title = arg.slice(6).trim()
+              if (title) {
+                session.sessionTitle = title
+                session.save()
+                send({ type: 'session_titled', title })
+              } else {
+                send({ type: 'error', message: 'Usage: /session title <name>' })
+              }
+            } else if (arg === 'export') {
+              try {
+                const filePath = session.exportSession()
+                send({ type: 'session_exported', filePath })
+              } catch (err) {
+                send({ type: 'error', message: `Export failed: ${err}` })
+              }
+            } else {
+              send({
+                type: 'session_info',
+                id: session.sessionId,
+                title: session.sessionTitle || '(untitled)',
+                mode: session.config.mode,
+                model: session.config.model,
+                provider: session.config.provider,
+                messageCount: session.messages.length,
+                totalInputTokens: session.totalInputTokens,
+                totalOutputTokens: session.totalOutputTokens,
+                totalApiCalls: session.totalApiCalls,
+                createdAt: session.sessionCreatedAt,
+              })
+            }
+            return
+          }
+
+          if (cmd === 'fork') {
+            const forked = session.fork()
+            send({ type: 'session_forked', id: forked.sessionId, title: forked.sessionTitle })
             return
           }
 

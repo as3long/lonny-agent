@@ -2,6 +2,7 @@
 import { execSync } from 'node:child_process'
 import * as os from 'node:os'
 import { runAgent } from './agent/index.js'
+import { Session } from './agent/session.js'
 import { parseArgs } from './cli/index.js'
 import { fmtErr } from './tools/errors.js'
 import { startTui } from './tui/index.js'
@@ -27,7 +28,9 @@ function tryEnableUtf8(): void {
 
 async function main() {
   tryEnableUtf8()
-  const { config, prompt, web, port, init } = await parseArgs(process.argv)
+  const { config, prompt, web, port, init, continueSession, sessionId } = await parseArgs(
+    process.argv,
+  )
 
   // init command exits after completion
   if (init) {
@@ -39,6 +42,26 @@ async function main() {
       `${RE}Error:${RS} API key is required. Run ${BLD}lonny init${RS} to set up, or use env vars / CLI flags.`,
     )
     process.exit(1)
+  }
+
+  // Handle --continue and --session flags
+  if (continueSession || sessionId) {
+    if (sessionId) {
+      const loaded = await Session.loadById(sessionId, config)
+      if (loaded) {
+        console.log(`${BLD}Resuming session:${RS} ${loaded.sessionTitle || loaded.sessionId}`)
+      } else {
+        console.error(`${RE}Error:${RS} Session not found: ${sessionId}`)
+        process.exit(1)
+      }
+    } else {
+      const loaded = await Session.load(config)
+      if (loaded) {
+        console.log(
+          `${BLD}Continuing last session:${RS} ${loaded.sessionTitle || loaded.sessionId}`,
+        )
+      }
+    }
   }
 
   if (web) {

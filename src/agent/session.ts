@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -19,8 +19,26 @@ import { OpenAIProvider } from './providers/openai.js'
 
 // ── Session persistence ────────────────────────────────────────────────────
 
-interface SessionData {
+export interface SessionInfo {
+  id: string
   cwd: string
+  title: string
+  messageCount: number
+  mode: 'code' | 'plan' | 'ask' | 'loop'
+  model: string
+  provider: string
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalApiCalls: number
+  createdAt: string
+  updatedAt: string
+  fileName: string
+}
+
+interface SessionData {
+  id: string
+  cwd: string
+  title?: string
   messages: LLMMessage[]
   totalInputTokens: number
   totalOutputTokens: number
@@ -30,19 +48,82 @@ interface SessionData {
   mode: 'code' | 'plan' | 'ask' | 'loop'
   model: string
   provider: string
+  createdAt: string
   updatedAt: string
+}
+
+function generateId(): string {
+  return randomUUID().slice(0, 8)
 }
 
 function getSessionDir(): string {
   return path.join(os.homedir(), '.lonny', 'sessions')
 }
 
-function getSessionFilePath(cwd: string): string {
+/** Base name for session files (safe directory name + hash) */
+function getSessionBaseName(cwd: string): string {
   const absPath = path.resolve(cwd)
   const hash = createHash('sha256').update(absPath, 'utf-8').digest('hex').slice(0, 12)
   const dirName = path.basename(absPath)
   const safeName = dirName.replace(/[<>:"/\\|?*]/g, '_')
-  return path.join(getSessionDir(), `${safeName}-${hash}.json`)
+  return `${safeName}-${hash}`
+}
+
+/**
+ * Get the file path for a session.
+ * If sessionId is provided, uses multi-session naming: {base}-{id}.json
+ * Otherwise returns the legacy single-session path: {base}.json
+ */
+function getSessionFilePath(cwd: string, sessionId?: string): string {
+  const base = getSessionBaseName(cwd)
+  if (sessionId) {
+    return path.join(getSessionDir(), `${base}-${sessionId}.json`)
+  }
+  return path.join(getSessionDir(), `${base}.json`)
+}
+
+/** List all session files for a given cwd, sorted by updatedAt (most recent first). */
+function getSessionFilesForCwd(cwd: string): { fileName: string; data: SessionData }[] {
+  const dir = getSessionDir()
+  const base = getSessionBaseName(cwd)
+  try {
+    if (!fs.existsSync(dir)) return []
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.json') && f.startsWith(base))
+    const results: { fileName: string; data: SessionData }[] = []
+    for (const fileName of files) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(path.join(dir, fileName), 'utf-8')) as Record<
+          string,
+          unknown
+        >
+        results.push({ fileName, data: migrateSessionData(raw) })
+      } catch {
+        // Skip corrupted files
+      }
+    }
+    results.sort((a, b) => b.data.updatedAt.localeCompare(a.data.updatedAt))
+    return results
+  } catch {
+    return []
+  }
+}
+
+/** Find the legacy single-session file for a cwd (backward compatibility). */
+function findLegacySessionFile(cwd: string): string | null {
+  const legacyPath = getSessionFilePath(cwd) // {base}.json (no sessionId)
+  if (fs.existsSync(legacyPath)) return legacyPath
+  return null
+}
+
+// Migrate old-format session files (without id) to new format
+function migrateSessionData(data: Record<string, unknown>): SessionData {
+  if (!data.id) {
+    data.id = generateId()
+  }
+  if (!data.createdAt) {
+    data.createdAt = (data.updatedAt as string) || new Date().toISOString()
+  }
+  return data as unknown as SessionData
 }
 
 function ensureDir(dir: string): void {
@@ -334,12 +415,28 @@ export class Session {
     })
   }
 
+  sessionId: string = generateId()
+  sessionTitle: string = ''
+  sessionCreatedAt: string = new Date().toISOString()
+
   /** Persist the current session to ~/.lonny/sessions/ */
   save(): void {
     const dir = getSessionDir()
     ensureDir(dir)
-    const filePath = getSessionFilePath(this.config.cwd)
+    // Use multi-session file naming with session ID
+    const filePath = getSessionFilePath(this.config.cwd, this.sessionId)
+    const now = new Date().toISOString()
+    // Generate a title from the first user message if none set
+    let title = this.sessionTitle
+    if (!title) {
+      const firstUserMsg = this.messages.find(m => m.role === 'user')
+      if (firstUserMsg && typeof firstUserMsg.content === 'string') {
+        title = firstUserMsg.content.slice(0, 80).replace(/\n/g, ' ')
+      }
+    }
     const data: SessionData = {
+      id: this.sessionId,
+      title: title || undefined,
       cwd: path.resolve(this.config.cwd),
       messages: this.messages,
       totalInputTokens: this.totalInputTokens,
@@ -350,33 +447,91 @@ export class Session {
       mode: this.config.mode,
       model: this.config.model,
       provider: this.config.provider,
-      updatedAt: new Date().toISOString(),
+      createdAt: this.sessionCreatedAt,
+      updatedAt: now,
     }
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
   }
 
-  /** Try to load a saved session for the given cwd. Returns null if none exists. */
+  /**
+   * Try to load the most recent session for the given cwd.
+   * Supports both legacy single-session format and new multi-session format.
+   * Returns null if no session exists.
+   */
   static async load(config: Config, output?: SessionOutput): Promise<Session | null> {
-    const filePath = getSessionFilePath(config.cwd)
-    let data: SessionData
+    // 1. Try multi-session files first (new format)
+    const cwdSessions = getSessionFilesForCwd(config.cwd)
+    if (cwdSessions.length > 0) {
+      return Session.loadFromData(cwdSessions[0].data, config, output)
+    }
+
+    // 2. Try legacy single-session file (backward compatibility)
+    const legacyPath = findLegacySessionFile(config.cwd)
+    if (legacyPath) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(legacyPath, 'utf-8')) as Record<string, unknown>
+        const data = migrateSessionData(raw)
+        const session = await Session.loadFromData(data, config, output)
+        // Migrate to new format: save with session ID, then delete legacy
+        session.save()
+        try {
+          fs.unlinkSync(legacyPath)
+        } catch {
+          /* ignore */
+        }
+        return session
+      } catch {
+        return null
+      }
+    }
+
+    return null
+  }
+
+  /** Load a specific session by its ID. Returns null if not found. */
+  static async loadById(
+    sessionId: string,
+    config: Config,
+    output?: SessionOutput,
+  ): Promise<Session | null> {
+    const allSessions = Session.listSessions()
+    const target = allSessions.find(s => s.id === sessionId)
+    if (!target) return null
+    const legacyPath = findLegacySessionFile(config.cwd)
+    if (legacyPath) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(legacyPath, 'utf-8')) as Record<string, unknown>
+        const data = migrateSessionData(raw)
+        if (data.id === sessionId) {
+          return Session.loadFromData(data, config, output)
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    const filePath = getSessionFilePath(target.cwd, sessionId)
     try {
-      data = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as SessionData
+      const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Record<string, unknown>
+      return Session.loadFromData(migrateSessionData(raw), config, output)
     } catch {
       return null
     }
+  }
 
-    // Verify the cwd matches (in case of hash collision or directory rename)
-    const savedAbs = path.resolve(data.cwd)
-    const currentAbs = path.resolve(config.cwd)
-    if (savedAbs !== currentAbs) {
-      return null
-    }
-
+  /** Internal: restore session from parsed data */
+  private static async loadFromData(
+    data: SessionData,
+    config: Config,
+    output?: SessionOutput,
+  ): Promise<Session> {
     const session = new Session(config, output)
     // Restore messages (replace the default system prompt with the saved one)
     session.messages = data.messages
+    // Restore session identity
+    session.sessionId = data.id
+    session.sessionTitle = data.title || ''
+    session.sessionCreatedAt = data.createdAt
     // Refresh the system prompt only if config actually changed (model, mode, etc.)
-    // Compare the saved data vs current config to decide
     if (
       data.model !== config.model ||
       data.provider !== config.provider ||
@@ -394,14 +549,159 @@ export class Session {
     return session
   }
 
-  /** Remove the saved session file for the given cwd. */
+  /** Clear the current session's saved file (no-op if session has no saved file). */
   static clearSavedSession(cwd: string): void {
-    const filePath = getSessionFilePath(cwd)
-    try {
-      fs.unlinkSync(filePath)
-    } catch {
-      // Ignore if file doesn't exist
+    // Try to remove all session files for this cwd
+    const cwdSessions = getSessionFilesForCwd(cwd)
+    for (const { fileName } of cwdSessions) {
+      try {
+        fs.unlinkSync(path.join(getSessionDir(), fileName))
+      } catch {
+        /* ignore */
+      }
     }
+    // Also try legacy file
+    const legacyPath = findLegacySessionFile(cwd)
+    if (legacyPath) {
+      try {
+        fs.unlinkSync(legacyPath)
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  /** List all saved sessions across all directories. */
+  static listSessions(maxCount?: number): SessionInfo[] {
+    const dir = getSessionDir()
+    try {
+      if (!fs.existsSync(dir)) return []
+      const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'))
+      const sessions: SessionInfo[] = []
+      for (const fileName of files) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(path.join(dir, fileName), 'utf-8')) as Record<
+            string,
+            unknown
+          >
+          const data = migrateSessionData(raw)
+          const firstUserMsg = data.messages.find(m => m.role === 'user')
+          let title = data.title || ''
+          if (!title && firstUserMsg && typeof firstUserMsg.content === 'string') {
+            title = firstUserMsg.content.slice(0, 80).replace(/\n/g, ' ')
+          }
+          sessions.push({
+            id: data.id,
+            cwd: data.cwd,
+            title,
+            messageCount: data.messages.length,
+            mode: data.mode,
+            model: data.model,
+            provider: data.provider,
+            totalInputTokens: data.totalInputTokens,
+            totalOutputTokens: data.totalOutputTokens,
+            totalApiCalls: data.totalApiCalls,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+            fileName,
+          })
+        } catch {
+          // Skip corrupted files
+        }
+      }
+      // Sort by updatedAt descending (most recent first)
+      sessions.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      if (maxCount && maxCount > 0) {
+        return sessions.slice(0, maxCount)
+      }
+      return sessions
+    } catch {
+      return []
+    }
+  }
+
+  /** Delete a session by its ID. Returns true if deleted. */
+  static deleteSession(id: string): boolean {
+    const sessions = Session.listSessions()
+    const target = sessions.find(s => s.id === id)
+    if (!target) return false
+    try {
+      fs.unlinkSync(path.join(getSessionDir(), target.fileName))
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** Delete the current session's saved file */
+  clearSavedSession(): void {
+    Session.clearSavedSession(this.config.cwd)
+  }
+
+  /**
+   * Fork the current session — creates a new session with the same messages
+   * but a fresh sessionId and empty token counters. Useful for branching
+   * the conversation to try a different approach.
+   */
+  fork(): Session {
+    const forked = new Session(this.config, this.output)
+    // Copy messages (including system prompt)
+    forked.messages = [...this.messages]
+    // Keep plan-written callback
+    forked.onPlanWritten = this.onPlanWritten
+    // Tag the title as a fork
+    const baseTitle = this.sessionTitle || 'forked session'
+    forked.sessionTitle = `${baseTitle} (fork)`
+    // Generate fresh IDs and timestamps
+    forked.sessionId = generateId()
+    forked.sessionCreatedAt = new Date().toISOString()
+    // Save immediately
+    forked.save()
+    return forked
+  }
+
+  /** Export the session as a JSON file. Returns the file path. */
+  exportSession(filePath?: string): string {
+    const dir = filePath || path.join(getSessionDir(), `export-${this.sessionId}.json`)
+    const now = new Date().toISOString()
+    let title = this.sessionTitle
+    if (!title) {
+      const firstUserMsg = this.messages.find(m => m.role === 'user')
+      if (firstUserMsg && typeof firstUserMsg.content === 'string') {
+        title = firstUserMsg.content.slice(0, 80).replace(/\n/g, ' ')
+      }
+    }
+    const exportData = {
+      id: this.sessionId,
+      title: title || '(untitled)',
+      cwd: path.resolve(this.config.cwd),
+      mode: this.config.mode,
+      model: this.config.model,
+      provider: this.config.provider,
+      totalInputTokens: this.totalInputTokens,
+      totalOutputTokens: this.totalOutputTokens,
+      totalApiCalls: this.totalApiCalls,
+      totalCacheHitTokens: this.totalCacheHitTokens,
+      totalCacheMissTokens: this.totalCacheMissTokens,
+      createdAt: this.sessionCreatedAt,
+      exportedAt: now,
+      messages: this.messages.map(m => ({
+        role: m.role,
+        content: typeof m.content === 'string' ? m.content : null,
+        tool_calls: m.tool_calls
+          ? m.tool_calls.map(tc => ({
+              id: tc.id,
+              name: tc.name,
+              input: tc.input,
+            }))
+          : undefined,
+        reasoning_content: m.reasoning_content,
+      })),
+    }
+    const fullPath = path.resolve(dir)
+    ensureDir(path.dirname(fullPath))
+    fs.writeFileSync(fullPath, JSON.stringify(exportData, null, 2), 'utf-8')
+    return fullPath
   }
 
   /** Get a continuation message for loop mode — feeds the model a new user message to continue working */

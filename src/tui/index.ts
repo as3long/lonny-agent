@@ -140,6 +140,13 @@ export async function startTui(config: Config): Promise<void> {
     { name: 'plans', description: 'Show plans overlay' },
     { name: 'prompts', description: 'List prompt templates' },
     { name: 'skills', description: 'List active skills' },
+    { name: 'sessions', description: 'List all saved sessions' },
+    {
+      name: 'session',
+      description: 'Show current session info',
+      argumentHint: '[title <name>|delete]',
+    },
+    { name: 'fork', description: 'Fork a new session from current context' },
     { name: 'new', description: 'Start a new session' },
     { name: 'init', description: 'Create .lonny/skills/ & prompts/' },
     { name: 'help', description: 'Show help' },
@@ -422,6 +429,9 @@ export async function startTui(config: Config): Promise<void> {
       ` ${colors.inputPrompt('/mode')} code|plan|ask|loop  ${colors.dim('Switch mode')}\n` +
       `   ${colors.inputPrompt('/model')} <name>    ${colors.dim('Switch model')}\n` +
       `   ${colors.inputPrompt('/plans')}          ${colors.dim('Show plans overlay')}\n` +
+      `   ${colors.inputPrompt('/sessions')}       ${colors.dim('List saved sessions')}\n` +
+      `   ${colors.inputPrompt('/session')} [id]   ${colors.dim('Session info / delete / title')}\n` +
+      `   ${colors.inputPrompt('/fork')}           ${colors.dim('Branch a new session')}\n` +
       `   ${colors.inputPrompt('/new')}            ${colors.dim('Start a new session')}\n` +
       `   ${colors.inputPrompt('/prompts')}        ${colors.dim('List prompt templates')}\n` +
       `   ${colors.inputPrompt('/skills')}         ${colors.dim('List active skills')}\n` +
@@ -614,6 +624,134 @@ export async function startTui(config: Config): Promise<void> {
       if (cmd === 'filter') {
         plansList.setFilter(arg)
         tui.requestRender(true)
+        return
+      }
+
+      if (cmd === 'sessions') {
+        const allSessions = Session.listSessions()
+        if (allSessions.length === 0) {
+          chatContent += `\n${colors.warn('No saved sessions found.')}\n`
+        } else {
+          chatContent += `\n${colors.accent('\u25B6')} ${colors.warn(`Saved Sessions (${allSessions.length})`)}\n`
+          chatContent += `  ${colors.dim('ID        Title                                       Mode    Messages  Tokens    Updated')}\n`
+          for (const s of allSessions) {
+            const id = s.id.padEnd(9)
+            const title = (s.title || '(untitled)').slice(0, 42).padEnd(43)
+            const mode = s.mode.padEnd(7)
+            const msgs = String(s.messageCount).padEnd(9)
+            const tokens = String(s.totalInputTokens + s.totalOutputTokens).padEnd(9)
+            const date = s.updatedAt.slice(0, 10)
+            chatContent += `  ${colors.dim(id)} ${colors.inputPrompt(title)} ${colors.dim(mode)} ${msgs} ${tokens} ${date}\n`
+          }
+          chatContent += `\n  ${colors.dim('Use /session delete <id> to delete a session')}\n`
+        }
+        chatMarkdown.setText(chatContent)
+        return
+      }
+
+      if (cmd === 'session') {
+        if (arg === 'delete' || arg.startsWith('delete ')) {
+          const id = arg.slice(arg.startsWith('delete ') ? 7 : 6).trim()
+          if (id) {
+            const deleted = Session.deleteSession(id)
+            if (deleted) {
+              chatContent += `\n${colors.success('\u2714')} Deleted session ${colors.dim(id)}\n`
+            } else {
+              chatContent += `\n${colors.error('\u2716')} Session not found: ${colors.dim(id)}\n`
+            }
+          } else {
+            chatContent += `\n${colors.error('\u2716')} Usage: ${colors.inputPrompt('/session delete <id>')}\n`
+          }
+        } else if (arg.startsWith('title ')) {
+          const title = arg.slice(6).trim()
+          if (title) {
+            session.sessionTitle = title
+            session.save()
+            chatContent += `\n${colors.success('\u2714')} Session titled: ${colors.warn(title)}\n`
+          } else {
+            chatContent += `\n${colors.error('\u2716')} Usage: ${colors.inputPrompt('/session title <name>')}\n`
+          }
+        } else if (arg === 'export') {
+          try {
+            const filePath = session.exportSession()
+            chatContent += `\n${colors.success('\u2714')} Session exported to ${colors.dim(filePath)}\n`
+          } catch (err) {
+            chatContent += `\n${colors.error('\u2716')} Export failed: ${fmtErr(err)}\n`
+          }
+        } else if (arg === 'switch' || arg.startsWith('switch ')) {
+          const id = arg.startsWith('switch ') ? arg.slice(7).trim() : ''
+          if (!id) {
+            chatContent += `\n${colors.error('\u2716')} Usage: ${colors.inputPrompt('/session switch <id>')}. ${colors.dim('Use /sessions to list session IDs.')}\n`
+          } else if (isRunning) {
+            chatContent += `\n${colors.error('\u2716')} Cannot switch session while agent is running. ${colors.dim('Wait or use /stop first.')}\n`
+          } else {
+            const switched = await Session.loadById(id, config, output)
+            if (switched) {
+              session = switched
+              session.onPlanWritten = planCb
+              chatContent = `\n${colors.accent('\u21BA')} Switched to session ${colors.warn(session.sessionTitle || session.sessionId)}\n`
+              // Show last user message
+              const lastUserMsg = [...session.messages].reverse().find(m => m.role === 'user')
+              if (lastUserMsg && typeof lastUserMsg.content === 'string') {
+                const preview =
+                  lastUserMsg.content.length > 80
+                    ? `${lastUserMsg.content.slice(0, 80)}\u2026`
+                    : lastUserMsg.content
+                chatContent += ` ${colors.dim('Last question:')} ${colors.userLabel(preview)}\n`
+              }
+              chatContent += '\n'
+              chatMarkdown.setText(chatContent)
+              updateFooter()
+            } else {
+              chatContent += `\n${colors.error('\u2716')} Session not found: ${colors.dim(id)}\n`
+            }
+          }
+        } else {
+          // Show current session info
+          const id = session.sessionId
+          const title = session.sessionTitle || '(untitled)'
+          const mode = session.config.mode
+          const model = session.config.model
+          const provider = session.config.provider
+          const msgs = session.messages.length
+          const totalIn = session.totalInputTokens
+          const totalOut = session.totalOutputTokens
+          const totalApi = session.totalApiCalls
+          const created = session.sessionCreatedAt.slice(0, 10)
+          chatContent +=
+            `\n${colors.accent('\u2501').repeat(30)}\n` +
+            ` ${colors.accent('\u25B6')} ${colors.warn('Session Info')}\n` +
+            `${colors.accent('\u2501').repeat(30)}\n` +
+            ` ${colors.dim('ID:')}       ${id}\n` +
+            ` ${colors.dim('Title:')}    ${title}\n` +
+            ` ${colors.dim('Mode:')}     ${mode}\n` +
+            ` ${colors.dim('Model:')}    ${model} (${provider})\n` +
+            ` ${colors.dim('Messages:')} ${msgs}\n` +
+            ` ${colors.dim('Tokens:')}   ${totalIn + totalOut} (in: ${totalIn}, out: ${totalOut})\n` +
+            ` ${colors.dim('API Calls:')} ${totalApi}\n` +
+            ` ${colors.dim('Created:')}  ${created}\n` +
+            `${colors.accent('\u2501').repeat(30)}\n`
+        }
+        chatMarkdown.setText(chatContent)
+        return
+      }
+
+      if (cmd === 'fork') {
+        if (isRunning) {
+          chatContent += `\n${colors.error('\u2716')} Cannot fork while agent is running. ${colors.dim('Wait or use /stop first.')}\n`
+        } else if (session.messages.length <= 1) {
+          chatContent += `\n${colors.warn('No conversation to fork.')} ${colors.dim('Start a conversation first.')}\n`
+        } else {
+          const forked = session.fork()
+          // Switch to the new session
+          session = forked
+          session.onPlanWritten = planCb
+          // Rebuild system prompt for new session
+          const baseTitle = session.sessionTitle || 'forked session'
+          chatContent += `\n${colors.accent('\u2442')} Forked new session: ${colors.warn(baseTitle)}\n`
+          chatContent += `  ${colors.dim('ID:')} ${session.sessionId}\n`
+        }
+        chatMarkdown.setText(chatContent)
         return
       }
 
