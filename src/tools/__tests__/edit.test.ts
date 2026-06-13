@@ -125,7 +125,8 @@ describe('findAllLinesTolerant', () => {
     const result = findAllLinesTolerant('hello\r\nworld\r\nfoo\r\n', 'hello\nworld')
     expect(result).toHaveLength(1)
     expect(result[0]!.index).toBe(0)
-    expect(result[0]!.length).toBe(13)
+    // 12 = 'hello\r' (6) + '\n' (1) + 'world' (5, trailing \r excluded)
+    expect(result[0]!.length).toBe(12)
     const match = contentSlice('hello\r\nworld\r\nfoo\r\n', result[0]!)
     expect(match).toBe('hello\r\nworld')
   })
@@ -134,7 +135,7 @@ describe('findAllLinesTolerant', () => {
     const result = findAllLinesTolerant('hello\r\nworld\nfoo\r\n', 'hello\nworld')
     expect(result).toHaveLength(1)
     expect(result[0]!.index).toBe(0)
-    expect(result[0]!.length).toBe(13)
+    expect(result[0]!.length).toBe(12)
     const match = contentSlice('hello\r\nworld\nfoo\r\n', result[0]!)
     expect(match).toBe('hello\r\nworld')
   })
@@ -142,9 +143,10 @@ describe('findAllLinesTolerant', () => {
   it('handles CRLF with whitespace normalization', () => {
     const result = findAllLinesTolerant('hello \r\nworld\r\n', 'hello\nworld')
     expect(result).toHaveLength(1)
-    expect(result[0]!.length).toBe(14)
+    // 13 = 'hello \r' (7) + '\n' (1) + 'world' (5, trailing \r excluded)
+    expect(result[0]!.length).toBe(13)
     const match = contentSlice('hello \r\nworld\r\n', result[0]!)
-    expect(match).toBe('hello \r\nworld\r')
+    expect(match).toBe('hello \r\nworld')
   })
 })
 
@@ -256,7 +258,7 @@ describe('generateDiffWithContext', () => {
   })
 
   it('handles matchIndex at exact end of content (append behavior)', () => {
-    const output = generateDiffWithContext('line1\nline2', '', 'appended', 12, 0)
+    const output = generateDiffWithContext('line1\nline2', '', 'appended', 11, 0)
     expect(output).toContain('appended')
     // Should show line 2 context (the last line)
     expect(output).toContain('line2')
@@ -879,12 +881,12 @@ describe('edit tool �?edge cases', () => {
 
     it('rejects path traversal via symlink (if supported)', async () => {
       let canSymlink = false
-      const symDir = path.join(tmpDir, 'symlink-target-outside')
+      const externalDir = path.join(os.tmpdir(), 'lonny-symlink-target-' + Date.now())
       const symLink = path.join(tmpDir, 'symlink-inside')
       try {
-        fs.mkdirSync(symDir, { recursive: true })
-        fs.writeFileSync(path.join(symDir, 'malicious.txt'), 'evil')
-        fs.symlinkSync(symDir, symLink, 'junction')
+        fs.mkdirSync(externalDir, { recursive: true })
+        fs.writeFileSync(path.join(externalDir, 'malicious.txt'), 'evil')
+        fs.symlinkSync(externalDir, symLink, 'junction')
         canSymlink = fs.existsSync(symLink)
       } catch {
         canSymlink = false
@@ -902,6 +904,11 @@ describe('edit tool �?edge cases', () => {
       })
       expect(r.success).toBe(false)
       expect(r.error).toContain('traversal')
+
+      // Cleanup
+      try {
+        fs.rmSync(externalDir, { recursive: true, force: true })
+      } catch {}
     })
   })
   describe('error message quality', () => {

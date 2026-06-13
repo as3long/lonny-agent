@@ -251,7 +251,11 @@ export function findAllLinesTolerant(content: string, oldString: string): MatchP
       // Compute matched text length in ORIGINAL content
       let matchedLen = 0
       for (let j = 0; j < oldLines.length; j++) {
-        matchedLen += contentLines[start + j]!.length
+        const line = contentLines[start + j]!
+        let lineLen = line.length
+        // CRLF: the last line's trailing \r is part of content but not in oldString
+        if (j === oldLines.length - 1 && line.endsWith('\r')) lineLen -= 1
+        matchedLen += lineLen
         if (j < oldLines.length - 1) matchedLen += 1 // +1 for the \n
       }
       matches.push({ index: charPos, length: matchedLen })
@@ -523,8 +527,14 @@ CRITICAL RULES:
         }
       }
 
-      // ── Path traversal security check ──────────────────────────────────
+      // ── Path traversal security check (symlink-aware) ─────────────────
       const resolvedCwd = path.resolve(cwd)
+      let realCwd: string
+      try {
+        realCwd = fs.realpathSync(resolvedCwd)
+      } catch {
+        realCwd = resolvedCwd
+      }
       for (let i = 0; i < edits.length; i++) {
         const e = edits[i]
         const resolved = path.resolve(cwd, e.file_path)
@@ -539,6 +549,37 @@ CRITICAL RULES:
               '" resolves outside the working directory "' +
               resolvedCwd +
               '". All file paths must be within the project directory.',
+          }
+        }
+        // Symlink-aware check: resolve real path to detect traversal via symlink
+        let realPath: string
+        try {
+          realPath = fs.realpathSync(resolved)
+        } catch {
+          // File doesn't exist yet – resolve nearest existing ancestor through symlinks
+          let dir = path.dirname(resolved)
+          while (!fs.existsSync(dir)) {
+            const parent = path.dirname(dir)
+            if (parent === dir) break // root
+            dir = parent
+          }
+          try {
+            realPath = path.join(fs.realpathSync(dir), path.relative(dir, resolved))
+          } catch {
+            realPath = resolved
+          }
+        }
+        const realRelative = path.relative(realCwd, realPath)
+        if (realRelative.startsWith('..') || path.isAbsolute(realRelative)) {
+          return {
+            success: false,
+            output: '',
+            error:
+              'edit FAILED — Path traversal detected via symlink: "' +
+              e.file_path +
+              '" resolves outside "' +
+              realCwd +
+              '".',
           }
         }
       }
