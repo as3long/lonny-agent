@@ -318,35 +318,51 @@ export function hideThinking() {
 
 export function renderSessionHistory(messages) {
   if (!Array.isArray(messages)) return
+  let rendered = 0
+  let errors = 0
   for (const msg of messages) {
-    if (msg.role === 'user') {
-      addUserMessage(msg.content || '')
-    } else if (msg.role === 'assistant') {
-      startAssistantMessage()
-      if (msg.reasoning_content) {
-        showThinking(msg.reasoning_content)
-        hideThinking()
-      }
-      if (msg.content) {
-        state.streamingText = msg.content
-        const body = state.streamingMsgEl.querySelector('.message-body')
-        body.innerHTML = renderMarkdown(msg.content)
-      }
-      if (msg.tool_calls && msg.tool_calls.length > 0) {
-        for (const tc of msg.tool_calls) {
-          addToolCall(tc.name, tc.input)
+    try {
+      if (msg.role === 'user') {
+        addUserMessage(msg.content || '')
+      } else if (msg.role === 'assistant') {
+        startAssistantMessage()
+        if (msg.reasoning_content) {
+          showThinking(msg.reasoning_content)
+          hideThinking()
+        }
+        if (msg.content) {
+          state.streamingText = msg.content
+          const body = state.streamingMsgEl.querySelector('.message-body')
+          body.innerHTML = renderMarkdown(msg.content)
+        }
+        if (msg.tool_calls && msg.tool_calls.length > 0) {
+          for (const tc of msg.tool_calls) {
+            addToolCall(tc.name, tc.input)
+          }
+        }
+        finalizeAssistantMessage()
+      } else if (msg.role === 'tool') {
+        const content = msg.content || ''
+        const isError = content.startsWith('ERROR: ')
+        if (isError) {
+          addToolResult(msg.name || '', false, content.replace(/^ERROR:\s*/, ''))
+        } else {
+          addToolResult(msg.name || '', true, content)
         }
       }
-      finalizeAssistantMessage()
-    } else if (msg.role === 'tool') {
-      const content = msg.content || ''
-      const isError = content.startsWith('ERROR: ')
-      if (isError) {
-        addToolResult(msg.name || '', false, content.replace(/^ERROR:\s*/, ''))
-      } else {
-        addToolResult(msg.name || '', true, content)
-      }
+      rendered++
+    } catch (err) {
+      errors++
+      console.error(
+        '[renderSessionHistory] Error rendering message #' + rendered + ' role=' + msg.role + ':',
+        err,
+      )
     }
+  }
+  if (errors > 0) {
+    console.warn(
+      '[renderSessionHistory] Rendered ' + rendered + ' messages with ' + errors + ' errors',
+    )
   }
 }
 

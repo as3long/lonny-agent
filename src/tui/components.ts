@@ -132,14 +132,15 @@ export function loadTodos(filePath: string): string {
     const lines = content.split('\n')
     const todos: string[] = []
     let inTodo = false
-    for (const line of lines) {
-      if (line.startsWith('## Todo List')) {
+    for (const raw of lines) {
+      const line = raw.trim()
+      if (/^##\s+todo/i.test(line)) {
         inTodo = true
         continue
       }
-      if (inTodo && line.startsWith('## ')) break
+      if (inTodo && /^##\s/.test(line)) break
       if (inTodo) {
-        const m = line.trim().match(/^- \[([ x])\]\s+(.+)/)
+        const m = line.match(/^- \[([ x])\]\s+(.+)/)
         if (m) {
           const done = m[1] === 'x'
           const check = done ? '\u2705' : '\u2B1C'

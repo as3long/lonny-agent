@@ -60,6 +60,29 @@ function getSessionDir(): string {
   return path.join(os.homedir(), '.lonny', 'sessions')
 }
 
+function getLogDir(): string {
+  return path.join(os.homedir(), '.lonny', 'log')
+}
+
+function logToolError(tc: ToolCall, result: ToolResult, sessionId: string): void {
+  const logDir = getLogDir()
+  ensureDir(logDir)
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const fileName = `tool-error-${sessionId}-${timestamp}.json`
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    sessionId,
+    toolName: tc.name,
+    toolInput: tc.input,
+    error: result.error || '',
+  }
+  try {
+    fs.writeFileSync(path.join(logDir, fileName), JSON.stringify(logEntry, null, 2), 'utf-8')
+  } catch {
+    // Silently ignore log write failures
+  }
+}
+
 /** Base name for session files (safe directory name + hash) */
 function getSessionBaseName(cwd: string): string {
   const absPath = path.resolve(cwd)
@@ -411,7 +434,12 @@ export class Session {
   /** Initialize the system prompt asynchronously */
   private initSystemPrompt(config: Config): void {
     buildSystemPrompt(config, this.registry.getDefinitions()).then(prompt => {
-      this.messages = [{ role: 'system', content: prompt }]
+      // Only replace messages if they haven't been loaded from saved session data.
+      // loadFromData() sets this.messages to data.messages (which has many messages),
+      // and we must NOT overwrite them with a bare system prompt.
+      if (this.messages.length <= 1) {
+        this.messages = [{ role: 'system', content: prompt }]
+      }
     })
   }
 
@@ -461,7 +489,27 @@ export class Session {
   static async load(config: Config, output?: SessionOutput): Promise<Session | null> {
     // 1. Try multi-session files first (new format)
     const cwdSessions = getSessionFilesForCwd(config.cwd)
+    console.log(
+      `[session] Found ${cwdSessions.length} session files for cwd "${config.cwd}":`,
+      cwdSessions
+        .map(
+          f =>
+            `${f.fileName} (updatedAt=${f.data.updatedAt?.slice(0, 19)}, messages=${f.data.messages?.length || 0})`,
+        )
+        .join(', '),
+    )
     if (cwdSessions.length > 0) {
+      // Prefer the session with the MOST messages (most complete conversation).
+      // When multiple session files exist (e.g., after /new without proper cleanup,
+      // or test artifacts), the most recent file might be an empty/new session,
+      // and the old session with all messages gets ignored.
+      cwdSessions.sort((a, b) => {
+        const aLen = a.data.messages?.length || 0
+        const bLen = b.data.messages?.length || 0
+        if (aLen !== bLen) return bLen - aLen // more messages first
+        return b.data.updatedAt.localeCompare(a.data.updatedAt) // newer first as tiebreak
+      })
+      console.log(`[session] Loading session file: ${cwdSessions[0].fileName}`)
       return Session.loadFromData(cwdSessions[0].data, config, output)
     }
 
@@ -527,16 +575,22 @@ export class Session {
     const session = new Session(config, output)
     // Restore messages (replace the default system prompt with the saved one)
     session.messages = data.messages
+    console.log(`[session] Loading session ${data.id}: ${data.messages.length} messages from disk`)
+    // Sanitize loaded messages to fix any corrupted sequences
+    // (e.g., assistant with tool_calls but no tool responses from interrupted sessions)
+    session.sanitizeMessages()
+    console.log(
+      `[session] After sanitize: ${session.messages.length} messages (removed ${data.messages.length - session.messages.length})`,
+    )
     // Restore session identity
     session.sessionId = data.id
     session.sessionTitle = data.title || ''
     session.sessionCreatedAt = data.createdAt
-    // Refresh the system prompt only if config actually changed (model, mode, etc.)
-    if (
-      data.model !== config.model ||
-      data.provider !== config.provider ||
-      data.mode !== config.mode
-    ) {
+    // Restore mode to config so the UI/CLI reflects the saved session's mode
+    config.mode = data.mode
+    session.registry.setMode(data.mode)
+    // Rebuild system prompt if model or provider changed
+    if (data.model !== config.model || data.provider !== config.provider) {
       const prompt = await buildSystemPrompt(config, session.registry.getDefinitions())
       session.messages[0] = { role: 'system', content: prompt }
     }
@@ -704,6 +758,28 @@ export class Session {
     return fullPath
   }
 
+  /**
+   * Detect if the model's response indicates the task is complete.
+   * Used as a fallback when the model writes completion text instead of
+   * calling the task_complete tool.
+   */
+  private isTaskCompleteMessage(text: string): boolean {
+    if (!text) return false
+    const lower = text.toLowerCase()
+    const patterns = [
+      'task complete',
+      'task_complete',
+      'task is complete',
+      'all tasks complete',
+      '任务完成',
+      '任务已完成',
+      '全部完成',
+      '没有更多任务',
+      '无需继续',
+    ]
+    return patterns.some(p => lower.includes(p))
+  }
+
   /** Get a continuation message for loop mode — feeds the model a new user message to continue working */
   private getContinuationMessage(): string {
     const firstUserMsg = this.messages.find(m => m.role === 'user')
@@ -713,7 +789,7 @@ export class Session {
         : 'the original task'
     return `[auto-continuation] The previous turn completed. Continue working on the original task: ${taskHint}
 
-If you believe the task is complete, provide a clear summary of what was accomplished and the system will detect this. Otherwise, continue with the next steps.`
+If you believe the task is complete, call the task_complete tool with a summary of what was accomplished to end the session. Otherwise, continue with the next steps.`
   }
 
   async setMode(mode: 'code' | 'plan' | 'ask' | 'loop'): Promise<void> {
@@ -742,6 +818,42 @@ If you believe the task is complete, provide a clear summary of what was accompl
     this.stopped = false
     // Create new AbortController for next conversation
     this.abortController = new AbortController()
+  }
+
+  /**
+   * Remove assistant messages with tool_calls that have no corresponding
+   * tool responses. These can be left behind by stream errors or user
+   * interrupts mid-tool-call, and the LLM API will reject them.
+   */
+  private sanitizeMessages(): void {
+    const sanitized: LLMMessage[] = []
+    for (let i = 0; i < this.messages.length; i++) {
+      const msg = this.messages[i]
+      if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+        const pendingIds = new Set(msg.tool_calls.map(tc => tc.id))
+        let j = i + 1
+        while (
+          j < this.messages.length &&
+          this.messages[j].role === 'tool' &&
+          pendingIds.size > 0
+        ) {
+          const toolMsg = this.messages[j]
+          if (toolMsg.tool_call_id && pendingIds.has(toolMsg.tool_call_id)) {
+            pendingIds.delete(toolMsg.tool_call_id)
+          }
+          j++
+        }
+        if (pendingIds.size > 0) {
+          const dropped = msg.tool_calls.map(tc => `${tc.name}(${tc.id})`).join(', ')
+          console.warn(
+            `[session] Dropping assistant message with unfulfilled tool_calls: ${dropped}`,
+          )
+          continue
+        }
+      }
+      sanitized.push(msg)
+    }
+    this.messages = sanitized
   }
 
   async chat(userPrompt: string): Promise<void> {
@@ -793,6 +905,7 @@ If you believe the task is complete, provide a clear summary of what was accompl
       // Only pass core tools + gateway to the LLM API; the prompt tree
       // documents the full tool catalog so the model knows what extended
       // tools are reachable via the `tool()` gateway.
+      this.sanitizeMessages()
       const stream = this.provider.chat(
         this.messages,
         this.registry.getCoreDefinitions(),
@@ -976,6 +1089,11 @@ If you believe the task is complete, provide a clear summary of what was accompl
                 this.save()
                 // Loop mode: automatically continue with a continuation prompt
                 if (this.config.mode === 'loop' && !this.isStopped()) {
+                  // Check if the model indicated completion in text (fallback for not calling task_complete)
+                  if (this.isTaskCompleteMessage(fullResponse)) {
+                    this.save()
+                    return
+                  }
                   const contMsg = this.getContinuationMessage()
                   this.messages.push({ role: 'user', content: contMsg })
                   // Reset per-turn counters for the next iteration
@@ -1080,6 +1198,11 @@ If you believe the task is complete, provide a clear summary of what was accompl
         this.save()
         // Loop mode: automatically continue with a continuation prompt
         if (this.config.mode === 'loop' && !this.isStopped()) {
+          // Check if the model indicated completion in text (fallback for not calling task_complete)
+          if (fullResponse && this.isTaskCompleteMessage(fullResponse)) {
+            this.save()
+            return
+          }
           const contMsg = this.getContinuationMessage()
           this.messages.push({ role: 'user', content: contMsg })
           // Reset per-turn counters for the next iteration
@@ -1100,7 +1223,9 @@ If you believe the task is complete, provide a clear summary of what was accompl
         reasoning_content: reasoningContent,
       }
       this.messages.push(assistantMsg)
-      this.save()
+      // Don't save here — assistant with tool_calls but no tool responses creates
+      // invalid state that sanitizeMessages() will drop on reload.
+      // Instead, save after each tool result below for real-time persistence.
 
       // ── User confirmation for write-type tool calls ──
       if (!this.config.autoApprove && this.output?.confirmTool && toolCalls.length > 0) {
@@ -1150,6 +1275,8 @@ If you believe the task is complete, provide a clear summary of what was accompl
           bus.emit(EventChannels.TOOL_RESULT, { name: tc.name, id: tc.id, output: result.output })
         } else {
           bus.emit(EventChannels.TOOL_ERROR, { name: tc.name, id: tc.id, error: result.error })
+          // Log tool failures to ~/.lonny/log/ for debugging
+          logToolError(tc, result, this.sessionId)
         }
         if (!out?.suppressToolOutput) {
           printToolResult(tc, result, out)
@@ -1162,8 +1289,23 @@ If you believe the task is complete, provide a clear summary of what was accompl
           name: tc.name,
         }
         this.messages.push(resultMsg)
+        // Don't save after individual tool results — it creates incomplete states
+        // where the assistant has tool_calls but only some tool responses.
+        // sanitizeMessages would drop these on reload, creating orphaned tool results.
+        // Instead, save below once after ALL tools are dispatched.
+
+        // If the model called task_complete, stop the loop immediately
+        if (tc.name === 'task_complete') {
+          // Save task_complete result immediately so it survives page refresh.
+          // This save includes the completed tool results + task_complete result,
+          // which is a valid complete sequence for sanitizeMessages.
+          this.save()
+          this.stopped = true
+          break
+        }
       }
 
+      // Save after ALL tools are dispatched — guaranteed complete state.
       this.save()
 
       // End the current turn before next iteration — frontend creates a new message

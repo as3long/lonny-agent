@@ -172,14 +172,15 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
         const content = fs.readFileSync(plan.fullPath, 'utf-8')
         const lines = content.split('\n')
         let inTodo = false
-        for (const line of lines) {
-          if (line.startsWith('## Todo List')) {
+        for (const raw of lines) {
+          const line = raw.trim()
+          if (/^##\s+todo/i.test(line)) {
             inTodo = true
             continue
           }
-          if (inTodo && line.startsWith('## ')) break
+          if (inTodo && /^##\s/.test(line)) break
           if (inTodo) {
-            const m = line.trim().match(/^- \[([ x])\]\s+(.+)/)
+            const m = line.match(/^- \[([ x])\]\s+(.+)/)
             if (m) {
               todos.push({ text: m[2], done: m[1] === 'x' })
             }
