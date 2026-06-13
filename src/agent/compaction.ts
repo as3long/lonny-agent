@@ -186,12 +186,19 @@ function buildSummary(messages: LLMMessage[]): string {
 
 function extractEditPaths(input: Record<string, unknown>): string[] {
   const paths: string[] = []
+  // Accumulate paths from legacy input format: { edits: [{ file_path: '...' }, ...] }
   if (Array.isArray(input.edits)) {
     for (const e of input.edits) {
       if (typeof e === 'object' && e && 'file_path' in e) {
-        paths.push(e.file_path as string)
+        paths.push((e as Record<string, unknown>).file_path as string)
       }
     }
   }
-  return paths
+  // Also support direct input format used by tests: { file_path: '...' }
+  const direct = input as Record<string, unknown>
+  if (typeof direct.file_path === 'string') {
+    paths.push(direct.file_path)
+  }
+  // Deduplicate to avoid reporting duplicates
+  return Array.from(new Set(paths))
 }

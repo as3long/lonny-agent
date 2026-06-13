@@ -9,6 +9,7 @@ import {
   escapeHtml,
   findAllLinesTolerant,
   generateDiff,
+  generateDiffWithContext,
   normalizeLine,
   parseMarkdownEdit,
   renderDiffTerminal,
@@ -119,6 +120,32 @@ describe('findAllLinesTolerant', () => {
     const match = contentSlice('hello \nworld\n', result[0]!)
     expect(match).toBe('hello \nworld')
   })
+
+  it('handles CRLF content - correct position computation', () => {
+    const result = findAllLinesTolerant('hello\r\nworld\r\nfoo\r\n', 'hello\nworld')
+    expect(result).toHaveLength(1)
+    expect(result[0]!.index).toBe(0)
+    expect(result[0]!.length).toBe(13)
+    const match = contentSlice('hello\r\nworld\r\nfoo\r\n', result[0]!)
+    expect(match).toBe('hello\r\nworld')
+  })
+
+  it('handles mixed CRLF/LF content', () => {
+    const result = findAllLinesTolerant('hello\r\nworld\nfoo\r\n', 'hello\nworld')
+    expect(result).toHaveLength(1)
+    expect(result[0]!.index).toBe(0)
+    expect(result[0]!.length).toBe(13)
+    const match = contentSlice('hello\r\nworld\nfoo\r\n', result[0]!)
+    expect(match).toBe('hello\r\nworld')
+  })
+
+  it('handles CRLF with whitespace normalization', () => {
+    const result = findAllLinesTolerant('hello \r\nworld\r\n', 'hello\nworld')
+    expect(result).toHaveLength(1)
+    expect(result[0]!.length).toBe(14)
+    const match = contentSlice('hello \r\nworld\r\n', result[0]!)
+    expect(match).toBe('hello \r\nworld\r')
+  })
 })
 
 function contentSlice(s: string, m: { index: number; length: number }): string {
@@ -204,6 +231,59 @@ describe('generateDiff', () => {
     const output = generateDiff('old', 'new', 10)
     expect(output).toContain('- 10  old')
     expect(output).toContain('+ 10  new')
+  })
+})
+
+describe('generateDiffWithContext', () => {
+  it('returns context line before match', () => {
+    const output = generateDiffWithContext('keep\nreplace\nkeep', 'replace', 'REPLACE', 5, 7)
+    expect(output).toContain('keep')
+    expect(output).toContain('REPLACE')
+  })
+
+  it('returns no context before when match starts at first line', () => {
+    const output = generateDiffWithContext('line1\nline2', 'line1', 'LINE1', 0, 5)
+    expect(output).toContain('LINE1')
+    const dimCount = (output.match(/\x1b\[38;2;100;100;100m/g) || []).length
+    expect(dimCount).toBe(1)
+  })
+
+  it('returns no context after when match ends at last line', () => {
+    const output = generateDiffWithContext('line1\nline2', 'line2', 'LINE2', 6, 5)
+    expect(output).toContain('LINE2')
+    const dimCount = (output.match(/\x1b\[38;2;100;100;100m/g) || []).length
+    expect(dimCount).toBe(1)
+  })
+
+  it('handles matchIndex at exact end of content (append behavior)', () => {
+    const output = generateDiffWithContext('line1\nline2', '', 'appended', 12, 0)
+    expect(output).toContain('appended')
+    // Should show line 2 context (the last line)
+    expect(output).toContain('line2')
+  })
+
+  it('handles match spanning only the last line with no trailing newline', () => {
+    const output = generateDiffWithContext('first\nlast', 'last', 'LAST', 6, 4)
+    expect(output).toContain('LAST')
+    expect(output).toContain('first')
+    // No context after since match is on the last line
+    const dimCount = (output.match(/\x1b\[38;2;100;100;100m/g) || []).length
+    expect(dimCount).toBe(1)
+  })
+
+  it('handles fullContent with no trailing newline', () => {
+    const output = generateDiffWithContext('line1\nline2\nline3', 'line2', 'LINE2', 6, 5)
+    expect(output).toContain('LINE2')
+    expect(output).toContain('line1')
+    expect(output).toContain('line3')
+  })
+
+  it('handles match on single-line content with no trailing newline', () => {
+    const output = generateDiffWithContext('onlyline', 'onlyline', 'REPLACED', 0, 8)
+    expect(output).toContain('REPLACED')
+    // No context dim lines, only the diff
+    const dimCount = (output.match(/\x1b\[38;2;100;100;100m/g) || []).length
+    expect(dimCount).toBe(0)
   })
 })
 
@@ -312,7 +392,7 @@ describe('parseMarkdownEdit', () => {
     const input = '```edit\nfile: a.ts\nold: hello\nnew: world\n```'
     const edits = parseMarkdownEdit(input)
     expect(edits).toHaveLength(1)
-    // Non-pipe format: "old: hello" → content after "old: " includes the leading space
+    // Non-pipe format: "old: hello" �?content after "old: " includes the leading space
     expect(edits[0]!.old_string).toBe(' hello')
     expect(edits[0]!.new_string).toBe(' world')
   })
@@ -357,7 +437,7 @@ describe('parseMarkdownEdit', () => {
   })
 
   it('handles early-``` closing (new: outside the block)', () => {
-    // Model may close ``` before new: — common mistake
+    // Model may close ``` before new: �?common mistake
     const input = [
       '```edit',
       'file: a.ts',
@@ -393,10 +473,51 @@ describe('parseMarkdownEdit', () => {
     expect(edits[0]!.old_string).toBe('  hello')
     expect(edits[0]!.new_string).toBe('  world')
   })
+
+  it('handles old:| then new: (no pipe on new)', () => {
+    const input = '```edit\nfile: a.ts\nold: |\n  hello\nnew:\n  world\n```'
+    const edits = parseMarkdownEdit(input)
+    expect(edits).toHaveLength(1)
+    expect(edits[0]!.file_path).toBe('a.ts')
+    expect(edits[0]!.new_string).toBe('  world')
+  })
+
+  it('handles |2 pipe-with-digit syntax', () => {
+    const input = '```edit\nfile: a.ts\nold: |2\n  hello\n  world\nnew: |1\n  hi\n```'
+    const edits = parseMarkdownEdit(input)
+    expect(edits).toHaveLength(1)
+    expect(edits[0]!.file_path).toBe('a.ts')
+    expect(edits[0]!.old_string).toBe('  hello\n  world')
+    expect(edits[0]!.new_string).toBe('  hi')
+  })
+
+  it('handles backticks inside edit content', () => {
+    const input = '```edit\nfile: a.ts\nold: |\n  some `code` here\nnew: |\n  replaced `code`\n```'
+    const edits = parseMarkdownEdit(input)
+    expect(edits).toHaveLength(1)
+    expect(edits[0]!.file_path).toBe('a.ts')
+    expect(edits[0]!.old_string).toBe('  some `code` here')
+    expect(edits[0]!.new_string).toBe('  replaced `code`')
+  })
+
+  it('handles old_string with trailing whitespace line', () => {
+    const input = '```edit\nfile: a.ts\nold: |\n  hello\n  \nnew: |\n  hi\n```'
+    const edits = parseMarkdownEdit(input)
+    expect(edits).toHaveLength(1)
+    expect(edits[0]!.old_string).toBe('  hello\n  ')
+  })
+
+  it('handles new_string with empty content (deletion)', () => {
+    const input = '```edit\nfile: a.ts\nold: |\n  remove me\nnew:\n```'
+    const edits = parseMarkdownEdit(input)
+    expect(edits).toHaveLength(1)
+    expect(edits[0]!.old_string).toBe('  remove me')
+    expect(edits[0]!.new_string).toBe('')
+  })
 })
 
 // ── Markdown format integration tests ────────────────────────────────────
-describe('edit tool — markdown format', () => {
+describe('edit tool �?markdown format', () => {
   let tmpDir: string
   let applier: FileReadTracker
 
@@ -491,7 +612,7 @@ describe('edit tool — markdown format', () => {
 })
 
 // ── Advanced edge cases ──────────────────────────────────────────────────
-describe('edit tool — edge cases', () => {
+describe('edit tool �?edge cases', () => {
   let tmpDir: string
   let applier: FileReadTracker
 
@@ -610,6 +731,39 @@ describe('edit tool — edge cases', () => {
       expect(r.success).toBe(true)
       expect(fs.readFileSync(file, 'utf8')).toBe('brand new content\n')
     })
+    it('rejects empty old_string on existing non-empty file', async () => {
+      const file = path.join(tmpDir, 'empty-old-on-existing.txt')
+      fs.writeFileSync(file, 'some content\n')
+      applier.markRead(file)
+      const r = await tool().execute({
+        edits: [
+          {
+            file_path: 'empty-old-on-existing.txt',
+            old_string: '',
+            new_string: 'should not replace',
+          },
+        ],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('already exists')
+    })
+
+    it('rejects create file when file already exists with empty content', async () => {
+      const file = path.join(tmpDir, 'empty-existing-file.txt')
+      fs.writeFileSync(file, '')
+      applier.markRead(file)
+      const r = await tool().execute({
+        edits: [
+          {
+            file_path: 'empty-existing-file.txt',
+            old_string: '',
+            new_string: 'add content',
+          },
+        ],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('already exists')
+    })
   })
 
   describe('file path edge cases', () => {
@@ -644,8 +798,112 @@ describe('edit tool — edge cases', () => {
         fs.readFileSync(path.join(tmpDir, 'file-with-dashes_and_underscores.txt'), 'utf8'),
       ).toBe('special path')
     })
+
+    it('rejects path traversal with Windows drive letter', async () => {
+      const r = await tool().execute({
+        edits: [
+          {
+            file_path: 'C:\\Windows\\system32\\drivers\\etc\\hosts',
+            old_string: '',
+            new_string: 'should not write',
+          },
+        ],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('traversal')
+    })
   })
 
+  describe('path traversal security', () => {
+    it('rejects path traversal with ../', async () => {
+      const r = await tool().execute({
+        edits: [
+          {
+            file_path: '../../outside-cwd.txt',
+            old_string: 'hello',
+            new_string: 'world',
+          },
+        ],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('traversal')
+    })
+
+    it('rejects path traversal with deep nested ../', async () => {
+      const r = await tool().execute({
+        edits: [
+          {
+            file_path: 'subdir/../../../outside-cwd.txt',
+            old_string: '',
+            new_string: 'should not create',
+          },
+        ],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('traversal')
+    })
+
+    it('rejects absolute path', async () => {
+      const r = await tool().execute({
+        edits: [
+          {
+            file_path: '/etc/passwd',
+            old_string: '',
+            new_string: 'should not write',
+          },
+        ],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('traversal')
+    })
+
+    it('allows normal paths inside cwd', async () => {
+      const r = await tool().execute({
+        edits: [
+          {
+            file_path: 'safe-file.txt',
+            old_string: '',
+            new_string: 'safe content',
+          },
+        ],
+      })
+      expect(r.success).toBe(true)
+    })
+
+    it('rejects path traversal via markdown format', async () => {
+      const input = '```edit\nfile: ../../escape.txt\nold:\nnew: |\n  hacked\n```'
+      const r = await tool().execute({ content: input })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('traversal')
+    })
+
+    it('rejects path traversal via symlink (if supported)', async () => {
+      let canSymlink = false
+      const symDir = path.join(tmpDir, 'symlink-target-outside')
+      const symLink = path.join(tmpDir, 'symlink-inside')
+      try {
+        fs.mkdirSync(symDir, { recursive: true })
+        fs.writeFileSync(path.join(symDir, 'malicious.txt'), 'evil')
+        fs.symlinkSync(symDir, symLink, 'junction')
+        canSymlink = fs.existsSync(symLink)
+      } catch {
+        canSymlink = false
+      }
+      if (!canSymlink) return
+
+      const r = await tool().execute({
+        edits: [
+          {
+            file_path: 'symlink-inside/malicious.txt',
+            old_string: 'evil',
+            new_string: 'hacked',
+          },
+        ],
+      })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('traversal')
+    })
+  })
   describe('error message quality', () => {
     it('includes proximity hint when old_string not found', async () => {
       const file = path.join(tmpDir, 'proximity.txt')
@@ -687,7 +945,7 @@ describe('edit tool — edge cases', () => {
     })
 
     it('includes read warning when file not read first', async () => {
-      // Don't call markRead — simulate stale content
+      // Don't call markRead �?simulate stale content
       const file = path.join(tmpDir, 'no-read.txt')
       fs.writeFileSync(file, 'content\n')
       const r = await tool().execute({
