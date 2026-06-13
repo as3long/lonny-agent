@@ -490,9 +490,12 @@ If you believe the task is complete, provide a clear summary of what was accompl
       bus.emit(EventChannels.TURN_START, { prompt: userPrompt, iteration: iterations })
       bus.emit(EventChannels.LLM_STREAM_START, { iteration: iterations })
 
+      // Only pass core tools + gateway to the LLM API; the prompt tree
+      // documents the full tool catalog so the model knows what extended
+      // tools are reachable via the `tool()` gateway.
       const stream = this.provider.chat(
         this.messages,
-        this.registry.getDefinitions(),
+        this.registry.getCoreDefinitions(),
         this.abortController.signal,
       )
 

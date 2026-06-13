@@ -18,6 +18,12 @@ import type { Tool, ToolCall, ToolDefinition, ToolResult } from './types.js'
 import { createWritePlanTool } from './write_plan.js'
 
 /**
+ * Tools in this set are passed directly to the LLM API's `tools` parameter.
+ * All other tools must be invoked via the `tool()` gateway.
+ */
+const CORE_TOOL_NAMES = new Set(['read', 'edit', 'bash', 'glob', 'grep'])
+
+/**
  * Normalize tool input to prevent common LLM call misuses.
  * The LLM sometimes passes parameters in the wrong format — this function
  * auto-corrects those patterns so tools work reliably.
@@ -96,14 +102,66 @@ export class ToolRegistry {
   private tools: Map<string, Tool> = new Map()
   private context: ToolContext
   private plugins: Map<string, ToolPlugin> = new Map()
+  private gatewayTool: Tool
 
   constructor(context: ToolContext) {
     this.context = context
+    this.gatewayTool = this.createGatewayTool()
     this.registerBuiltins()
+  }
+
+  /** Create the `tool()` gateway that proxies calls to extended (non-core) tools */
+  private createGatewayTool(): Tool {
+    const dispatch = this.dispatch.bind(this)
+    return {
+      definition: {
+        name: 'tool',
+        description: `Invoke an extended tool. Use this for tools not in the direct-access core set.
+
+The core tools are: read, edit, bash, glob, grep — use them directly.
+For everything else, call tool() with the tool name and its parameters.
+
+Examples:
+  tool({ name: "git", params: { command: "status" } })
+  tool({ name: "ls", params: { path: "src" } })
+  tool({ name: "find", params: { pattern: "*.ts" } })
+  tool({ name: "fetch", params: { url: "https://example.com" } })`,
+        parameters: {
+          name: {
+            type: 'string',
+            description: 'The extended tool name to invoke',
+            required: true,
+          },
+          params: {
+            type: 'object',
+            description: 'Tool-specific parameters as a JSON object',
+            required: true,
+          },
+        },
+      },
+      async execute(input) {
+        const name = input.name as string | undefined
+        if (!name || typeof name !== 'string') {
+          return { success: false, output: '', error: 'tool() requires a "name" field (string)' }
+        }
+        if (name === 'tool') {
+          return { success: false, output: '', error: 'Cannot call tool() recursively' }
+        }
+        const call: ToolCall = {
+          id: `gateway-${Date.now()}`,
+          name,
+          input: (input.params || {}) as Record<string, unknown>,
+        }
+        return dispatch(call)
+      },
+    }
   }
 
   /** Register all built-in tools */
   private registerBuiltins(): void {
+    // Register the gateway tool first so it's always available
+    this.register(this.gatewayTool)
+
     // ask mode: only fetch and search
     if (this.context.mode === 'ask') {
       this.register(fetchTool)
@@ -209,6 +267,19 @@ export class ToolRegistry {
 
   getDefinitions(): ToolDefinition[] {
     return Array.from(this.tools.values()).map(t => t.definition)
+  }
+
+  /** Get definitions for the core tool set + gateway (for LLM API's tools parameter) */
+  getCoreDefinitions(): ToolDefinition[] {
+    const core: ToolDefinition[] = []
+    for (const [name, tool] of this.tools) {
+      if (CORE_TOOL_NAMES.has(name)) {
+        core.push(tool.definition)
+      }
+    }
+    // Always include the gateway tool so the model can reach extended tools
+    core.push(this.gatewayTool.definition)
+    return core
   }
 
   async dispatch(call: ToolCall): Promise<ToolResult> {

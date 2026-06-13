@@ -68,7 +68,18 @@ export function buildToolTree(definitions: ToolDefinition[]): ToolTreeNode[] {
   return root
 }
 
-export function formatToolTreeForPrompt(definitions: ToolDefinition[]): string {
+/**
+ * Format the tool tree for inclusion in the system prompt.
+ *
+ * @param definitions - All tool definitions (for building the full tree)
+ * @param coreNames - Optional set of core tool names. When provided, tools NOT
+ *   in this set are annotated with "(via tool)" to indicate they require the
+ *   `tool()` gateway.
+ */
+export function formatToolTreeForPrompt(
+  definitions: ToolDefinition[],
+  coreNames?: Set<string>,
+): string {
   const lines: string[] = []
 
   function render(node: ToolTreeNode, level: number): void {
@@ -76,7 +87,8 @@ export function formatToolTreeForPrompt(definitions: ToolDefinition[]): string {
     if (node.type === 'group') {
       lines.push(`${indent}- ${node.name}`)
     } else {
-      lines.push(`${indent}- \`${node.name}\`: ${node.description || ''}`)
+      const suffix = coreNames && !coreNames.has(node.name) ? ' (via tool gateway)' : ''
+      lines.push(`${indent}- \`${node.name}\`: ${node.description || ''}${suffix}`)
     }
     for (const child of node.children || []) {
       render(child, level + 1)

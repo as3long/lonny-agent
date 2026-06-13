@@ -2,6 +2,9 @@ import * as os from 'node:os'
 import type { Config } from '../config/index.js'
 import { formatToolTreeForPrompt } from '../tools/tree.js'
 import type { ToolDefinition } from '../tools/types.js'
+
+const CORE_TOOL_NAMES = new Set(['read', 'edit', 'bash', 'glob', 'grep'])
+
 import { formatMemoryForPrompt, loadMemory } from './memory.js'
 import { discoverProject, formatProjectContext } from './project.js'
 import { formatSkillsForPrompt, loadSkills } from './skills.js'
@@ -47,7 +50,12 @@ export async function buildSystemPrompt(
           : mode === 'ask'
             ? 'Available tools:'
             : 'Available tools:'
-      return `${header}\n${formatToolTreeForPrompt(definitions)}\n`
+      const tree = formatToolTreeForPrompt(definitions, CORE_TOOL_NAMES)
+      const note =
+        mode !== 'ask'
+          ? '\n  Direct access: read, edit, bash, glob, grep\n  Extended tools: use `tool()` gateway (see tree above)\n'
+          : ''
+      return `${header}\n${tree}${note}\n`
     }
 
     // Fallback hardcoded lists (when definitions not available)

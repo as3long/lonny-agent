@@ -39,6 +39,7 @@ src/
 ## Key constraints
 
 - **Tool mode gating**: `ask` mode has only fetch/search; `plan` mode has read-only tools + write_plan; `code` mode has full edit capabilities
+- **Tiered access**: core tools (read/edit/bash/glob/grep) passed directly to LLM API; extended tools accessible via `tool()` gateway proxy in `registry.ts`
 - **File read tracking**: `edit` tool requires files to be read first (enforced by `FileReadTracker`)
 - **Biome config**: 2-space indent, 100 line width, single quotes, as-needed semicolons; several lint rules are explicitly disabled
 
@@ -47,6 +48,18 @@ src/
 Each tool definition has optional `category` (top-level) and `group` (second-level) metadata.
 `prompt-builder.ts` uses `formatToolTreeForPrompt()` from `tools/tree.ts` to render a hierarchically
 organized tool list in the system prompt (falls back to hardcoded lists if definitions not provided).
+
+### Tiered access (core vs gateway)
+
+To reduce the LLM's tool selection burden, tools are split into two tiers:
+
+- **Core tools** (direct access via API `tools` param): `read`, `edit`, `bash`, `glob`, `grep`
+- **Extended tools** (invoked via `tool()` gateway): everything else
+
+The LLM API only receives 6 tool definitions (5 core + `tool` gateway). The system prompt's
+tool tree documents the full catalog, marking extended tools with `(via tool gateway)`.
+When the model needs an extended tool, it calls `tool({ name: "...", params: {...} })`,
+which proxies the call through `ToolRegistry.dispatch()`.
 
 Current classification:
 
