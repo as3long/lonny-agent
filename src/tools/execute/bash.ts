@@ -732,12 +732,7 @@ Console encoding: ${ENCODING}
 
 ⚠️  Use this tool for READ-ONLY operations (run tests, check builds, list files).
 For creating/modifying files, use the 'edit' tool instead.
-For git operations (status, diff, log), use the 'git' tool instead.
-
-⚠️  PowerShell: \`Select-String\` exits with code 1 when no match is found.
-This is NORMAL — it does NOT mean the command failed.
-Use \`; $LASTEXITCODE = 0\` after the command to suppress the non-zero exit code.
-Use \`;\` (semicolon) instead of \`&&\` to chain commands. Use \`Select-Object -First\` instead of \`head\`.`,
+For git operations (status, diff, log), use the 'git' tool instead.`,
     parameters: {
       command: {
         type: 'string',
