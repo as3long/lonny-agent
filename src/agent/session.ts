@@ -1,365 +1,39 @@
-import { createHash, randomUUID } from 'node:crypto'
 import * as fs from 'node:fs'
-import * as os from 'node:os'
 import * as path from 'node:path'
 import type { Config } from '../config/index.js'
-import { saveTokenUsage } from '../config/tokens.js'
 import { FileReadTracker } from '../diff/apply.js'
-import { fmtErr } from '../tools/errors.js'
 import { ToolRegistry } from '../tools/registry.js'
-import type { ToolCall, ToolResult } from '../tools/types.js'
-import { compact, estimateMessagesTokens, shouldCompact } from './compaction.js'
-import { EventChannels, getGlobalEventBus } from './event-bus.js'
+import type { ToolCall } from '../tools/types.js'
 import type { LLMMessage, LLMProvider } from './llm.js'
 import { buildSystemPrompt } from './prompt-builder.js'
 import { AnthropicProvider } from './providers/anthropic.js'
 import { GoogleProvider } from './providers/google.js'
 import { OllamaProvider } from './providers/ollama.js'
 import { OpenAIProvider } from './providers/openai.js'
+import { runChat, sanitizeMessages } from './session-chat.js'
+import {
+  ensureDir,
+  findLegacySessionFile,
+  generateId,
+  getSessionDir,
+  getSessionFilePath,
+  getSessionFilesForCwd,
+  migrateSessionData,
+  type SessionData,
+  type SessionInfo,
+} from './session-persistence.js'
 
-// ── Session persistence ────────────────────────────────────────────────────
+export { formatToolInput } from './session-display.js'
 
-export interface SessionInfo {
-  id: string
-  cwd: string
-  title: string
-  messageCount: number
-  mode: 'code' | 'plan' | 'ask' | 'loop'
-  model: string
-  provider: string
-  totalInputTokens: number
-  totalOutputTokens: number
-  totalApiCalls: number
-  createdAt: string
-  updatedAt: string
-  fileName: string
-}
-
-interface SessionData {
-  id: string
-  cwd: string
-  title?: string
-  messages: LLMMessage[]
-  totalInputTokens: number
-  totalOutputTokens: number
-  totalApiCalls: number
-  totalCacheHitTokens?: number
-  totalCacheMissTokens?: number
-  mode: 'code' | 'plan' | 'ask' | 'loop'
-  model: string
-  provider: string
-  createdAt: string
-  updatedAt: string
-}
-
-function generateId(): string {
-  return randomUUID().slice(0, 8)
-}
-
-function getSessionDir(): string {
-  return path.join(os.homedir(), '.lonny', 'sessions')
-}
-
-function getLogDir(): string {
-  return path.join(os.homedir(), '.lonny', 'log')
-}
-
-function logToolError(tc: ToolCall, result: ToolResult, sessionId: string): void {
-  const logDir = getLogDir()
-  ensureDir(logDir)
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-  const fileName = `tool-error-${sessionId}-${timestamp}.json`
-  const logEntry = {
-    timestamp: new Date().toISOString(),
-    sessionId,
-    toolName: tc.name,
-    toolInput: tc.input,
-    error: result.error || '',
-  }
-  try {
-    fs.writeFileSync(path.join(logDir, fileName), JSON.stringify(logEntry, null, 2), 'utf-8')
-  } catch {
-    // Silently ignore log write failures
-  }
-}
-
-/** Base name for session files (safe directory name + hash) */
-function getSessionBaseName(cwd: string): string {
-  const absPath = path.resolve(cwd)
-  const hash = createHash('sha256').update(absPath, 'utf-8').digest('hex').slice(0, 12)
-  const dirName = path.basename(absPath)
-  const safeName = dirName.replace(/[<>:"/\\|?*]/g, '_')
-  return `${safeName}-${hash}`
-}
-
-/**
- * Get the file path for a session.
- * If sessionId is provided, uses multi-session naming: {base}-{id}.json
- * Otherwise returns the legacy single-session path: {base}.json
- */
-function getSessionFilePath(cwd: string, sessionId?: string): string {
-  const base = getSessionBaseName(cwd)
-  if (sessionId) {
-    return path.join(getSessionDir(), `${base}-${sessionId}.json`)
-  }
-  return path.join(getSessionDir(), `${base}.json`)
-}
-
-/** List all session files for a given cwd, sorted by updatedAt (most recent first). */
-function getSessionFilesForCwd(cwd: string): { fileName: string; data: SessionData }[] {
-  const dir = getSessionDir()
-  const base = getSessionBaseName(cwd)
-  try {
-    if (!fs.existsSync(dir)) return []
-    const files = fs.readdirSync(dir).filter(f => f.endsWith('.json') && f.startsWith(base))
-    const results: { fileName: string; data: SessionData }[] = []
-    for (const fileName of files) {
-      try {
-        const raw = JSON.parse(fs.readFileSync(path.join(dir, fileName), 'utf-8')) as Record<
-          string,
-          unknown
-        >
-        results.push({ fileName, data: migrateSessionData(raw) })
-      } catch {
-        // Skip corrupted files
-      }
-    }
-    results.sort((a, b) => b.data.updatedAt.localeCompare(a.data.updatedAt))
-    return results
-  } catch {
-    return []
-  }
-}
-
-/** Find the legacy single-session file for a cwd (backward compatibility). */
-function findLegacySessionFile(cwd: string): string | null {
-  const legacyPath = getSessionFilePath(cwd) // {base}.json (no sessionId)
-  if (fs.existsSync(legacyPath)) return legacyPath
-  return null
-}
-
-// Migrate old-format session files (without id) to new format
-function migrateSessionData(data: Record<string, unknown>): SessionData {
-  if (!data.id) {
-    data.id = generateId()
-  }
-  if (!data.createdAt) {
-    data.createdAt = (data.updatedAt as string) || new Date().toISOString()
-  }
-  return data as unknown as SessionData
-}
-
-function ensureDir(dir: string): void {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true })
-  }
-}
-
-// ── Colors ─────────────────────────────────────────────────────────────────
-
-const CY = '\x1b[36m'
-const GR = '\x1b[32m'
-const YE = '\x1b[33m'
-const RE = '\x1b[31m'
-const MG = '\x1b[35m'
-const GY = '\x1b[90m'
-const RS = '\x1b[0m'
-const BLD = '\x1b[1m'
-const TH = '\x1b[48;2;22;22;32m\x1b[38;2;150;150;170m' // dark bg + dim fg for thinking
-
-/** Get terminal width (columns), default to 80. */
-function termWidth(): number {
-  return process.stdout.columns ?? 80
-}
-
-/** Visible width of a string (strip ANSI codes). ASCII=1, CJK/non-ASCII=2. */
-function visibleWidth(s: string): number {
-  let w = 0
-  for (let i = 0; i < s.length; i++) {
-    if (s.charCodeAt(i) === 0x1b) {
-      // Skip past escape sequence
-      while (i < s.length && s[i] !== 'm') i++
-      continue
-    }
-    w += s.charCodeAt(i) > 0x7e ? 2 : 1
-  }
-  return w
-}
-
-/** Visible prefix width for thinking box lines: "  │" = 3 */
-const THINK_PREFIX_WIDTH = 3
-
-/** Build the top border of the thinking box */
-function thinkTopBorder(): string {
-  return `\n  ${GY}╭───────${RS}${TH} Think ${GY}────────────────────${RS}\n`
-}
-
-/** Build the bottom border of the thinking box */
-function thinkBottomBorder(): string {
-  return `  ${GY}╰${'─'.repeat(42)}${RS}\n\n`
-}
+// ── Session output interface ────────────────────────────────────────────────
 
 export interface SessionOutput {
   write: (text: string) => void
-  /** When true, tool invocation/result formatting is skipped (TUI handles it via event bus) */
   suppressToolOutput?: boolean
-  /**
-   * When autoApprove is false, called before dispatching write-type tool calls.
-   * Return true to allow execution, false to reject. Tools are batched — one confirmation per turn.
-   */
   confirmTool?: (toolCalls: ToolCall[]) => Promise<boolean>
 }
 
-function writeOut(text: string, output?: SessionOutput): void {
-  if (output) {
-    output.write(text)
-  } else {
-    process.stdout.write(text)
-  }
-}
-
-function printUserMessage(prompt: string, output?: SessionOutput): void {
-  // When suppressToolOutput is true (Web UI mode), the frontend already
-  // displays the user message, so skip sending it as a chunk.
-  if (output?.suppressToolOutput) return
-  const line = `  ${GY}┃${RS} ${BLD}${CY}You${RS}`
-  writeOut(`\n${line}  ${prompt}\n\n`, output)
-}
-
-function printToolInvocation(tc: ToolCall, output?: SessionOutput): void {
-  const detail = formatToolInput(tc)
-  const isWrite = tc.name === 'write_plan' || tc.name === 'edit'
-  const icon = isWrite ? `${YE}◆${RS}` : `${GR}◇${RS}`
-  const label = isWrite ? `${YE}${tc.name}${RS}` : `${GR}${tc.name}${RS}`
-  writeOut(`\n  ${GY}│${RS}  ${icon} ${label}${detail ? ` ${GY}${detail}${RS}` : ''}\n`, output)
-}
-
-function printToolResult(tc: ToolCall, result: ToolResult, output?: SessionOutput): void {
-  if (!result.success) {
-    writeOut(`  ${GY}│${RS}  ${RE}✖${RS} ${RE}${result.error}${RS}\n`, output)
-    return
-  }
-  if (tc.name === 'read') {
-    const fileCount = (result.output.match(/^=== /gm) || []).length
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} read ${fileCount} file(s)\n`, output)
-    for (const line of result.output.split('\n')) {
-      if (line.startsWith('=== ')) {
-        const fp = line.slice(4, line.includes(' ===') ? line.indexOf(' ===') + 4 : undefined)
-        writeOut(`  ${GY}│${RS}    ${GY}${fp}${RS}\n`, output)
-      }
-    }
-  } else if (tc.name === 'glob') {
-    const count = result.output.split('\n').filter(l => l && !l.startsWith('No')).length
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} glob ${count} match(es)\n`, output)
-  } else if (tc.name === 'grep') {
-    const count = result.output.split('\n').filter(l => l && !l.startsWith('No')).length
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} grep ${count} match(es)\n`, output)
-  } else if (tc.name === 'bash') {
-    const outLines = result.output.split('\n')
-    const summary = outLines.length > 1 ? `(${outLines.length} lines)` : ''
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} bash ${summary}\n`, output)
-  } else if (tc.name === 'edit') {
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} edit\n`, output)
-    if (result.output) {
-      for (const l of result.output.split('\n')) {
-        if (l.trim()) writeOut(`  ${GY}│${RS}  ${l.trim()}\n`, output)
-      }
-    }
-  } else if (tc.name === 'write_plan') {
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} ${result.output || tc.name}\n`, output)
-  } else if (tc.name === 'search') {
-    writeOut(
-      `  ${GY}│${RS}  ${GR}✔${RS} search: ${String(tc.input.query || '').slice(0, 80)}\n`,
-      output,
-    )
-  } else {
-    writeOut(`  ${GY}│${RS}  ${GR}✔${RS} ${tc.name}\n`, output)
-  }
-}
-
-interface SingleEditShape {
-  file_path: string
-  old_string: string
-  new_string: string
-}
-
-function isSingleEditShape(v: unknown): v is SingleEditShape {
-  return (
-    typeof v === 'object' &&
-    v !== null &&
-    'file_path' in v &&
-    'old_string' in v &&
-    'new_string' in v
-  )
-}
-
-export function formatToolInput(tc: ToolCall): string {
-  const parts: string[] = []
-  if (tc.name === 'read' && Array.isArray(tc.input.paths)) {
-    parts.push(tc.input.paths.join(', '))
-  } else if (tc.name === 'glob' && typeof tc.input.pattern === 'string') {
-    parts.push(tc.input.pattern)
-  } else if (tc.name === 'grep') {
-    if (typeof tc.input.pattern === 'string') parts.push(`/${tc.input.pattern}/`)
-    if (typeof tc.input.include === 'string') parts.push(`in:${tc.input.include}`)
-  } else if (tc.name === 'ls') {
-    parts.push(typeof tc.input.path === 'string' ? tc.input.path : '.')
-  } else if (tc.name === 'bash') {
-    const cmd = typeof tc.input.command === 'string' ? tc.input.command : ''
-    parts.push(cmd.length > 80 ? `${cmd.slice(0, 80)}\u2026` : cmd)
-  } else if (tc.name === 'search') {
-    if (typeof tc.input.query === 'string') parts.push(tc.input.query.slice(0, 120))
-  } else if (tc.name === 'write_plan') {
-    if (typeof tc.input.filename === 'string') parts.push(tc.input.filename)
-  } else if (tc.name === 'edit') {
-    if (Array.isArray(tc.input.edits) && tc.input.edits.every(isSingleEditShape)) {
-      const paths = tc.input.edits.map(e => e.file_path)
-      parts.push(paths.join(', '))
-    }
-  }
-  return parts.join(' \u2502 ')
-}
-
-function printTokenStats(
-  turnIn: number,
-  turnOut: number,
-  totalIn: number,
-  totalOut: number,
-  turnApi: number,
-  totalApi: number,
-  output?: SessionOutput,
-  turnCacheHit?: number,
-  turnCacheMiss?: number,
-  totalCacheHit?: number,
-  totalCacheMiss?: number,
-): void {
-  const bus = getGlobalEventBus()
-  bus.emit(EventChannels.TOKEN_STATS, {
-    turnIn,
-    turnOut,
-    totalIn,
-    totalOut,
-    turnApi,
-    totalApi,
-    turnCacheHit,
-    turnCacheMiss,
-    totalCacheHit,
-    totalCacheMiss,
-  })
-  // Skip terminal output in Web UI mode
-  if (output?.suppressToolOutput) return
-  const total = totalIn + totalOut
-  let msg = `  ${GY}┃${RS} ${GY}${BLD}▴${RS}${GY}${turnIn}${RS} ${GY}${BLD}▾${RS}${GY}${turnOut}${RS}  ${GY}total${RS} ${total}  ${GY}calls${RS} ${turnApi}(${totalApi})`
-  // Show cache hit rate if available
-  const cacheHit = totalCacheHit ?? 0
-  const cacheMiss = totalCacheMiss ?? 0
-  const cacheTotal = cacheHit + cacheMiss
-  if (cacheTotal > 0) {
-    const pct = Math.round((cacheHit / cacheTotal) * 100)
-    msg += `  ${GY}cached${RS} ${pct}%`
-  }
-  writeOut(`\n${msg}\n`, output)
-}
+// ── Session class ────────────────────────────────────────────────────────────
 
 export class Session {
   messages: LLMMessage[]
@@ -369,12 +43,10 @@ export class Session {
   config: Config
   output?: SessionOutput
   private _onPlanWritten?: (display: string) => void
-  /** Set the plan-written callback and propagate to ToolRegistry */
+
   set onPlanWritten(cb: ((display: string) => void) | undefined) {
     this._onPlanWritten = cb
-    // Update context so setMode() picks it up too
     this.registry.updateContext({ onPlanWritten: cb })
-    // Re-register write_plan tool with the new callback
     if (this.registry.has('write_plan')) {
       this.registry.reRegisterWritePlan(this.config.cwd, cb)
     }
@@ -392,8 +64,8 @@ export class Session {
   turnCacheMissTokens: number = 0
   totalCacheHitTokens: number = 0
   totalCacheMissTokens: number = 0
-  private stopped: boolean = false
-  private abortController: AbortController | null = null
+  stopped: boolean = false
+  abortController: AbortController | null = null
 
   constructor(config: Config, output?: SessionOutput) {
     this.config = config
@@ -425,18 +97,12 @@ export class Session {
       this.provider = new AnthropicProvider(config.apiKey, config.baseUrl, config.model)
     }
 
-    // Placeholder until initSystemPrompt() is called
     this.messages = [{ role: 'system', content: '' }]
-    // Initialize system prompt asynchronously
     this.initSystemPrompt(config)
   }
 
-  /** Initialize the system prompt asynchronously */
   private initSystemPrompt(config: Config): void {
     buildSystemPrompt(config, this.registry.getDefinitions()).then(prompt => {
-      // Only replace messages if they haven't been loaded from saved session data.
-      // loadFromData() sets this.messages to data.messages (which has many messages),
-      // and we must NOT overwrite them with a bare system prompt.
       if (this.messages.length <= 1) {
         this.messages = [{ role: 'system', content: prompt }]
       }
@@ -447,14 +113,11 @@ export class Session {
   sessionTitle: string = ''
   sessionCreatedAt: string = new Date().toISOString()
 
-  /** Persist the current session to ~/.lonny/sessions/ */
   save(): void {
     const dir = getSessionDir()
     ensureDir(dir)
-    // Use multi-session file naming with session ID
     const filePath = getSessionFilePath(this.config.cwd, this.sessionId)
     const now = new Date().toISOString()
-    // Generate a title from the first user message if none set
     let title = this.sessionTitle
     if (!title) {
       const firstUserMsg = this.messages.find(m => m.role === 'user')
@@ -481,13 +144,7 @@ export class Session {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
   }
 
-  /**
-   * Try to load the most recent session for the given cwd.
-   * Supports both legacy single-session format and new multi-session format.
-   * Returns null if no session exists.
-   */
   static async load(config: Config, output?: SessionOutput): Promise<Session | null> {
-    // 1. Try multi-session files first (new format)
     const cwdSessions = getSessionFilesForCwd(config.cwd)
     console.log(
       `[session] Found ${cwdSessions.length} session files for cwd "${config.cwd}":`,
@@ -499,28 +156,22 @@ export class Session {
         .join(', '),
     )
     if (cwdSessions.length > 0) {
-      // Prefer the session with the MOST messages (most complete conversation).
-      // When multiple session files exist (e.g., after /new without proper cleanup,
-      // or test artifacts), the most recent file might be an empty/new session,
-      // and the old session with all messages gets ignored.
       cwdSessions.sort((a, b) => {
         const aLen = a.data.messages?.length || 0
         const bLen = b.data.messages?.length || 0
-        if (aLen !== bLen) return bLen - aLen // more messages first
-        return b.data.updatedAt.localeCompare(a.data.updatedAt) // newer first as tiebreak
+        if (aLen !== bLen) return bLen - aLen
+        return b.data.updatedAt.localeCompare(a.data.updatedAt)
       })
       console.log(`[session] Loading session file: ${cwdSessions[0].fileName}`)
       return Session.loadFromData(cwdSessions[0].data, config, output)
     }
 
-    // 2. Try legacy single-session file (backward compatibility)
     const legacyPath = findLegacySessionFile(config.cwd)
     if (legacyPath) {
       try {
         const raw = JSON.parse(fs.readFileSync(legacyPath, 'utf-8')) as Record<string, unknown>
         const data = migrateSessionData(raw)
         const session = await Session.loadFromData(data, config, output)
-        // Migrate to new format: save with session ID, then delete legacy
         session.save()
         try {
           fs.unlinkSync(legacyPath)
@@ -536,7 +187,6 @@ export class Session {
     return null
   }
 
-  /** Load a specific session by its ID. Returns null if not found. */
   static async loadById(
     sessionId: string,
     config: Config,
@@ -566,35 +216,27 @@ export class Session {
     }
   }
 
-  /** Internal: restore session from parsed data */
   private static async loadFromData(
     data: SessionData,
     config: Config,
     output?: SessionOutput,
   ): Promise<Session> {
     const session = new Session(config, output)
-    // Restore messages (replace the default system prompt with the saved one)
     session.messages = data.messages
     console.log(`[session] Loading session ${data.id}: ${data.messages.length} messages from disk`)
-    // Sanitize loaded messages to fix any corrupted sequences
-    // (e.g., assistant with tool_calls but no tool responses from interrupted sessions)
-    session.sanitizeMessages()
+    session.messages = sanitizeMessages(session.messages)
     console.log(
       `[session] After sanitize: ${session.messages.length} messages (removed ${data.messages.length - session.messages.length})`,
     )
-    // Restore session identity
     session.sessionId = data.id
     session.sessionTitle = data.title || ''
     session.sessionCreatedAt = data.createdAt
-    // Restore mode to config so the UI/CLI reflects the saved session's mode
     config.mode = data.mode
     session.registry.setMode(data.mode)
-    // Rebuild system prompt if model or provider changed
     if (data.model !== config.model || data.provider !== config.provider) {
       const prompt = await buildSystemPrompt(config, session.registry.getDefinitions())
       session.messages[0] = { role: 'system', content: prompt }
     }
-    // Restore token stats
     session.totalInputTokens = data.totalInputTokens
     session.totalOutputTokens = data.totalOutputTokens
     session.totalApiCalls = data.totalApiCalls
@@ -603,9 +245,7 @@ export class Session {
     return session
   }
 
-  /** Clear the current session's saved file (no-op if session has no saved file). */
   static clearSavedSession(cwd: string): void {
-    // Try to remove all session files for this cwd
     const cwdSessions = getSessionFilesForCwd(cwd)
     for (const { fileName } of cwdSessions) {
       try {
@@ -614,7 +254,6 @@ export class Session {
         /* ignore */
       }
     }
-    // Also try legacy file
     const legacyPath = findLegacySessionFile(cwd)
     if (legacyPath) {
       try {
@@ -625,7 +264,6 @@ export class Session {
     }
   }
 
-  /** List all saved sessions across all directories. */
   static listSessions(maxCount?: number): SessionInfo[] {
     const dir = getSessionDir()
     try {
@@ -663,7 +301,6 @@ export class Session {
           // Skip corrupted files
         }
       }
-      // Sort by updatedAt descending (most recent first)
       sessions.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       if (maxCount && maxCount > 0) {
         return sessions.slice(0, maxCount)
@@ -674,7 +311,6 @@ export class Session {
     }
   }
 
-  /** Delete a session by its ID. Returns true if deleted. */
   static deleteSession(id: string): boolean {
     const sessions = Session.listSessions()
     const target = sessions.find(s => s.id === id)
@@ -687,34 +323,22 @@ export class Session {
     }
   }
 
-  /** Delete the current session's saved file */
   clearSavedSession(): void {
     Session.clearSavedSession(this.config.cwd)
   }
 
-  /**
-   * Fork the current session — creates a new session with the same messages
-   * but a fresh sessionId and empty token counters. Useful for branching
-   * the conversation to try a different approach.
-   */
   fork(): Session {
     const forked = new Session(this.config, this.output)
-    // Copy messages (including system prompt)
     forked.messages = [...this.messages]
-    // Keep plan-written callback
     forked.onPlanWritten = this.onPlanWritten
-    // Tag the title as a fork
     const baseTitle = this.sessionTitle || 'forked session'
     forked.sessionTitle = `${baseTitle} (fork)`
-    // Generate fresh IDs and timestamps
     forked.sessionId = generateId()
     forked.sessionCreatedAt = new Date().toISOString()
-    // Save immediately
     forked.save()
     return forked
   }
 
-  /** Export the session as a JSON file. Returns the file path. */
   exportSession(filePath?: string): string {
     const dir = filePath || path.join(getSessionDir(), `export-${this.sessionId}.json`)
     const now = new Date().toISOString()
@@ -758,593 +382,29 @@ export class Session {
     return fullPath
   }
 
-  /**
-   * Detect if the model's response indicates the task is complete.
-   * Used as a fallback when the model writes completion text instead of
-   * calling the task_complete tool.
-   */
-  private isTaskCompleteMessage(text: string): boolean {
-    if (!text) return false
-    const lower = text.toLowerCase()
-    const patterns = [
-      'task complete',
-      'task_complete',
-      'task is complete',
-      'all tasks complete',
-      '任务完成',
-      '任务已完成',
-      '全部完成',
-      '没有更多任务',
-      '无需继续',
-    ]
-    return patterns.some(p => lower.includes(p))
-  }
-
-  /** Get a continuation message for loop mode — feeds the model a new user message to continue working */
-  private getContinuationMessage(): string {
-    const firstUserMsg = this.messages.find(m => m.role === 'user')
-    const taskHint =
-      firstUserMsg && typeof firstUserMsg.content === 'string'
-        ? firstUserMsg.content.slice(0, 200)
-        : 'the original task'
-    return `[auto-continuation] The previous turn completed. Continue working on the original task: ${taskHint}
-
-If you believe the task is complete, call the task_complete tool with a summary of what was accomplished to end the session. Otherwise, continue with the next steps.`
-  }
-
   async setMode(mode: 'code' | 'plan' | 'ask' | 'loop'): Promise<void> {
     this.config.mode = mode
-    // Update registry mode FIRST so getDefinitions() returns the correct tool set
     this.registry.setMode(mode)
     const prompt = await buildSystemPrompt(this.config, this.registry.getDefinitions())
     this.messages[0] = { role: 'system', content: prompt }
     this.save()
   }
 
-  /** Stop the current conversation gracefully */
   stop(): void {
     this.stopped = true
-    // Abort any in-flight LLM stream to stop token consumption immediately
     this.abortController?.abort()
   }
 
-  /** Check if the session was stopped */
   isStopped(): boolean {
     return this.stopped
   }
 
-  /** Reset the stopped flag for a new conversation */
   resetStopped(): void {
     this.stopped = false
-    // Create new AbortController for next conversation
     this.abortController = new AbortController()
-  }
-
-  /**
-   * Remove assistant messages with tool_calls that have no corresponding
-   * tool responses. These can be left behind by stream errors or user
-   * interrupts mid-tool-call, and the LLM API will reject them.
-   */
-  private sanitizeMessages(): void {
-    const sanitized: LLMMessage[] = []
-    for (let i = 0; i < this.messages.length; i++) {
-      const msg = this.messages[i]
-      if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-        const pendingIds = new Set(msg.tool_calls.map(tc => tc.id))
-        let j = i + 1
-        while (
-          j < this.messages.length &&
-          this.messages[j].role === 'tool' &&
-          pendingIds.size > 0
-        ) {
-          const toolMsg = this.messages[j]
-          if (toolMsg.tool_call_id && pendingIds.has(toolMsg.tool_call_id)) {
-            pendingIds.delete(toolMsg.tool_call_id)
-          }
-          j++
-        }
-        if (pendingIds.size > 0) {
-          const dropped = msg.tool_calls.map(tc => `${tc.name}(${tc.id})`).join(', ')
-          console.warn(
-            `[session] Dropping assistant message with unfulfilled tool_calls: ${dropped}`,
-          )
-          continue
-        }
-      }
-      sanitized.push(msg)
-    }
-    this.messages = sanitized
   }
 
   async chat(userPrompt: string): Promise<void> {
-    const bus = getGlobalEventBus()
-    const out = this.output
-    printUserMessage(userPrompt, out)
-    this.messages.push({ role: 'user', content: userPrompt })
-    // Save immediately after user message so page refresh doesn't lose it
-    this.save()
-
-    // Reset per-turn counters
-    this.turnInputTokens = 0
-    this.turnOutputTokens = 0
-    this.turnApiCalls = 0
-    this.turnCacheHitTokens = 0
-    this.turnCacheMissTokens = 0
-
-    let iterations = 0
-    const maxIterations = this.config.mode === 'loop' ? 500 : 30
-
-    // Reset stopped flag for new conversation
-    this.resetStopped()
-    // Create a new AbortController for this chat invocation
-    // (a new controller is needed each time because abort() is one-shot)
-    this.abortController = new AbortController()
-
-    // Declare toolCalls outside the loop so we can reference it in stop check
-    let toolCalls: ToolCall[] = []
-
-    while (iterations < maxIterations) {
-      // Check if stop was requested
-      if (this.isStopped()) {
-        bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: toolCalls.length })
-        this.save()
-        return
-      }
-      iterations++
-      this.turnApiCalls++
-      this.totalApiCalls++
-      toolCalls = []
-      let fullResponse = ''
-      let reasoningContent: string | undefined
-      let reasoningOutput = false
-      let reasoningLineStart = false
-
-      bus.emit(EventChannels.TURN_START, { prompt: userPrompt, iteration: iterations })
-      bus.emit(EventChannels.LLM_STREAM_START, { iteration: iterations })
-
-      // Only pass core tools + gateway to the LLM API; the prompt tree
-      // documents the full tool catalog so the model knows what extended
-      // tools are reachable via the `tool()` gateway.
-      this.sanitizeMessages()
-      const stream = this.provider.chat(
-        this.messages,
-        this.registry.getCoreDefinitions(),
-        this.abortController.signal,
-      )
-
-      try {
-        for await (const chunk of stream) {
-          if (chunk.reasoning_content) {
-            reasoningContent = chunk.reasoning_content
-            // Stream reasoning content in real-time (only when no text in same chunk)
-            if (!chunk.text) {
-              // Emit thinking via EventBus for Web UI
-              bus.emit(EventChannels.THINKING, { text: chunk.reasoning_content })
-              if (!reasoningOutput) {
-                reasoningOutput = true
-                reasoningLineStart = true
-                if (!out?.suppressToolOutput) {
-                  writeOut(thinkTopBorder(), out)
-                }
-              }
-              // Terminal display with box drawing (skip in Web UI mode, handled by EventBus)
-              if (!out?.suppressToolOutput) {
-                // Track column position on current line for wrapping
-                let thinkCol = 0
-                // Handle newlines in streamed content - add left border on each new line
-                // Also manually wrap long lines so wrapped lines keep the │ prefix.
-                let remaining = chunk.reasoning_content
-                const maxContentWidth = termWidth() - THINK_PREFIX_WIDTH
-                while (remaining.length > 0) {
-                  if (reasoningLineStart) {
-                    writeOut(`  ${GY}│${RS}${TH}`, out)
-                    reasoningLineStart = false
-                    thinkCol = 0
-                  }
-                  const nlIdx = remaining.indexOf('\n')
-                  if (nlIdx === -1) {
-                    // No newline — write as much as fits on current line, wrap if needed
-                    while (remaining.length > 0) {
-                      const segWidth = visibleWidth(remaining)
-                      const avail = maxContentWidth - thinkCol
-                      if (segWidth <= avail) {
-                        // Fits entirely on current line
-                        writeOut(remaining, out)
-                        thinkCol += segWidth
-                        remaining = ''
-                      } else if (avail <= 0) {
-                        // Current line is full, wrap to next
-                        writeOut(`${RS}\n`, out)
-                        writeOut(`  ${GY}│${RS}${TH}`, out)
-                        thinkCol = 0
-                      } else {
-                        // Write first part that fits, then wrap
-                        // Find character boundary that fits within avail
-                        let cut = avail
-                        while (cut > 0 && visibleWidth(remaining.slice(0, cut)) > avail) cut--
-                        if (cut <= 0) cut = 1
-                        writeOut(remaining.slice(0, cut), out)
-                        writeOut(`${RS}\n`, out)
-                        writeOut(`  ${GY}│${RS}${TH}`, out)
-                        thinkCol = 0
-                        remaining = remaining.slice(cut)
-                      }
-                    }
-                  } else {
-                    // Has newline — process the segment up to newline
-                    const segment = remaining.slice(0, nlIdx)
-                    const segWidth = visibleWidth(segment)
-                    const avail = maxContentWidth - thinkCol
-                    if (segWidth <= avail) {
-                      // Segment fits on current line
-                      writeOut(segment, out)
-                      writeOut(`${RS}\n`, out)
-                      reasoningLineStart = true
-                      thinkCol = 0
-                    } else {
-                      // Segment too long — write what fits, wrap, then rest
-                      let rest = segment
-                      // Write remainder of current line
-                      if (avail > 0) {
-                        let cut = avail
-                        while (cut > 0 && visibleWidth(rest.slice(0, cut)) > avail) cut--
-                        if (cut <= 0) cut = 1
-                        writeOut(rest.slice(0, cut), out)
-                        rest = rest.slice(cut)
-                      }
-                      writeOut(`${RS}\n`, out)
-                      reasoningLineStart = true
-                      thinkCol = 0
-                      // Write rest of segment on continuation line(s)
-                      if (rest.length > 0) {
-                        writeOut(`  ${GY}│${RS}${TH}`, out)
-                        reasoningLineStart = false
-                        while (rest.length > 0) {
-                          const rw = visibleWidth(rest)
-                          if (rw <= maxContentWidth) {
-                            writeOut(rest, out)
-                            thinkCol = rw
-                            rest = ''
-                          } else {
-                            let cut = maxContentWidth
-                            while (cut > 0 && visibleWidth(rest.slice(0, cut)) > maxContentWidth)
-                              cut--
-                            if (cut <= 0) cut = 1
-                            writeOut(rest.slice(0, cut), out)
-                            writeOut(`${RS}\n`, out)
-                            writeOut(`  ${GY}│${RS}${TH}`, out)
-                            rest = rest.slice(cut)
-                          }
-                        }
-                      }
-                      writeOut(`${RS}\n`, out)
-                      reasoningLineStart = true
-                      thinkCol = 0
-                    }
-                    remaining = remaining.slice(nlIdx + 1)
-                  }
-                }
-              }
-            }
-          }
-          if (chunk.type === 'text' && chunk.text) {
-            if (reasoningOutput) {
-              bus.emit(EventChannels.THINKING_END, {})
-              if (!out?.suppressToolOutput) {
-                writeOut(`${RS}\n`, out)
-                writeOut(thinkBottomBorder(), out)
-              }
-              reasoningOutput = false
-              reasoningLineStart = false
-            }
-            fullResponse += chunk.text
-            writeOut(chunk.text, out)
-          } else if (chunk.type === 'tool_use' && chunk.tool_call) {
-            toolCalls.push(chunk.tool_call)
-          } else if (chunk.type === 'complete') {
-            if (chunk.usage) {
-              this.turnInputTokens += chunk.usage.input_tokens
-              this.turnOutputTokens += chunk.usage.output_tokens
-              this.totalInputTokens += chunk.usage.input_tokens
-              this.totalOutputTokens += chunk.usage.output_tokens
-              // Accumulate DeepSeek cache hit/miss tokens
-              if (chunk.usage.prompt_cache_hit_tokens != null) {
-                this.turnCacheHitTokens += chunk.usage.prompt_cache_hit_tokens
-                this.totalCacheHitTokens += chunk.usage.prompt_cache_hit_tokens
-              }
-              if (chunk.usage.prompt_cache_miss_tokens != null) {
-                this.turnCacheMissTokens += chunk.usage.prompt_cache_miss_tokens
-                this.totalCacheMissTokens += chunk.usage.prompt_cache_miss_tokens
-              }
-            }
-            if (chunk.finish_reason === 'stop' || chunk.finish_reason === 'end_turn') {
-              if (toolCalls.length === 0) {
-                const finalAssistantMsg: LLMMessage = {
-                  role: 'assistant',
-                  content: fullResponse || null,
-                  reasoning_content: reasoningContent,
-                }
-                this.messages.push(finalAssistantMsg)
-                printTokenStats(
-                  this.turnInputTokens,
-                  this.turnOutputTokens,
-                  this.totalInputTokens,
-                  this.totalOutputTokens,
-                  this.turnApiCalls,
-                  this.totalApiCalls,
-                  out,
-                  this.turnCacheHitTokens,
-                  this.turnCacheMissTokens,
-                  this.totalCacheHitTokens,
-                  this.totalCacheMissTokens,
-                )
-                writeOut('\n\n', out)
-                saveTokenUsage(
-                  this.config.cwd,
-                  this.turnInputTokens,
-                  this.turnOutputTokens,
-                  this.turnApiCalls,
-                )
-                bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
-                this.save()
-                // Loop mode: automatically continue with a continuation prompt
-                if (this.config.mode === 'loop' && !this.isStopped()) {
-                  // Check if the model indicated completion in text (fallback for not calling task_complete)
-                  if (this.isTaskCompleteMessage(fullResponse)) {
-                    this.save()
-                    return
-                  }
-                  const contMsg = this.getContinuationMessage()
-                  this.messages.push({ role: 'user', content: contMsg })
-                  // Reset per-turn counters for the next iteration
-                  this.turnInputTokens = 0
-                  this.turnOutputTokens = 0
-                  this.turnApiCalls = 0
-                  this.turnCacheHitTokens = 0
-                  this.turnCacheMissTokens = 0
-                  continue
-                }
-                return
-              }
-            }
-          }
-        }
-      } catch (e) {
-        const errMsg = fmtErr(e)
-        const partialContent = fullResponse ? fullResponse.slice(0, 500) : '(empty)'
-        if (!out?.suppressToolOutput) {
-          writeOut(`\n${RE}Stream error:${RS} ${errMsg}`, out)
-          writeOut(`\n  ${GY}┃${RS} Partial response: ${partialContent}\n`, out)
-        }
-        console.error('[session] Stream error:', errMsg, '| Partial response:', partialContent)
-        if (reasoningOutput) {
-          bus.emit(EventChannels.THINKING_END, {})
-          if (!out?.suppressToolOutput) {
-            writeOut(`${RS}\n`, out)
-            writeOut(thinkBottomBorder(), out)
-          }
-        }
-        bus.emit(EventChannels.LLM_STREAM_END, { iteration: iterations, toolCallCount: 0 })
-        bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
-
-        // If there are pending toolCalls that weren't executed due to abort,
-        // add an assistant message so the model knows they weren't executed
-        if (toolCalls.length > 0) {
-          const interruptedMsg: LLMMessage = {
-            role: 'assistant',
-            content: null,
-            tool_calls: toolCalls,
-            reasoning_content: reasoningContent,
-          }
-          this.messages.push(interruptedMsg)
-        }
-
-        saveTokenUsage(
-          this.config.cwd,
-          this.turnInputTokens,
-          this.turnOutputTokens,
-          this.turnApiCalls,
-        )
-        this.save()
-        return
-      }
-
-      bus.emit(EventChannels.LLM_STREAM_END, {
-        iteration: iterations,
-        toolCallCount: toolCalls.length,
-      })
-
-      // Close reasoning display if still open (model ended with tool calls, no text)
-      if (reasoningOutput) {
-        bus.emit(EventChannels.THINKING_END, {})
-        if (!out?.suppressToolOutput) {
-          writeOut(`${RS}\n`, out)
-          writeOut(thinkBottomBorder(), out)
-        }
-        reasoningOutput = false
-        reasoningLineStart = false
-      }
-
-      if (toolCalls.length === 0) {
-        if (fullResponse) {
-          const finalAssistantMsg: LLMMessage = {
-            role: 'assistant',
-            content: fullResponse,
-            reasoning_content: reasoningContent,
-          }
-          this.messages.push(finalAssistantMsg)
-          printTokenStats(
-            this.turnInputTokens,
-            this.turnOutputTokens,
-            this.totalInputTokens,
-            this.totalOutputTokens,
-            this.turnApiCalls,
-            this.totalApiCalls,
-            out,
-            this.turnCacheHitTokens,
-            this.turnCacheMissTokens,
-            this.totalCacheHitTokens,
-            this.totalCacheMissTokens,
-          )
-          writeOut('\n\n', out)
-        }
-        saveTokenUsage(
-          this.config.cwd,
-          this.turnInputTokens,
-          this.turnOutputTokens,
-          this.turnApiCalls,
-        )
-        bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
-        this.save()
-        // Loop mode: automatically continue with a continuation prompt
-        if (this.config.mode === 'loop' && !this.isStopped()) {
-          // Check if the model indicated completion in text (fallback for not calling task_complete)
-          if (fullResponse && this.isTaskCompleteMessage(fullResponse)) {
-            this.save()
-            return
-          }
-          const contMsg = this.getContinuationMessage()
-          this.messages.push({ role: 'user', content: contMsg })
-          // Reset per-turn counters for the next iteration
-          this.turnInputTokens = 0
-          this.turnOutputTokens = 0
-          this.turnApiCalls = 0
-          this.turnCacheHitTokens = 0
-          this.turnCacheMissTokens = 0
-          continue
-        }
-        return
-      }
-
-      const assistantMsg: LLMMessage = {
-        role: 'assistant',
-        content: fullResponse || null,
-        tool_calls: toolCalls,
-        reasoning_content: reasoningContent,
-      }
-      this.messages.push(assistantMsg)
-      // Don't save here — assistant with tool_calls but no tool responses creates
-      // invalid state that sanitizeMessages() will drop on reload.
-      // Instead, save after each tool result below for real-time persistence.
-
-      // ── User confirmation for write-type tool calls ──
-      if (!this.config.autoApprove && this.output?.confirmTool && toolCalls.length > 0) {
-        const writeTools = ['edit', 'bash', 'write_plan', 'install_skill']
-        const needsConfirm = toolCalls.filter(tc => writeTools.includes(tc.name))
-        if (needsConfirm.length > 0) {
-          const approved = await this.output.confirmTool(needsConfirm)
-          if (!approved) {
-            const rejectMsg: LLMMessage = {
-              role: 'tool',
-              content:
-                'USER_REJECTED: The user declined to execute the requested tool calls. Try a different approach.',
-              tool_call_id: needsConfirm[0].id,
-              name: 'user_feedback',
-            }
-            this.messages.push(rejectMsg)
-            bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: toolCalls.length })
-            continue
-          }
-        }
-      }
-
-      for (let i = 0; i < toolCalls.length; i++) {
-        const tc = toolCalls[i]
-        // Check if stop was requested after each tool call
-        if (this.isStopped()) {
-          // Add assistant message with remaining tool_calls so model knows they weren't executed
-          const remainingToolCalls = toolCalls.slice(i)
-          if (remainingToolCalls.length > 0) {
-            const interruptedMsg: LLMMessage = {
-              role: 'assistant',
-              content: null,
-              tool_calls: remainingToolCalls,
-            }
-            this.messages.push(interruptedMsg)
-          }
-          bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: toolCalls.length })
-          this.save()
-          return
-        }
-        bus.emit(EventChannels.TOOL_CALL, { name: tc.name, input: tc.input, id: tc.id })
-        if (!out?.suppressToolOutput) {
-          printToolInvocation(tc, out)
-        }
-        const result: ToolResult = await this.registry.dispatch(tc)
-        if (result.success) {
-          bus.emit(EventChannels.TOOL_RESULT, { name: tc.name, id: tc.id, output: result.output })
-        } else {
-          bus.emit(EventChannels.TOOL_ERROR, { name: tc.name, id: tc.id, error: result.error })
-          // Log tool failures to ~/.lonny/log/ for debugging
-          logToolError(tc, result, this.sessionId)
-        }
-        if (!out?.suppressToolOutput) {
-          printToolResult(tc, result, out)
-        }
-
-        const resultMsg: LLMMessage = {
-          role: 'tool',
-          content: result.success ? result.output : `ERROR: ${result.error}`,
-          tool_call_id: tc.id,
-          name: tc.name,
-        }
-        this.messages.push(resultMsg)
-        // Don't save after individual tool results — it creates incomplete states
-        // where the assistant has tool_calls but only some tool responses.
-        // sanitizeMessages would drop these on reload, creating orphaned tool results.
-        // Instead, save below once after ALL tools are dispatched.
-
-        // If the model called task_complete, stop the loop immediately
-        if (tc.name === 'task_complete') {
-          // Save task_complete result immediately so it survives page refresh.
-          // This save includes the completed tool results + task_complete result,
-          // which is a valid complete sequence for sanitizeMessages.
-          this.save()
-          this.stopped = true
-          break
-        }
-      }
-
-      // Save after ALL tools are dispatched — guaranteed complete state.
-      this.save()
-
-      // End the current turn before next iteration — frontend creates a new message
-      bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: toolCalls.length })
-
-      // Check if compaction is needed
-      if (shouldCompact(this.messages, this.config.contextWindow)) {
-        const before = this.messages.length
-        const result = compact(this.messages, this.config.contextWindow)
-        if (result.compressed) {
-          this.messages = result.messages
-          bus.emit(EventChannels.COMPACTION_TRIGGERED, { before, after: result.newCount })
-          if (out && !out.suppressToolOutput) {
-            out.write(
-              `\n  ${GY}┃${RS} ${GY}📦 Compressed context: ${before} → ${result.newCount} messages${RS}\n`,
-            )
-          }
-        }
-      }
-    }
-
-    if (iterations >= maxIterations) {
-      printTokenStats(
-        this.turnInputTokens,
-        this.turnOutputTokens,
-        this.totalInputTokens,
-        this.totalOutputTokens,
-        this.turnApiCalls,
-        this.totalApiCalls,
-        out,
-        this.turnCacheHitTokens,
-        this.turnCacheMissTokens,
-        this.totalCacheHitTokens,
-        this.totalCacheMissTokens,
-      )
-      writeOut('\nAgent reached maximum iterations. Stopping.\n', out)
-    }
-
-    saveTokenUsage(this.config.cwd, this.turnInputTokens, this.turnOutputTokens, this.turnApiCalls)
-    this.save()
+    return runChat(this, userPrompt)
   }
 }

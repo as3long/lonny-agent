@@ -7,8 +7,9 @@ import { createReadTool } from './codebase/read.js'
 import { createEditTool } from './edit/edit.js'
 import { createWritePlanTool } from './edit/write_plan.js'
 import { fmtErr } from './errors.js'
-import { bashTool } from './execute/bash.js'
+import { bashTool } from './execute/bash/index.js'
 import { createGitTool } from './execute/git.js'
+import { taskCompleteTool } from './execute/task_complete.js'
 import { createInstallSkillTool } from './install/install_skill.js'
 import { createDeleteMemoryTool } from './memory/delete_memory.js'
 import { createListMemoryTool } from './memory/list_memory.js'
@@ -21,11 +22,11 @@ import { searchTool } from './web/search.js'
  * Tools in this set are passed directly to the LLM API's `tools` parameter.
  * All other tools must be invoked via the `tool()` gateway.
  */
-const CORE_TOOL_NAMES = new Set(['read', 'edit', 'bash', 'glob', 'grep'])
+const CORE_TOOL_NAMES = new Set(['read', 'edit', 'bash', 'glob', 'grep', 'task_complete'])
 
 /**
  * Normalize tool input to prevent common LLM call misuses.
- * The LLM sometimes passes parameters in the wrong format — this function
+ * The LLM sometimes passes parameters in the wrong format �?this function
  * auto-corrects those patterns so tools work reliably.
  *
  * Common misuses handled:
@@ -118,7 +119,7 @@ export class ToolRegistry {
         name: 'tool',
         description: `Invoke an extended tool. Use this for tools not in the direct-access core set.
 
-The core tools are: read, edit, bash, glob, grep — use them directly.
+The core tools are: read, edit, bash, glob, grep �?use them directly.
 For everything else, call tool() with the tool name and its parameters.
 
 Examples:
@@ -192,6 +193,9 @@ Examples:
         // If for some reason the tool can't be created, ignore — not critical
         console.error('[ToolRegistry] Failed to register memory tools:', err)
       }
+      // Register task_complete tool so the model can explicitly signal completion
+      // (most useful in loop mode, but available in code mode too)
+      this.register(taskCompleteTool)
     } else {
       // Plan mode: read-only investigation + write_plan
       this.register(createWritePlanTool(this.context.cwd, this.context.onPlanWritten))
@@ -271,7 +275,7 @@ Examples:
 
   /** Get definitions for the core tool set + gateway (for LLM API's tools parameter) */
   getCoreDefinitions(): ToolDefinition[] {
-    // Ask mode has only 2 tools – pass them directly, no gateway needed
+    // Ask mode has only 2 tools �?pass them directly, no gateway needed
     if (this.context.mode === 'ask') {
       return Array.from(this.tools.values())
         .filter(t => t.definition.name !== 'tool')

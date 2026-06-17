@@ -156,6 +156,7 @@ describe('ToolRegistry', () => {
     expect(names).toContain('bash')
     expect(names).toContain('glob')
     expect(names).toContain('grep')
+    expect(names).toContain('task_complete')
     // Gateway tool
     expect(names).toContain('tool')
     // Extended tools should NOT be in core
@@ -169,8 +170,8 @@ describe('ToolRegistry', () => {
     expect(names).not.toContain('save_memory')
     expect(names).not.toContain('list_memory')
     expect(names).not.toContain('delete_memory')
-    // Exactly 6 tools in core set (5 core + 1 gateway)
-    expect(names.length).toBe(6)
+    // Exactly 7 tools in core set (6 core + 1 gateway)
+    expect(names.length).toBe(7)
   })
 
   it('getDefinitions still returns all tools including extended ones', () => {

@@ -56,6 +56,7 @@ function tryParseJSON(input: string): Record<string, unknown> | null {
 export class OpenAIProvider implements LLMProvider {
   private client: OpenAI
   private model: string
+  private baseURL?: string
   private thinking?: boolean
   private reasoningEffort?: string
   private enableCache: boolean
@@ -73,6 +74,7 @@ export class OpenAIProvider implements LLMProvider {
   ) {
     this.client = new OpenAI({ apiKey, baseURL })
     this.model = model || 'gpt-4o'
+    this.baseURL = baseURL
     this.thinking = thinking
     this.reasoningEffort = reasoningEffort
     this.enableCache = enableCache ?? false
@@ -151,6 +153,22 @@ export class OpenAIProvider implements LLMProvider {
       }
     })
 
+    // Detect if we're talking to the official OpenAI API
+    const isOfficialOpenAI = this.baseURL ? /api\.openai\.com/i.test(this.baseURL) : true
+
+    // Build reasoning params compatible with the target API
+    const reasoningParams: Record<string, unknown> = {}
+    if (this.thinking) {
+      if (isOfficialOpenAI) {
+        reasoningParams.thinking = { type: 'enabled' }
+        reasoningParams.reasoning_effort = this.reasoningEffort || 'high'
+      } else {
+        // Non-OpenAI backends (Ollama, LM Studio, etc.) typically only
+        // support 'on'/'off' for reasoning_effort
+        reasoningParams.reasoning_effort = 'on'
+      }
+    }
+
     const stream: Stream<ChatCompletionChunk> = await (
       this.client.chat.completions.create as (
         params: ExtendedCreateParams,
@@ -163,9 +181,7 @@ export class OpenAIProvider implements LLMProvider {
         tools: openAIFormattedTools.length > 0 ? openAIFormattedTools : undefined,
         stream: true,
         stream_options: { include_usage: true },
-        ...(this.thinking
-          ? { thinking: { type: 'enabled' }, reasoning_effort: this.reasoningEffort || 'high' }
-          : {}),
+        ...reasoningParams,
         ...(this.enableCache ? { enable_cache: true } : {}),
       },
       signal ? { signal } : undefined,

@@ -11,7 +11,7 @@ import type { Config } from '../config/index.js'
 import { resetTokenUsage } from '../config/tokens.js'
 import { fmtErr } from '../tools/errors.js'
 import { fetchDeepSeekBalance, isDeepSeekOfficial } from '../tui/balance.js'
-import { listPlans, type PlanEntry } from '../tui/components.js'
+import { listPlans, type PlanEntry } from '../tui/components/index.js'
 import { startSessionBridge, type WsMessage } from './session-bridge.js'
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
@@ -95,8 +95,8 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
     // Reset event bus for new session
     resetGlobalEventBus()
 
-    const session = (await Session.load(config)) || new Session(config)
     let bridge: ReturnType<typeof startSessionBridge> | null = null
+    let sessionWithOutput!: Session
 
     // Track output to forward to WebSocket
     // Strip ANSI codes since they are meaningless in the browser
@@ -149,12 +149,8 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
       },
     }
 
-    // Re-create session with output
-    let sessionWithOutput = (await Session.load(config, output)) || new Session(config, output)
-    sessionWithOutput.messages = session.messages
-    sessionWithOutput.totalInputTokens = session.totalInputTokens
-    sessionWithOutput.totalOutputTokens = session.totalOutputTokens
-    sessionWithOutput.totalApiCalls = session.totalApiCalls
+    // Load or create session with output for WebSocket forwarding
+    sessionWithOutput = (await Session.load(config, output)) || new Session(config, output)
 
     // Helper: read todos from a specific plan file (or first plan if no name given)
     function loadPlanTodos(
@@ -463,6 +459,7 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
         }
         return m
       })
+    console.log(`[Web UI] Sending session_history: ${historyMessages.length} messages `)
     if (historyMessages.length > 0) {
       ws.send(
         JSON.stringify({

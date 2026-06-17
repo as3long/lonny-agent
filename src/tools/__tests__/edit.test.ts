@@ -3,17 +3,16 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { FileReadTracker } from '../../diff/apply.js'
+import { computeDiff } from '../edit/diff-compute.js'
 import {
-  computeDiff,
-  createEditTool,
   escapeHtml,
-  findAllLinesTolerant,
   generateDiff,
   generateDiffWithContext,
-  normalizeLine,
-  parseMarkdownEdit,
   renderDiffTerminal,
-} from '../edit/edit.js'
+} from '../edit/diff-render.js'
+import { createEditTool } from '../edit/edit.js'
+import { findAllLinesTolerant, normalizeLine } from '../edit/matcher.js'
+import { parseMarkdownEdit } from '../edit/parser.js'
 import { makeTempDir } from './helpers.js'
 
 // ── Minimal mock for FileReadTracker ─────────────────────────────────────
