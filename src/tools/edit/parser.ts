@@ -31,8 +31,8 @@ export function parseMarkdownEdit(content: string): Edit[] {
     let oldString = ''
     let newString = ''
 
-    const oldMatch = cleaned.match(/^old:(?:\s*\|\d*\s*\n)?([\s\S]*?)^new:/m)
-    const newMatch = cleaned.match(/^new:(?:\s*\|\d*\s*\n)?([\s\S]*)$/m)
+    const oldMatch = cleaned.match(/^old:(?:\s*\|\s*[\d\-+]*\r?\n)?([\s\S]*?)^new:/m)
+    const newMatch = cleaned.match(/^new:(?:\s*\|\s*[\d\-+]*\r?\n)?([\s\S]*)$/m)
 
     if (oldMatch) {
       oldString = oldMatch[1]!.replace(/^\n+/, '').replace(/\n+$/, '')

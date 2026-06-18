@@ -175,6 +175,44 @@ export { x as y }
     expect(cls[0].members[1].name).toBe('bar')
   })
 
+  it('parses export default function and class', async () => {
+    const source = `
+export default function myFunc() {
+  return 1
+}
+export default class MyClass {}
+`
+    const module = await adapter.parse(source, 'test.ts')
+    expect(module.exports).toContain('myFunc')
+    expect(module.exports).toContain('MyClass')
+    const funcs = adapter.findFunctions(module)
+    expect(funcs).toHaveLength(1)
+    expect(funcs[0].name).toBe('myFunc')
+    const classes = adapter.findClasses(module)
+    expect(classes).toHaveLength(1)
+    expect(classes[0].name).toBe('MyClass')
+  })
+
+  it('parses generator and async generator functions', async () => {
+    const source = `
+function* gen() {
+  yield 1
+}
+async function* asyncGen() {
+  yield await Promise.resolve(1)
+}
+`
+    const module = await adapter.parse(source, 'test.ts')
+    const funcs = adapter.findFunctions(module)
+    expect(funcs).toHaveLength(2)
+    expect(funcs[0].name).toBe('gen')
+    expect(funcs[0].isGenerator).toBe(true)
+    expect(funcs[0].isAsync).toBe(false)
+    expect(funcs[1].name).toBe('asyncGen')
+    expect(funcs[1].isGenerator).toBe(true)
+    expect(funcs[1].isAsync).toBe(true)
+  })
+
   it('parses variables', async () => {
     const source = `
 const a = 1
