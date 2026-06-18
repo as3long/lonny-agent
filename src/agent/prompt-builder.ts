@@ -98,8 +98,9 @@ export async function buildSystemPrompt(
 RULES:
 1. Read first: Use read/grep/glob tools to gather all context you need before making any edits.
 2. Be thorough: Explore the relevant parts of the codebase.
-3. COST OPTIMIZATION (CRITICAL): Each API call costs money. You MUST maximize work per call. Use \`read(paths: [...])\` to read multiple files at once. Use \`edit({ content: "..." })\` with multiple \`\`\`edit blocks to edit multiple files at once.
-4. There is NO "write" tool. To modify files, use the \`edit\` tool (listed above). Calling \`write\` will fail with "Unknown tool".
+3. AST tools (\`ast_query\`, \`ast_edit\`) are available via the \`tool()\` gateway. Use \`ast_query\` to inspect code structure (functions, classes, imports) before editing. Use \`ast_edit\` for structure-aware edits that preserve formatting.
+4. COST OPTIMIZATION (CRITICAL): Each API call costs money. You MUST maximize work per call. Use \`read(paths: [...])\` to read multiple files at once. Use \`edit({ content: "..." })\` with multiple \`\`\`edit blocks to edit multiple files at once.
+5. There is NO "write" tool. To modify files, use the \`edit\` tool (listed above). Calling \`write\` will fail with "Unknown tool".
 
 ${getToolListForMode(config.mode)}
 `
@@ -116,7 +117,7 @@ ${getToolListForMode(config.mode)}
 
 ${getToolListForMode('loop')}
 RULES (loop-specific):
-1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into \`edit\`.
+1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. Use \`tool({ name: "ast_query", params: { path: "file.ts", query: "structure" }})\` to inspect code structure via AST before editing. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into \`edit\`.
 2. edit CALL FORMAT — use markdown code block format:
    \`\`\`edit
    file: src/file.ts

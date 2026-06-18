@@ -1,4 +1,5 @@
 import type { FileReadTracker } from '../diff/apply.js'
+import { createAstTools } from './codebase/ast/tools.js'
 import { createFindTool } from './codebase/find.js'
 import { globTool } from './codebase/glob.js'
 import { createGrepTool } from './codebase/grep.js'
@@ -193,6 +194,11 @@ Examples:
         // If for some reason the tool can't be created, ignore — not critical
         console.error('[ToolRegistry] Failed to register memory tools:', err)
       }
+      // Register AST tools (ast_query, ast_edit)
+      for (const tool of createAstTools()) {
+        this.register(tool)
+      }
+
       // Register task_complete tool so the model can explicitly signal completion
       // (most useful in loop mode, but available in code mode too)
       this.register(taskCompleteTool)
