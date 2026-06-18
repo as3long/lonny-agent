@@ -18,6 +18,7 @@ interface ExtendedCreateParams {
   stream_options?: { include_usage: boolean }
   thinking?: { type: string }
   reasoning_effort?: string
+  reasoning?: { effort: string }
   enable_cache?: boolean
 }
 
@@ -153,7 +154,7 @@ export class OpenAIProvider implements LLMProvider {
       }
     })
 
-    // Detect if we're talking to the official OpenAI API
+    // 检测当前对接的是否为官方 OpenAI 应用程序接口
     const isOfficialOpenAI = this.baseURL ? /api\.openai\.com/i.test(this.baseURL) : true
 
     // Build reasoning params compatible with the target API
@@ -163,9 +164,7 @@ export class OpenAIProvider implements LLMProvider {
         reasoningParams.thinking = { type: 'enabled' }
         reasoningParams.reasoning_effort = this.reasoningEffort || 'high'
       } else {
-        // Non-OpenAI backends (Ollama, LM Studio, etc.) typically only
-        // support 'on'/'off' for reasoning_effort
-        reasoningParams.reasoning_effort = 'on'
+        reasoningParams.reasoning = { effort: this.reasoningEffort || 'high' }
       }
     }
 
