@@ -1,4 +1,3 @@
-import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as WTS from 'web-tree-sitter'
@@ -46,6 +45,14 @@ function getWasmPath(lang: string): string {
   return path.join(getWasmDir(), filename)
 }
 
+/** Export-related node types that may wrap function/class/variable declarations */
+const EXPORT_NODE_TYPES = new Set([
+  'export_statement',
+  'export_named_statement',
+  'export_default_statement',
+  'export_default',
+])
+
 function walkStatements(node: WTS.Node, lang: string): Statement[] {
   const statements: Statement[] = []
   for (const child of node.children) {
@@ -53,15 +60,45 @@ function walkStatements(node: WTS.Node, lang: string): Statement[] {
     if (stmt) {
       statements.push(stmt)
     }
-    if (
-      lang !== 'python' &&
-      (child.type === 'lexical_declaration' || child.type === 'variable_declaration')
-    ) {
+    // Extract inline functions from variable declarations (e.g. `const fn = () => {}`)
+    if (lang !== 'python') {
       for (const decl of child.children) {
         if (decl.type === 'variable_declarator') {
           for (const valChild of decl.children) {
             if (valChild.type === 'arrow_function' || valChild.type === 'function') {
               statements.push(convertFunction(valChild))
+            }
+          }
+        }
+      }
+    }
+    // Recursively extract exports' inner declarations (function/class/variable)
+    // so `export function foo()` is captured both as Export and as FuncDecl.
+    if (EXPORT_NODE_TYPES.has(child.type)) {
+      const subStatements = walkStatements(child, lang)
+      for (const sub of subStatements) {
+        if (
+          !statements.some(
+            s => s.type === sub.type && 'name' in s && 'name' in sub && s.name === sub.name,
+          )
+        ) {
+          statements.push(sub)
+        }
+      }
+      // Handle `export { foo, bar }` / `export type { Foo }` named export lists
+      for (const clause of child.namedChildren) {
+        if (clause.type === 'export_clause' || clause.type === 'named_exports') {
+          for (const spec of clause.namedChildren) {
+            if (spec.type === 'export_specifier') {
+              const exportedName =
+                spec.childForFieldName('alias')?.text || // export { x as y } → y
+                spec.childForFieldName('name')?.text || // export { x } → x
+                spec.text
+              if (
+                !statements.some(s => s.type === 'Export' && 'name' in s && s.name === exportedName)
+              ) {
+                statements.push({ type: 'Export' as const, name: exportedName })
+              }
             }
           }
         }
@@ -151,16 +188,16 @@ function convertMethod(node: WTS.Node): ClassMember {
   const isConstructor =
     name === 'constructor' || node.type === 'constructor_declaration' || node.type === 'constructor'
 
+  // Detect getter/setter by looking for `get`/`set` keyword children,
+  // not by fragile `includes()` on the node type string.
+  // `get`/`set` are unnamed keyword children, not named children.
+  const isGetter = node.children.some(c => c.type === 'get')
+  const isSetter = node.children.some(c => c.type === 'set')
+
   return {
     type: 'Method',
     name,
-    kind: isConstructor
-      ? 'constructor'
-      : node.type.includes('get')
-        ? 'getter'
-        : node.type.includes('set')
-          ? 'setter'
-          : 'method',
+    kind: isConstructor ? 'constructor' : isGetter ? 'getter' : isSetter ? 'setter' : 'method',
     visibility:
       (modifierNode?.namedChildren[0]?.text as 'public' | 'private' | 'protected') || 'public',
     isStatic: !!staticNode,
@@ -189,7 +226,7 @@ function convertClass(node: WTS.Node): Class {
         members.push({
           type: 'Property',
           name: mName?.text || child.text,
-          kind: 'method',
+          kind: 'property',
           visibility: 'public',
           isStatic: !!staticNode,
           startLine: child.startPosition.row + 1,
@@ -276,10 +313,18 @@ function convertImport(node: WTS.Node): Import {
 
   extractSpecifiers(node)
 
+  // Detect `import type { ... }` syntax
+  const isTypeOnly =
+    node.children.some(c => c.type === 'type') ||
+    node.namedChildren.some(
+      c => c.type === 'import_clause' && c.namedChildren.some(cc => cc.type === 'type'),
+    )
+
   return {
     type: 'Import',
     source: sourceNode?.text || node.text,
     specifiers,
+    isTypeOnly: isTypeOnly || undefined,
   }
 }
 
@@ -303,6 +348,11 @@ function convertExport(node: WTS.Node): { type: 'Export'; name: string } | null 
     if (child.type === 'assignment') {
       const left = child.childForFieldName('left')
       return { type: 'Export', name: left?.text || '(assignment)' }
+    }
+    // Handle `export interface Foo { ... }` and `export type Foo = ...`
+    if (child.type === 'interface_declaration' || child.type === 'type_alias_declaration') {
+      const nameNode = child.childForFieldName('name')
+      return { type: 'Export', name: nameNode?.text || '(anonymous)' }
     }
   }
   return { type: 'Export', name: '(anonymous)' }
@@ -418,24 +468,24 @@ function convertPythonAssignment(node: WTS.Node): Variable | null {
 }
 
 function convertPythonImport(node: WTS.Node): Import {
-  const names: { type: 'ImportSpecifier'; localName: string; importedName: string }[] = []
+  const specifiers: Import['specifiers'] = []
   const nameNode = node.childForFieldName('name')
   if (nameNode) {
     for (const child of nameNode.children) {
       if (child.type === 'aliased_import') {
         const original = child.childForFieldName('name')?.text || child.text
         const alias = child.childForFieldName('alias')?.text || original
-        names.push({ type: 'ImportSpecifier', localName: alias, importedName: original })
+        specifiers.push({ type: 'ImportSpecifier', localName: alias, importedName: original })
       } else if (child.type === 'identifier') {
-        names.push({ type: 'ImportSpecifier', localName: child.text, importedName: child.text })
+        specifiers.push({
+          type: 'ImportSpecifier',
+          localName: child.text,
+          importedName: child.text,
+        })
       }
     }
   }
-  return {
-    type: 'Import',
-    source: '',
-    specifiers: names,
-  }
+  return { type: 'Import', source: '', specifiers }
 }
 
 function convertPythonImportFrom(node: WTS.Node): Import {
@@ -493,7 +543,11 @@ function findNodeAtLine(root: WTS.Node, targetLine: number): WTS.Node | null {
     const found = findNodeAtLine(child, targetLine)
     if (found && primaryTypes.has(found.type)) return found
   }
-  return root
+  // Only return root if target line is at its EXACT start position.
+  // This prevents replacing a large parent (e.g. entire class) when the target
+  // line lands on whitespace or a gap between children.
+  if (primaryTypes.has(root.type) && root.startPosition.row === targetZeroBased) return root
+  return null
 }
 
 export function createTreeSitterAdapter(): AstAdapter {

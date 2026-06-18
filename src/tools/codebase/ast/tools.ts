@@ -5,8 +5,13 @@ function resolvePath(input: Record<string, unknown>): string | undefined {
   return (input.path || input.file || input.filePath) as string | undefined
 }
 
+let adapterCache: ReturnType<typeof createTreeSitterAdapter> | undefined
+
 export function createAstTools(): Tool[] {
-  const adapter = createTreeSitterAdapter()
+  if (!adapterCache) {
+    adapterCache = createTreeSitterAdapter()
+  }
+  const adapter = adapterCache
 
   const astQueryTool: Tool = {
     definition: {

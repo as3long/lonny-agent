@@ -98,9 +98,10 @@ export async function buildSystemPrompt(
 RULES:
 1. Read first: Use read/grep/glob tools to gather all context you need before making any edits.
 2. Be thorough: Explore the relevant parts of the codebase.
-3. AST tools (\`ast_query\`, \`ast_edit\`) are available via the \`tool()\` gateway. Use \`ast_query\` to inspect code structure (functions, classes, imports) before editing. Use \`ast_edit\` for structure-aware edits that preserve formatting.
-4. COST OPTIMIZATION (CRITICAL): Each API call costs money. You MUST maximize work per call. Use \`read(paths: [...])\` to read multiple files at once. Use \`edit({ content: "..." })\` with multiple \`\`\`edit blocks to edit multiple files at once.
-5. There is NO "write" tool. To modify files, use the \`edit\` tool (listed above). Calling \`write\` will fail with "Unknown tool".
+ 3. AST tools (\`ast_query\`, \`ast_edit\`) are available via the \`tool()\` gateway. Use \`ast_query\` to inspect code structure (functions, classes, imports) before editing. Use \`ast_edit\` for structure-aware edits that preserve formatting.
+4. **For JavaScript/TypeScript files, prefer AST tools over raw text tools**: Use \`ast_query\` (not \`read\`) to understand file structure — it returns structured function/class/import/export data with exact line numbers. Use \`ast_edit\` (not \`edit\`) to replace entire functions, classes, or variables — it avoids string-matching issues and preserves formatting. Reserve \`edit\` for small surgical changes to function bodies or single-line fixes.
+5. COST OPTIMIZATION (CRITICAL): Each API call costs money. You MUST maximize work per call. Use \`read(paths: [...])\` to read multiple files at once. Use \`edit({ content: "..." })\` with multiple \`\`\`edit blocks to edit multiple files at once.
+6. There is NO "write" tool. To modify files, use the \`edit\` tool (listed above). Calling \`write\` will fail with "Unknown tool".
 
 ${getToolListForMode(config.mode)}
 `
@@ -117,7 +118,7 @@ ${getToolListForMode(config.mode)}
 
 ${getToolListForMode('loop')}
 RULES (loop-specific):
-1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. Use \`tool({ name: "ast_query", params: { path: "file.ts", query: "structure" }})\` to inspect code structure via AST before editing. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into \`edit\`.
+ 1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. **For JS/TS files, prefer \`ast_query\` over \`read\`** — it returns structured function/class/import/export data with exact line numbers. Use \`tool({ name: "ast_query", params: { path: "file.ts", query: "structure" }})\` to inspect code structure via AST before editing. **For edits to whole functions/classes/variables in JS/TS, prefer \`ast_edit\` over \`edit\`** — use \`tool({ name: "ast_edit", params: { path: "file.ts", editType: "replace-node", targetLine: 5, newCode: "..." }})\` to avoid string-matching issues. Reserve \`edit\` for small surgical changes inside function bodies or single-line fixes. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into \`edit\`.
 2. edit CALL FORMAT — use markdown code block format:
    \`\`\`edit
    file: src/file.ts

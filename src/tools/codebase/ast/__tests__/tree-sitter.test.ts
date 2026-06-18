@@ -114,6 +114,66 @@ import * as path from 'path'
     const module = await adapter.parse(source, 'test.ts')
     expect(module.exports).toContain('value')
   })
+  it('parses export interface and export type', async () => {
+    const source = `
+export interface Foo {
+  name: string
+}
+export type Bar = string
+`
+    const module = await adapter.parse(source, 'test.ts')
+    expect(module.exports).toContain('Foo')
+    expect(module.exports).toContain('Bar')
+  })
+
+  it('parses named export clauses', async () => {
+    const source = `
+const a = 1
+const b = 2
+export { a, b }
+`
+    const module = await adapter.parse(source, 'test.ts')
+    expect(module.exports).toContain('a')
+    expect(module.exports).toContain('b')
+  })
+
+  it('parses export with alias', async () => {
+    const source = `
+const x = 1
+export { x as y }
+`
+    const module = await adapter.parse(source, 'test.ts')
+    expect(module.exports).toContain('y')
+    expect(module.exports).not.toContain('x')
+  })
+
+  it('detects import type syntax', async () => {
+    const source = "import type { Foo } from './types'"
+    const module = await adapter.parse(source, 'test.ts')
+    expect(module.imports).toHaveLength(1)
+    expect(module.imports[0].source).toBe("'./types'")
+    expect(module.imports[0].specifiers[0].localName).toBe('Foo')
+    expect(module.imports[0].isTypeOnly).toBe(true)
+  })
+
+  it('parses class with getter and setter', async () => {
+    const source = `class Foo {
+  get bar(): string {
+    return "hello"
+  }
+  set bar(v: string) {}
+  method(): void {}
+}`
+    const module = await adapter.parse(source, 'test.ts')
+    const cls = adapter.findClasses(module)
+    expect(cls).toHaveLength(1)
+    expect(cls[0].members).toHaveLength(3)
+    expect(cls[0].members[0].kind).toBe('getter')
+    expect(cls[0].members[1].kind).toBe('setter')
+    expect(cls[0].members[2].kind).toBe('method')
+    expect(cls[0].members[0].name).toBe('bar')
+    expect(cls[0].members[1].name).toBe('bar')
+  })
 
   it('parses variables', async () => {
     const source = `

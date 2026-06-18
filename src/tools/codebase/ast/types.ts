@@ -55,7 +55,7 @@ export interface Variable {
 export interface ClassMember {
   type: 'Property' | 'Method'
   name: string
-  kind: 'constructor' | 'method' | 'getter' | 'setter'
+  kind: 'constructor' | 'method' | 'getter' | 'setter' | 'property'
   visibility: 'public' | 'private' | 'protected'
   isStatic: boolean
   startLine: number
