@@ -72,7 +72,6 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
   while (iterations < maxIterations) {
     if (session.isStopped()) {
       bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: toolCalls.length })
-      session.save()
       return
     }
     iterations++
@@ -273,39 +272,41 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
       }
     } catch (e) {
       const errMsg = fmtErr(e)
-      const partialContent = fullResponse ? fullResponse.slice(0, 500) : '(empty)'
-      if (!out?.suppressToolOutput) {
-        writeOut(`\n${RE}Stream error:${RS} ${errMsg}`, out)
-        writeOut(`\n  ${GY}┃${RS} Partial response: ${partialContent}\n`, out)
-      }
-      console.error('[session] Stream error:', errMsg, '| Partial response:', partialContent)
-      if (reasoningOutput) {
-        bus.emit(EventChannels.THINKING_END, {})
+      if (!session.isStopped()) {
+        const partialContent = fullResponse ? fullResponse.slice(0, 500) : '(empty)'
         if (!out?.suppressToolOutput) {
-          writeOut(`${RS}\n`, out)
-          writeOut(thinkBottomBorder(), out)
+          writeOut(`\n${RE}Stream error:${RS} ${errMsg}`, out)
+          writeOut(`\n  ${GY}┃${RS} Partial response: ${partialContent}\n`, out)
         }
-      }
-      bus.emit(EventChannels.LLM_STREAM_END, { iteration: iterations, toolCallCount: 0 })
-      bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
-
-      if (toolCalls.length > 0) {
-        const interruptedMsg: LLMMessage = {
-          role: 'assistant',
-          content: null,
-          tool_calls: toolCalls,
-          reasoning_content: reasoningContent,
+        console.error('[session] Stream error:', errMsg, '| Partial response:', partialContent)
+        if (reasoningOutput) {
+          bus.emit(EventChannels.THINKING_END, {})
+          if (!out?.suppressToolOutput) {
+            writeOut(`${RS}\n`, out)
+            writeOut(thinkBottomBorder(), out)
+          }
         }
-        session.messages.push(interruptedMsg)
-      }
+        bus.emit(EventChannels.LLM_STREAM_END, { iteration: iterations, toolCallCount: 0 })
+        bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: 0 })
 
-      saveTokenUsage(
-        session.config.cwd,
-        session.turnInputTokens,
-        session.turnOutputTokens,
-        session.turnApiCalls,
-      )
-      session.save()
+        if (toolCalls.length > 0) {
+          const interruptedMsg: LLMMessage = {
+            role: 'assistant',
+            content: null,
+            tool_calls: toolCalls,
+            reasoning_content: reasoningContent,
+          }
+          session.messages.push(interruptedMsg)
+        }
+
+        saveTokenUsage(
+          session.config.cwd,
+          session.turnInputTokens,
+          session.turnOutputTokens,
+          session.turnApiCalls,
+        )
+        session.save()
+      }
       return
     }
 
@@ -413,7 +414,6 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
           session.messages.push(interruptedMsg)
         }
         bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: toolCalls.length })
-        session.save()
         return
       }
       bus.emit(EventChannels.TOOL_CALL, { name: tc.name, input: tc.input, id: tc.id })

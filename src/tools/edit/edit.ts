@@ -317,27 +317,46 @@ ${suggestion}`)
             // ── Tier 2: Whitespace-normalized fallback ─────────────────
             const tolerant = findAllLinesTolerant(content, e.old_string)
             if (tolerant.length === 0) {
-              // Not found by any strategy — include proximity hint
+              // Not found by any strategy — check if old_string lines are scattered (non-contiguous)
               const contentLines = content.split('\n')
-              let hint = ''
-              const firstLine = (e.old_string.split('\n')[0] || '').trim()
-              if (firstLine) {
-                const normFirst = normalizeLine(firstLine)
-                // Try to find a line that contains the first line text
-                const similarIdx = contentLines.findIndex(
-                  l => l.length > 0 && normFirst.length > 0 && normalizeLine(l).includes(normFirst),
+              const oldLines = e.old_string.split('\n').filter(l => l.trim())
+              const foundIndices: number[] = []
+              for (const ol of oldLines) {
+                const normOl = normalizeLine(ol.trim())
+                if (!normOl) continue
+                const idx = contentLines.findIndex(
+                  (cl, ci) => !foundIndices.includes(ci) && normalizeLine(cl).includes(normOl),
                 )
-                if (similarIdx !== -1) {
-                  const start = Math.max(0, similarIdx - 1)
-                  const end = Math.min(contentLines.length, similarIdx + 2)
-                  const snippet = contentLines.slice(start, end).join('\n')
-                  hint = `\n  Near line ${similarIdx + 1}:\n  """\n${snippet}\n  """`
-                }
+                if (idx !== -1) foundIndices.push(idx)
               }
-              // Always show top of file for context, unless already shown via match
-              if (!hint && contentLines.length > 0) {
-                const lines = contentLines.slice(0, Math.min(contentLines.length, 5))
-                hint = `\n  File content (first ${lines.length} lines):\n  """\n${lines.join('\n')}\n  """`
+              let hint = ''
+              const isScattered =
+                foundIndices.length >= 2 &&
+                foundIndices[foundIndices.length - 1]! - foundIndices[0]! + 1 > foundIndices.length
+
+              if (isScattered) {
+                hint = `\n  ⚠️  ${foundIndices.length} lines of old_string were found in the file, but they are NOT contiguous — you skipped lines between them.
+  old_string must be a CONTIGUOUS chunk of the file. Use separate \`\`\`edit blocks for each section (see "Multiple files" example above).
+  Matched at lines: ${foundIndices.map(i => i + 1).join(', ')}`
+              } else {
+                const firstLine = (e.old_string.split('\n')[0] || '').trim()
+                if (firstLine) {
+                  const normFirst = normalizeLine(firstLine)
+                  const similarIdx = contentLines.findIndex(
+                    l =>
+                      l.length > 0 && normFirst.length > 0 && normalizeLine(l).includes(normFirst),
+                  )
+                  if (similarIdx !== -1) {
+                    const start = Math.max(0, similarIdx - 1)
+                    const end = Math.min(contentLines.length, similarIdx + 2)
+                    const snippet = contentLines.slice(start, end).join('\n')
+                    hint = `\n  Near line ${similarIdx + 1}:\n  """\n${snippet}\n  """`
+                  }
+                }
+                if (!hint && contentLines.length > 0) {
+                  const lines = contentLines.slice(0, Math.min(contentLines.length, 5))
+                  hint = `\n  File content (first ${lines.length} lines):\n  """\n${lines.join('\n')}\n  """`
+                }
               }
               const diag = buildDiag(e)
               const readHint = readWarning ? `\n  ${readWarning}` : ''

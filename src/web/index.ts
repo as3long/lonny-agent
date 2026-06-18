@@ -3,12 +3,10 @@ import * as http from 'node:http'
 import * as path from 'node:path'
 import * as url from 'node:url'
 import { type WebSocket, WebSocketServer } from 'ws'
+import { type CommandUI, dispatchCommand } from '../agent/commands.js'
 import { resetGlobalEventBus } from '../agent/event-bus.js'
-import { ensurePromptsDir, loadPromptTemplates } from '../agent/prompt-templates.js'
 import { Session, type SessionOutput } from '../agent/session.js'
-import { ensureSkillsDir, loadSkills } from '../agent/skills.js'
 import type { Config } from '../config/index.js'
-import { resetTokenUsage } from '../config/tokens.js'
 import { fmtErr } from '../tools/errors.js'
 import { fetchDeepSeekBalance, isDeepSeekOfficial } from '../tui/balance.js'
 import { listPlans, type PlanEntry } from '../tui/components/index.js'
@@ -235,120 +233,13 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
             const cmd = parts[0]
             const arg = parts.slice(1).join(' ')
 
-            if (
-              cmd === 'mode' &&
-              (arg === 'code' || arg === 'plan' || arg === 'ask' || arg === 'loop')
-            ) {
-              await sessionWithOutput.setMode(arg as 'code' | 'plan' | 'ask' | 'loop')
-              ws.send(JSON.stringify({ type: 'mode_changed', mode: arg }))
-              return
-            }
-
-            if (cmd === 'model' && arg) {
-              sessionWithOutput.config.model = arg
-              await sessionWithOutput.setMode(sessionWithOutput.config.mode)
-              ws.send(JSON.stringify({ type: 'model_changed', model: arg }))
-              return
-            }
-
-            if (cmd === 'new') {
-              // Stop any running agent first
-              sessionWithOutput.stop()
-              // Close old bridge
-              if (bridge) bridge.close()
-              // Clear persisted state
-              Session.clearSavedSession(config.cwd)
-              resetTokenUsage(config.cwd)
-              resetGlobalEventBus()
-              // Create fresh session with empty context
-              sessionWithOutput = new Session(config, output)
-              sessionWithOutput.onPlanWritten = (display: string) => {
-                ws.send(JSON.stringify({ type: 'plan_written', display }))
-                sendPlanData()
-              }
-              // Create new bridge for the fresh session
-              bridge = startSessionBridge(sessionWithOutput, config, (msg: WsMessage) => {
-                if (ws.readyState === ws.OPEN) {
-                  ws.send(JSON.stringify(msg))
-                }
-              })
-              // Reset pending confirmation state
-              pendingConfirm = null
-              ws.send(JSON.stringify({ type: 'session_cleared' }))
-              ws.send(JSON.stringify({ type: 'done', reason: 'stop' }))
-              return
-            }
-
-            if (cmd === 'stop') {
-              sessionWithOutput.stop()
-              ws.send(JSON.stringify({ type: 'chunk', text: '\nStopped.\n' }))
-              ws.send(JSON.stringify({ type: 'done', reason: 'stop' }))
-              return
-            }
-
-            if (cmd === 'skills') {
-              const skills = loadSkills(config.cwd)
-              if (skills.length === 0) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'chunk',
-                    text: 'No skills loaded. Create .md files in .lonny/skills/ or run install_superpowers.',
-                  }),
-                )
-              } else {
-                let msg = `Active Skills (${skills.length}):\n`
-                for (const s of skills) {
-                  msg += `  \u2022 ${s.name}`
-                  if (s.description) msg += ` - ${s.description}`
-                  msg += '\n'
-                }
-                ws.send(JSON.stringify({ type: 'chunk', text: msg }))
-              }
-              ws.send(JSON.stringify({ type: 'done', reason: 'stop' }))
-              return
-            }
-
-            if (cmd === 'prompts') {
-              const templates = loadPromptTemplates(config.cwd)
-              if (templates.length === 0) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'chunk',
-                    text: 'No prompt templates found. Create .md files in .lonny/prompts/.',
-                  }),
-                )
-              } else {
-                let msg = `Prompt Templates (${templates.length}):\n`
-                for (const t of templates) {
-                  msg += `  \u2022 ${t.name}`
-                  if (t.description) msg += ` - ${t.description}`
-                  msg += '\n'
-                }
-                ws.send(JSON.stringify({ type: 'chunk', text: msg }))
-              }
-              ws.send(JSON.stringify({ type: 'done', reason: 'stop' }))
-              return
-            }
-
-            if (cmd === 'init') {
-              ensureSkillsDir(config.cwd)
-              ensurePromptsDir(config.cwd)
-              ws.send(
-                JSON.stringify({
-                  type: 'chunk',
-                  text: 'Initialized .lonny/skills/ and .lonny/prompts/.',
-                }),
-              )
-              ws.send(JSON.stringify({ type: 'done', reason: 'stop' }))
-              return
-            }
-
+            // Web-specific commands
             if (cmd === 'help') {
               ws.send(
                 JSON.stringify({
                   type: 'help',
                   commands: [
-                    '/mode code|plan|ask|loop - Switch mode',
+                    '/mode <code|plan|ask|loop> - Switch mode',
                     '/model <name> - Switch model',
                     '/new - Start a new session',
                     '/stop - Stop the running agent',
@@ -359,6 +250,59 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
                   ],
                 }),
               )
+              return
+            }
+
+            if (cmd === 'exit' || cmd === 'quit') {
+              ws.close()
+              return
+            }
+
+            // Web-specific stop (always works, no isRunning check)
+            if (cmd === 'stop') {
+              sessionWithOutput.stop()
+              ws.send(JSON.stringify({ type: 'chunk', text: '\nStopped.\n' }))
+              ws.send(JSON.stringify({ type: 'done', reason: 'stop' }))
+              return
+            }
+
+            // Shared commands via CommandUI
+            const ui: CommandUI = {
+              write: (text: string) => {
+                ws.send(JSON.stringify({ type: 'chunk', text: stripAnsi(text) }))
+              },
+              replaceContent: () => {
+                ws.send(JSON.stringify({ type: 'session_cleared' }))
+              },
+              onStateChange: () => {},
+              onNewSession: (session: Session) => {
+                sessionWithOutput = session
+                sessionWithOutput.onPlanWritten = (display: string) => {
+                  ws.send(JSON.stringify({ type: 'plan_written', display }))
+                  sendPlanData()
+                }
+                if (bridge) bridge.close()
+                bridge = startSessionBridge(sessionWithOutput, config, (bridgeMsg: WsMessage) => {
+                  if (ws.readyState === ws.OPEN) {
+                    ws.send(JSON.stringify(bridgeMsg))
+                  }
+                })
+                pendingConfirm = null
+              },
+            }
+            const handled = await dispatchCommand(
+              { session: sessionWithOutput, config, ui, isRunning: false },
+              cmd,
+              arg,
+            )
+
+            if (handled) {
+              if (cmd === 'mode') {
+                ws.send(JSON.stringify({ type: 'mode_changed', mode: arg }))
+              } else if (cmd === 'model') {
+                ws.send(JSON.stringify({ type: 'model_changed', model: arg }))
+              }
+              ws.send(JSON.stringify({ type: 'done', reason: 'stop' }))
               return
             }
 

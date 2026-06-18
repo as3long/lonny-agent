@@ -1,5 +1,7 @@
+import { resetGlobalEventBus } from '../agent/event-bus.js'
 import { Session } from '../agent/session.js'
 import { type Config, loadConfig } from '../config/index.js'
+import { resetTokenUsage } from '../config/tokens.js'
 import { runInit } from './init.js'
 
 export interface CliOptions {
@@ -21,6 +23,15 @@ export async function parseArgs(argv: string[]): Promise<CliOptions> {
   if (args[0] === 'init') {
     await runInit()
     return { init: true } as CliOptions
+  }
+
+  // Check for new command — clear all saved sessions, then continue fresh
+  if (args[0] === 'new') {
+    const config = loadConfig()
+    Session.clearSavedSession(config.cwd)
+    resetTokenUsage(config.cwd)
+    resetGlobalEventBus()
+    args.splice(0, 1) // Remove 'new', remaining args become normal arguments
   }
 
   // ── Session subcommands ──
