@@ -62,6 +62,14 @@ export interface ClassMember {
   endLine: number
 }
 
+export interface Reference {
+  type: 'Reference'
+  name: string
+  line: number
+  column: number
+  context: string
+}
+
 export interface StructureOverview {
   filePath: string
   language: string

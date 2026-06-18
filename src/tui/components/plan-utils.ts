@@ -43,21 +43,13 @@ export function loadTodos(filePath: string): string {
     const content = fs.readFileSync(filePath, 'utf-8')
     const lines = content.split('\n')
     const todos: string[] = []
-    let inTodo = false
     for (const raw of lines) {
       const line = raw.trim()
-      if (/^##\s+todo/i.test(line)) {
-        inTodo = true
-        continue
-      }
-      if (inTodo && /^##\s/.test(line)) break
-      if (inTodo) {
-        const m = line.match(/^- \[([ x])\]\s+(.+)/)
-        if (m) {
-          const done = m[1] === 'x'
-          const check = done ? '\u2705' : '\u2B1C'
-          todos.push(`${check} ${done ? colors.doneTodo(m[2]) : colors.todo(m[2])}`)
-        }
+      const m = line.match(/^- \[([ x])\]\s+(.+)/)
+      if (m) {
+        const done = m[1] === 'x'
+        const check = done ? '\u2705' : '\u2B1C'
+        todos.push(`${check} ${done ? colors.doneTodo(m[2]) : colors.todo(m[2])}`)
       }
     }
     return todos.length > 0 ? todos.join('\n') : '(no todo items)'

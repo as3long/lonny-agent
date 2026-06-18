@@ -36,18 +36,10 @@ export class TodoPanel implements Component {
     try {
       const content = fs.readFileSync(plan.fullPath, 'utf-8')
       const lines = content.split('\n')
-      let inTodo = false
       for (const line of lines) {
-        if (line.startsWith('## Todo List')) {
-          inTodo = true
-          continue
-        }
-        if (inTodo && line.startsWith('## ')) break
-        if (inTodo) {
-          const m = line.trim().match(/^- \[([ x])\]\s+(.+)/)
-          if (m) {
-            this.todos.push({ text: m[2], done: m[1] === 'x' })
-          }
+        const m = line.trim().match(/^- \[([ x])\]\s+(.+)/)
+        if (m) {
+          this.todos.push({ text: m[2], done: m[1] === 'x' })
         }
       }
     } catch {

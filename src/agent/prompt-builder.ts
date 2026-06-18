@@ -131,12 +131,14 @@ RULES (loop-specific):
 3. After making edits to a file, if you need to make ANOTHER edit to the SAME file, you MUST re-read it first to get the updated content.
 4. If \`edit\` reports \`old_string not found\`, do NOT retry with the same old_string — re-read the file immediately to see its actual current content, then retry with correctly-copied text.
 5. When copying old_string from \`read\` output, include 2-3 lines of context BEFORE and AFTER the target change to make the string unique in the file.
-6. On Windows, files may use CRLF (\\r\\n) line endings, but the \`edit\` tool normalizes them to LF (\\n). Always use \`\\n\` (not \`\\r\\n\`) in old_string/new_string.
-7. COST OPTIMIZATION (CRITICAL): Each API call costs money. You MUST maximize work per call. Use \`read(paths: [...])\` to read multiple files at once. Use \`edit({ content: "..." })\` with multiple \`\`\`edit blocks to edit multiple files at once.
-8. TODO LIST MAINTENANCE: After completing a task item, update the corresponding plan file in \`.lonny/\` by checking off the TODO item (change \`- [ ]\` to \`- [x]\`). Use \`read\` to find the plan file, then \`edit\` to update the checkbox.
-9. LOOP BEHAVIOR: After this turn ends, you will AUTOMATICALLY receive a continuation prompt to continue working on the same task. You do NOT need to stop and wait for the user — keep going until the task is complete.
-10. If you believe the task is COMPLETE, end your response with a clear summary of what was accomplished. The system will detect this and stop the loop.
-11. You can use /stop at any time to halt execution.`
+ 6. On Windows, files may use CRLF (\\r\\n) line endings, but the \`edit\` tool normalizes them to LF (\\n). Always use \`\\n\` (not \`\\r\\n\`) in old_string/new_string.
+ 7. CRITICAL: old_string must be CONTIGUOUS — do NOT skip any lines between the old_string start and end. If you need to modify non-adjacent sections, use separate \`\`\`edit blocks.
+ 8. The \`|\` (pipe) after \`old:\` / \`new:\` supports chomping: \`|\` keeps trailing newline, \`|-\` strips it. Use \`|\` (not \`|-\`) when copying old_string — wrong chomping causes "old_string not found".
+ 9. COST OPTIMIZATION (CRITICAL): Each API call costs money. You MUST maximize work per call. Use \`read(paths: [...])\` to read multiple files at once. Use \`edit({ content: "..." })\` with multiple \`\`\`edit blocks to edit multiple files at once.
+10. TODO LIST MAINTENANCE: After completing a task item, update the corresponding plan file in \`.lonny/\` by checking off the TODO item (change \`- [ ]\` to \`- [x]\`). Use \`read\` to find the plan file, then \`edit\` to update the checkbox.
+11. LOOP BEHAVIOR: After this turn ends, you will AUTOMATICALLY receive a continuation prompt to continue working on the same task. You do NOT need to stop and wait for the user — keep going until the task is complete.
+12. If you believe the task is COMPLETE, end your response with a clear summary of what was accomplished. The system will detect this and stop the loop.
+13. You can use /stop at any time to halt execution.`
       : config.mode === 'plan'
         ? `You are a planning agent. Your ONLY job is to investigate the codebase and produce an actionable implementation plan with a todo list.
 
@@ -192,10 +194,12 @@ RULES (code-specific):
    Use separate \`\`\`edit blocks for multiple files.
 3. After making edits to a file, if you need to make ANOTHER edit to the SAME file, you MUST re-read it first to get the updated content.
 4. If \`edit\` reports \`old_string not found\`, do NOT retry with the same old_string — re-read the file immediately to see its actual current content, then retry with correctly-copied text.
-5. When copying old_string from \`read\` output, include 2-3 lines of context BEFORE and AFTER the target change to make the string unique in the file.
-6. On Windows, files may use CRLF (\\r\\n) line endings, but the \`edit\` tool normalizes them to LF (\\n). Always use \`\\n\` (not \`\\r\\n\`) in old_string/new_string.
-7. COST OPTIMIZATION (CRITICAL): Each API call costs money. You have a hard limit of ~5 API calls per task.
-8. TODO LIST MAINTENANCE: After completing a task item, update the corresponding plan file in \`.lonny/\` by checking off the TODO item (change \`- [ ]\` to \`- [x]\`). Use \`read\` to find the plan file, then \`edit\` to update the checkbox.`
+ 5. When copying old_string from \`read\` output, include 2-3 lines of context BEFORE and AFTER the target change to make the string unique in the file.
+ 6. CRITICAL: old_string must be CONTIGUOUS — do NOT skip any lines between the old_string start and end. If you need to modify non-adjacent sections, use separate \`\`\`edit blocks.
+ 7. The \`|\` (pipe) after \`old:\` / \`new:\` supports chomping: \`|\` keeps trailing newline, \`|-\` strips it. Use \`|\` (not \`|-\`) when copying old_string — wrong chomping causes "old_string not found".
+ 8. On Windows, files may use CRLF (\\r\\n) line endings, but the \`edit\` tool normalizes them to LF (\\n). Always use \`\\n\` (not \`\\r\\n\`) in old_string/new_string.
+ 9. COST OPTIMIZATION (CRITICAL): Each API call costs money. You have a hard limit of ~5 API calls per task.
+10. TODO LIST MAINTENANCE: After completing a task item, update the corresponding plan file in \`.lonny/\` by checking off the TODO item (change \`- [ ]\` to \`- [x]\`). Use \`read\` to find the plan file, then \`edit\` to update the checkbox.`
 
   // ── Built-in development methodologies ─────────────────────────────────
   // Embedded directly from Superpowers — no skill files needed.
@@ -236,11 +240,11 @@ Before writing a plan, explore the user's request thoroughly:
 - Shell: ${shell}
 - Working directory: ${cwd}
 - OS: ${isWindows ? 'Windows' : 'Linux/macOS'}
-- Available shell commands: ${isWindows ? 'PowerShell (cmd is also available but PowerShell is preferred)' : 'bash'}
-${isWindows ? '  - Use PowerShell. Do NOT use Unix commands like `cat`, `ls`, `grep`, `which`, `chmod`, `mv`, `cp`, `rm`, `touch`, `mkdir`, `uname`, etc.' : ''}
-${isWindows ? '  - Use `type` instead of `cat`, `dir` instead of `ls`, `where` instead of `which`' : ''}
+  - Available shell commands: ${isWindows ? 'PowerShell (cmd is also available but PowerShell is preferred)' : 'bash'}
+${isWindows ? '  ⚠️  THIS IS WINDOWS. Do NOT use Unix/Linux paths like `/workspace/...` or `/home/...`. The working directory is a Windows path (e.g. `C:\\Users\\...`).' : ''}
+${isWindows ? '  ⚠️  Do NOT use Unix commands: `find`, `cat`, `ls -la`, `which`, `cp`, `mv`, `rm`, `touch`, `chmod`, `mkdir`, `grep`, `head`, `tail`. They will ALL fail.' : ''}
+${isWindows ? '  - Use `type` instead of `cat`, `dir` instead of `ls`, `where` instead of `which`, `Select-Object -First N` instead of `head -N`' : ''}
 ${isWindows ? '  - Use `;` (semicolon) instead of `&&` to chain commands' : ''}
-${isWindows ? '  - Use `Select-Object -First` instead of `head`' : ''}
 ${isWindows ? '  - ⚠️  `Select-String` exits with code 1 when no match is found (e.g. `Select-String -Pattern "FAIL"` returns code 1 if no line contains FAIL). This is NORMAL — it does NOT mean the command failed. Append `; $LASTEXITCODE = 0` to suppress this.' : ''}`
 
   // Plan mode uses its own standalone tool list inside modeInstructions — skip sharedRules

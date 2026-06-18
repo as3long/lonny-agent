@@ -377,3 +377,90 @@ describe('TreeSitterAdapter - error handling', () => {
     expect(result.success).toBe(false)
   })
 })
+
+describe('TreeSitterAdapter - insertMethodIntoClass', () => {
+  it('inserts a method into an empty class', async () => {
+    const source = `class MyClass {\n}`
+    const result = await adapter.insertMethodIntoClass(
+      source,
+      'test.ts',
+      'MyClass',
+      'myMethod() { return 42 }',
+    )
+    expect(result.success).toBe(true)
+    expect(result.source).toContain('myMethod()')
+    expect(result.source).toContain('return 42')
+  })
+
+  it('inserts a method into a class with existing members', async () => {
+    const source = `class MyClass {
+  existing() { return 1 }
+}`
+    const result = await adapter.insertMethodIntoClass(
+      source,
+      'test.ts',
+      'MyClass',
+      'newMethod() { return 2 }',
+    )
+    expect(result.success).toBe(true)
+    expect(result.source).toContain('existing()')
+    expect(result.source).toContain('newMethod()')
+    expect(result.source.indexOf('newMethod')).toBeGreaterThan(result.source.indexOf('existing'))
+  })
+
+  it('returns error for non-existent class', async () => {
+    const source = `class A {}`
+    const result = await adapter.insertMethodIntoClass(source, 'test.ts', 'NonExistent', 'm() {}')
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('not found')
+  })
+
+  it('returns error for missing class in Python file', async () => {
+    const result = await adapter.insertMethodIntoClass('x = 1', 'file.py', 'X', 'def m(): pass')
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('not found')
+  })
+})
+
+describe('TreeSitterAdapter - findReferences', () => {
+  it('finds direct function calls', async () => {
+    const source = `
+function foo() { return 1 }
+function bar() {
+  const x = foo()
+  const y = foo(42)
+  return x + y
+}
+`
+    const refs = await adapter.findReferences(source, 'test.ts', 'foo')
+    expect(refs).toHaveLength(2)
+    expect(refs[0].line).toBe(4)
+    expect(refs[0].context).toContain('foo()')
+    expect(refs[1].line).toBe(5)
+    expect(refs[1].context).toContain('foo(42)')
+  })
+
+  it('finds method calls on objects', async () => {
+    const source = `
+const obj = { doStuff() { return 1 } }
+obj.doStuff()
+obj.doStuff(1, 2, 3)
+`
+    const refs = await adapter.findReferences(source, 'test.ts', 'doStuff')
+    expect(refs).toHaveLength(2)
+    expect(refs[0].context).toContain('obj.doStuff()')
+    expect(refs[1].context).toContain('obj.doStuff(1, 2, 3)')
+  })
+
+  it('returns empty array when no matches', async () => {
+    const source = `const x = 1\n`
+    const refs = await adapter.findReferences(source, 'test.ts', 'nonexistent')
+    expect(refs).toHaveLength(0)
+  })
+
+  it('works via nameFilter', async () => {
+    const source = `const x = foo()\n`
+    const refs = await adapter.findReferences(source, 'test.ts', 'foo')
+    expect(refs).toHaveLength(1)
+  })
+})

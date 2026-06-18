@@ -3,6 +3,7 @@ import type {
   Class,
   FuncDecl,
   Module,
+  Reference,
   StructureOverview,
   TextEditResult,
   Variable,
@@ -25,6 +26,7 @@ export interface AstAdapter {
   findFunctions(node: Module, query?: { name?: string }): FuncDecl[]
   findClasses(node: Module, query?: { name?: string }): Class[]
   findVariables(node: Module, query?: { name?: string }): Variable[]
+  findReferences(source: string, filePath: string, name: string): Promise<Reference[]>
   getStructure(node: Module): StructureOverview
   applyEdits(source: string, filePath: string, edits: AstEdit[]): Promise<TextEditResult>
   replaceNode(
@@ -32,5 +34,11 @@ export interface AstAdapter {
     filePath: string,
     targetLine: number,
     newCode: string,
+  ): Promise<TextEditResult>
+  insertMethodIntoClass(
+    source: string,
+    filePath: string,
+    className: string,
+    methodCode: string,
   ): Promise<TextEditResult>
 }

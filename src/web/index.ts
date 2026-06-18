@@ -165,19 +165,11 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
       try {
         const content = fs.readFileSync(plan.fullPath, 'utf-8')
         const lines = content.split('\n')
-        let inTodo = false
         for (const raw of lines) {
           const line = raw.trim()
-          if (/^##\s+todo/i.test(line)) {
-            inTodo = true
-            continue
-          }
-          if (inTodo && /^##\s/.test(line)) break
-          if (inTodo) {
-            const m = line.match(/^- \[([ x])\]\s+(.+)/)
-            if (m) {
-              todos.push({ text: m[2], done: m[1] === 'x' })
-            }
+          const m = line.match(/^- \[([ x])\]\s+(.+)/)
+          if (m) {
+            todos.push({ text: m[2], done: m[1] === 'x' })
           }
         }
       } catch {

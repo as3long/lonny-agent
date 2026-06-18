@@ -29,7 +29,7 @@ export function createAstTools(): Tool[] {
         query: {
           type: 'string',
           description:
-            'What to query: "structure", "functions", "classes", "variables", "imports", "exports"',
+            'What to query: "structure", "functions", "classes", "variables", "imports", "exports", "references"',
           required: true,
         },
         nameFilter: {
@@ -50,7 +50,15 @@ export function createAstTools(): Tool[] {
         return { success: false, output: '', error: 'query is required' }
       }
 
-      const validQueries = ['structure', 'functions', 'classes', 'variables', 'imports', 'exports']
+      const validQueries = [
+        'structure',
+        'functions',
+        'classes',
+        'variables',
+        'imports',
+        'exports',
+        'references',
+      ]
       if (!validQueries.includes(query)) {
         return {
           success: false,
@@ -105,6 +113,17 @@ export function createAstTools(): Tool[] {
           case 'exports': {
             return { success: true, output: JSON.stringify(module.exports, null, 2) }
           }
+          case 'references': {
+            if (!nameFilter) {
+              return {
+                success: false,
+                output: '',
+                error: 'nameFilter is required for "references" query',
+              }
+            }
+            const refs = await adapter.findReferences(source, filePath, nameFilter)
+            return { success: true, output: JSON.stringify(refs, null, 2) }
+          }
           default:
             return { success: false, output: '', error: `Unknown query: ${query}` }
         }
@@ -135,7 +154,7 @@ export function createAstTools(): Tool[] {
         editType: {
           type: 'string',
           description:
-            'Type of edit: "replace-node" (replace an entire function/class/variable at a given line), "insert-import" (add an import statement), "rename" (rename a symbol)',
+            'Type of edit: "replace-node" (replace an entire function/class/variable at a given line), "insert-import" (add an import statement), "rename" (rename a symbol), "insert-method" (insert a method into a class)',
           required: true,
         },
         targetLine: {
@@ -168,6 +187,16 @@ export function createAstTools(): Tool[] {
           description: 'New symbol name (for rename)',
           required: false,
         },
+        className: {
+          type: 'string',
+          description: 'Class name to insert the method into (for insert-method)',
+          required: false,
+        },
+        methodCode: {
+          type: 'string',
+          description: 'Method source code to insert (for insert-method)',
+          required: false,
+        },
       },
     },
     async execute(input) {
@@ -181,7 +210,7 @@ export function createAstTools(): Tool[] {
         return { success: false, output: '', error: 'editType is required' }
       }
 
-      const validEditTypes = ['replace-node', 'insert-import', 'rename']
+      const validEditTypes = ['replace-node', 'insert-import', 'rename', 'insert-method']
       if (!validEditTypes.includes(editType)) {
         return {
           success: false,
@@ -251,6 +280,32 @@ export function createAstTools(): Tool[] {
             source = source.replace(regex, newName)
             fs.writeFileSync(filePath, source, 'utf-8')
             return { success: true, output: `Renamed "${oldName}" to "${newName}"` }
+          }
+
+          case 'insert-method': {
+            const className = input.className as string | undefined
+            const methodCode = input.methodCode as string | undefined
+            if (!className || !methodCode) {
+              return {
+                success: false,
+                output: '',
+                error: 'className and methodCode are required for insert-method',
+              }
+            }
+            const result = await adapter.insertMethodIntoClass(
+              source,
+              filePath,
+              className,
+              methodCode,
+            )
+            if (result.success) {
+              fs.writeFileSync(filePath, result.source, 'utf-8')
+            }
+            return {
+              success: result.success,
+              output: result.success ? `Inserted method into class "${className}"` : '',
+              error: result.error,
+            }
           }
 
           default:
