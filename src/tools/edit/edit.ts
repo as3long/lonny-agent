@@ -49,6 +49,22 @@ new: |
   const x = 1
 \`\`\`
 
+Multiple files (use separate code blocks):
+\`\`\`edit
+file: src/config.ts
+old: |
+  mode: 'code'
+new: |
+  mode: 'plan'
+\`\`\`
+\`\`\`edit
+file: src/constants.ts
+old: |
+  MAX_RETRIES = 3
+new: |
+  MAX_RETRIES = 5
+\`\`\`
+
 CRITICAL RULES:
 - old and new are separated by "old:" and "new:" labels
 - Use | after label for multi-line content
