@@ -15,6 +15,63 @@ function truncateOutput(s: string, maxLength: number, label: string): string {
 }
 
 /**
+ * Check if stderr contains PowerShell NativeCommandError wrapping.
+ * This happens when a native command (like git push) writes to stderr and
+ * PowerShell wraps the output in an ErrorRecord format even though the
+ * command exited successfully (exit code 0).
+ *
+ * Example format:
+ *   git : Everything up-to-date
+ *   At line:1 char:1
+ *   + git push 2>&1
+ *   + ~~~~~~~~~~~~~
+ *       + CategoryInfo          : NotSpecified: (...) [], RemoteException
+ *       + FullyQualifiedErrorId : NativeCommandError
+ *
+ * Returns the extracted actual output if detected, null otherwise.
+ */
+function extractPowerShellNativeOutput(stderr: string): string | null {
+  // Detect PowerShell ErrorRecord wrapping around native command stderr output.
+  // The key marker is "FullyQualifiedErrorId : NativeCommandError".
+  if (!/FullyQualifiedErrorId\s*:\s*NativeCommandError/i.test(stderr)) {
+    return null
+  }
+
+  const lines = stderr.split(/\r?\n/)
+  const outputLines: string[] = []
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+
+    // Skip PowerShell error record wrapper lines:
+    //   "   + CategoryInfo          : ..."  (indented, with +)
+    //   "   + FullyQualifiedErrorId : ..."
+    //   "At line:1 char:1" or Chinese garbled equivalent
+    //   "+ command ..." (the command echo line with leading +)
+    //   "  + ~~~~~~~~~~~~~" (the caret underline)
+    if (
+      /^\s*\+/.test(trimmed) ||
+      /^At\s+line:\d+/i.test(trimmed) ||
+      /^\+?\s*CategoryInfo/i.test(trimmed) ||
+      /^\+?\s*FullyQualifiedErrorId/i.test(trimmed)
+    ) {
+      continue
+    }
+
+    // Skip blank lines within the error record block (but keep leading whitespace for formatting)
+    if (!trimmed && outputLines.length > 0) {
+      continue
+    }
+
+    // Remove leading whitespace from the first content line (the "<command> : <message>" line)
+    outputLines.push(line)
+  }
+
+  const result = outputLines.join('\n').trim()
+  return result || null
+}
+
+/**
  * Check if stderr indicates common PowerShell errors and return a helpful message.
  * Returns a tip string if detected, null otherwise.
  */
@@ -238,4 +295,10 @@ function buildErrorMsg(
   return parts.join('\n')
 }
 
-export { buildErrorMsg, checkCommandNotFound, checkPowerShellError, truncateOutput }
+export {
+  buildErrorMsg,
+  checkCommandNotFound,
+  checkPowerShellError,
+  extractPowerShellNativeOutput,
+  truncateOutput,
+}

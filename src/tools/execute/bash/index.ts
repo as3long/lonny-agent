@@ -1,7 +1,9 @@
+import * as os from 'node:os'
+
 import { fmtErr } from '../../errors.js'
 import type { Tool, ToolResult } from '../../types.js'
 import { MAX_OUTPUT_LENGTH } from './constants.js'
-import { buildErrorMsg, truncateOutput } from './errors.js'
+import { buildErrorMsg, extractPowerShellNativeOutput, truncateOutput } from './errors.js'
 import { execCommand } from './execution.js'
 import { ENCODING, env } from './platform.js'
 import { checkDestructive, redactSensitive } from './security.js'
@@ -78,7 +80,20 @@ For git operations (status, diff, log), use the 'git' tool instead.`,
         output += stdoutTrimmed
       }
 
-      const stderrTrimmed = redactSensitive(stderr.trim())
+      let stderrTrimmed = redactSensitive(stderr.trim())
+
+      // On Windows, PowerShell wraps native command stderr in ErrorRecord format
+      // even when the command succeeds (exit code 0). Detect this and extract the
+      // actual message content so it doesn't pollute output with "Command exited..." noise.
+      if (exitCode === 0 && stderrTrimmed && os.platform() === 'win32') {
+        const cleaned = extractPowerShellNativeOutput(stderrTrimmed)
+        if (cleaned) {
+          // Prepend a newline if there's already output
+          output += (output ? '\n' : '') + cleaned
+          stderrTrimmed = ''
+        }
+      }
+
       if (stderrTrimmed) {
         if (output) output += '\n'
         output += `(stderr):\n${stderrTrimmed}`
