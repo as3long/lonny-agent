@@ -10,7 +10,7 @@ import { AnthropicProvider } from './providers/anthropic.js'
 import { GoogleProvider } from './providers/google.js'
 import { OllamaProvider } from './providers/ollama.js'
 import { OpenAIProvider } from './providers/openai.js'
-import { runChat, sanitizeMessages } from './session-chat.js'
+import { runChat } from './session-chat.js'
 import {
   ensureDir,
   findLegacySessionFile,
@@ -22,6 +22,7 @@ import {
   type SessionData,
   type SessionInfo,
 } from './session-persistence.js'
+import { sanitizeMessages } from './session-utils.js'
 
 export { formatToolInput } from './session-display.js'
 

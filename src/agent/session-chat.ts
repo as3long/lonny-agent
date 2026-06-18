@@ -4,7 +4,7 @@ import type { ToolCall, ToolResult } from '../tools/types.js'
 import { compact, shouldCompact } from './compaction.js'
 import { EventChannels, getGlobalEventBus } from './event-bus.js'
 import type { LLMMessage } from './llm.js'
-import type { Session } from './session.js'
+import type { Session, SessionOutput } from './session.js'
 import {
   GY,
   printTokenStats,
@@ -22,60 +22,28 @@ import {
   writeOut,
 } from './session-display.js'
 import { logToolError } from './session-persistence.js'
+import { getContinuationMessage, isTaskCompleteMessage, sanitizeMessages } from './session-utils.js'
 
-// ── Helpers moved from Session class ─────────────────────────────────────────
+// ── Context compaction helper ─────────────────────────────────────────────────
 
-export function isTaskCompleteMessage(text: string): boolean {
-  if (!text) return false
-  const lower = text.toLowerCase()
-  const patterns = [
-    'task complete',
-    'task_complete',
-    'task is complete',
-    'all tasks complete',
-    '任务完成',
-    '任务已完成',
-    '全部完成',
-    '没有更多任务',
-    '无需继续',
-  ]
-  return patterns.some(p => lower.includes(p))
-}
-
-export function getContinuationMessage(messages: LLMMessage[]): string {
-  const firstUserMsg = messages.find(m => m.role === 'user')
-  const taskHint =
-    firstUserMsg && typeof firstUserMsg.content === 'string'
-      ? firstUserMsg.content.slice(0, 200)
-      : 'the original task'
-  return `[auto-continuation] The previous turn completed. Continue working on the original task: ${taskHint}
-
-If you believe the task is complete, call the task_complete tool with a summary of what was accomplished to end the session. Otherwise, continue with the next steps.`
-}
-
-export function sanitizeMessages(messages: LLMMessage[]): LLMMessage[] {
-  const sanitized: LLMMessage[] = []
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i]
-    if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-      const pendingIds = new Set(msg.tool_calls.map(tc => tc.id))
-      let j = i + 1
-      while (j < messages.length && messages[j].role === 'tool' && pendingIds.size > 0) {
-        const toolMsg = messages[j]
-        if (toolMsg.tool_call_id && pendingIds.has(toolMsg.tool_call_id)) {
-          pendingIds.delete(toolMsg.tool_call_id)
-        }
-        j++
-      }
-      if (pendingIds.size > 0) {
-        const dropped = msg.tool_calls.map(tc => `${tc.name}(${tc.id})`).join(', ')
-        console.warn(`[session] Dropping assistant message with unfulfilled tool_calls: ${dropped}`)
-        continue
+function tryCompact(
+  session: Session,
+  out: SessionOutput | undefined,
+  bus: ReturnType<typeof getGlobalEventBus>,
+): void {
+  if (shouldCompact(session.messages, session.config.contextWindow)) {
+    const before = session.messages.length
+    const result = compact(session.messages, session.config.contextWindow)
+    if (result.compressed) {
+      session.messages = result.messages
+      bus.emit(EventChannels.COMPACTION_TRIGGERED, { before, after: result.newCount })
+      if (out && !out.suppressToolOutput) {
+        out.write(
+          `\n  ${GY}┃${RS} ${GY}📦 Compressed context: ${before} → ${result.newCount} messages${RS}\n`,
+        )
       }
     }
-    sanitized.push(msg)
   }
-  return sanitized
 }
 
 // ── runChat ──────────────────────────────────────────────────────────────────
@@ -470,6 +438,7 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
         name: tc.name,
       }
       session.messages.push(resultMsg)
+      tryCompact(session, out, bus)
 
       if (tc.name === 'task_complete') {
         session.save()
@@ -481,19 +450,7 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
     session.save()
     bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: toolCalls.length })
 
-    if (shouldCompact(session.messages, session.config.contextWindow)) {
-      const before = session.messages.length
-      const result = compact(session.messages, session.config.contextWindow)
-      if (result.compressed) {
-        session.messages = result.messages
-        bus.emit(EventChannels.COMPACTION_TRIGGERED, { before, after: result.newCount })
-        if (out && !out.suppressToolOutput) {
-          out.write(
-            `\n  ${GY}┃${RS} ${GY}📦 Compressed context: ${before} → ${result.newCount} messages${RS}\n`,
-          )
-        }
-      }
-    }
+    tryCompact(session, out, bus)
   }
 
   if (iterations >= maxIterations) {
