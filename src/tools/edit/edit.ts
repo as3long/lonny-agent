@@ -69,7 +69,8 @@ CRITICAL RULES:
 - old and new are separated by "old:" and "new:" labels
 - Use | after label for multi-line content
 - old_string must match EXACTLY (whitespace, indentation, line breaks)
-- Do NOT include the "<lineNumber>: " prefix from read output`,
+- Do NOT include the "<lineNumber>: " prefix from read output
+- old_string must be CONTIGUOUS text from the file — you CANNOT skip lines between old_string and new_string boundaries. If you need to edit non-adjacent sections, use separate \`\`\`edit blocks.`,
       parameters: {
         content: {
           type: 'string',
