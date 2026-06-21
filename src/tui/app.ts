@@ -78,7 +78,12 @@ export const Root = defineComponent({
 
     const output: SessionOutput = {
       write: (text: string) => {
-        chatContent.value += text
+        // Strip ANSI escape sequences (terminal-only formatting)
+        let clean = text.replace(/\x1b\[[0-9;]*m/g, '')
+        // Strip thinking box borders — terminal wrapping with │/╭/╰ breaks
+        // in TUI since the Text component handles its own wrapping naturally.
+        clean = clean.replace(/^[ \t]*[│╰╭─]/gm, line => line.replace(/[│╰╭─]/g, ' '))
+        chatContent.value += clean
       },
       suppressToolOutput: false,
       confirmTool: async (toolCalls: ToolCall[]) => {
@@ -109,6 +114,8 @@ export const Root = defineComponent({
       const plans = listPlans(config.cwd)
       statusData.value = { ...statusData.value, planCount: plans.length }
     }
+
+    let landingSubmitTimer: ReturnType<typeof setTimeout> | null = null
 
     onMounted(async () => {
       let loaded: Session | null = preloadedSession
@@ -146,8 +153,13 @@ export const Root = defineComponent({
       updateTokenStats()
       refreshPlanCount()
 
+      // Keep landing screen visible for at least 1.5s so users can see it,
+      // even when a previous session was restored.
       if (restored) {
-        statusData.value = { ...statusData.value, phase: 'chat' }
+        landingSubmitTimer = setTimeout(() => {
+          statusData.value = { ...statusData.value, phase: 'chat' }
+          landingSubmitTimer = null
+        }, 1500)
       }
 
       try {
@@ -225,6 +237,11 @@ export const Root = defineComponent({
     }
 
     function onLandingSubmit() {
+      // User pressed Enter — skip the landing timer and switch to chat immediately
+      if (landingSubmitTimer) {
+        clearTimeout(landingSubmitTimer)
+        landingSubmitTimer = null
+      }
       statusData.value = { ...statusData.value, phase: 'chat' }
     }
 
