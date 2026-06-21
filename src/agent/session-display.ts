@@ -37,14 +37,20 @@ export function visibleWidth(s: string): number {
 /** Visible prefix width for thinking box lines: "  │" = 3 */
 export const THINK_PREFIX_WIDTH = 3
 
+// Invisible markers for TUI to detect thinking blocks.
+// Uses OSC "set window title" sequences — invisible in terminals,
+// and not matched by the standard ANSI color strip regex.
+const THINK_START_MARKER = '\x1b]0;THINK_START\x07'
+const THINK_END_MARKER = '\x1b]0;THINK_END\x07'
+
 /** Build the top border of the thinking box */
 export function thinkTopBorder(): string {
-  return `\n  ${GY}╭───────${RS}${TH} Think ${GY}────────────────────${RS}\n`
+  return `${THINK_START_MARKER}\n  ${GY}╭───────${RS}${TH} Think ${GY}────────────────────${RS}\n`
 }
 
 /** Build the bottom border of the thinking box */
 export function thinkBottomBorder(): string {
-  return `  ${GY}╰${'─'.repeat(42)}${RS}\n\n`
+  return `  ${GY}╰${'─'.repeat(42)}${RS}\n${THINK_END_MARKER}\n\n`
 }
 
 export function writeOut(text: string, output?: SessionOutput): void {

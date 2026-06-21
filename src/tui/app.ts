@@ -78,11 +78,17 @@ export const Root = defineComponent({
 
     const output: SessionOutput = {
       write: (text: string) => {
-        // Strip ANSI escape sequences (terminal-only formatting)
+        // 1. Strip ANSI color escape sequences
         let clean = text.replace(/\x1b\[[0-9;]*m/g, '')
-        // Strip thinking box borders — terminal wrapping with │/╭/╰ breaks
-        // in TUI since the Text component handles its own wrapping naturally.
-        clean = clean.replace(/^[ \t]*[│╰╭─]/gm, line => line.replace(/[│╰╭─]/g, ' '))
+        // 2. Detect thinking blocks via the OSC markers injected by session-display.ts,
+        //    strip the visual box-drawing characters, and wrap with simple [THINK] markers.
+        if (clean.includes('\x1b]0;THINK_START\x07')) {
+          clean = clean
+            .replace(/\x1b\]0;THINK_START\x07/g, '\n[THINK]\n')
+            .replace(/\x1b\]0;THINK_END\x07/g, '\n[/THINK]\n')
+            // Strip box-drawing chars from thinking block lines
+            .replace(/^[ \t]*[│╰╭─]/gm, line => line.replace(/[│╰╭─]/g, ' '))
+        }
         chatContent.value += clean
       },
       suppressToolOutput: false,
@@ -262,7 +268,9 @@ export const Root = defineComponent({
         { flexDirection: 'column', width: '100%', height: '100%', position: 'relative' },
         [
           h(HeaderBar),
-          h(Box, { flexGrow: 1, flexDirection: 'column' }, [content]),
+          // minHeight: 0 prevents flexGrow box from expanding beyond viewport
+          // when content is tall (Yoga default minHeight: auto would push header out)
+          h(Box, { flexGrow: 1, flexDirection: 'column', minHeight: 0 }, [content]),
           h(StatusBar),
           showPlans.value && !showPlanDetail.value ? h(PlansList) : null,
           showPlanDetail.value ? h(PlanDetail) : null,
