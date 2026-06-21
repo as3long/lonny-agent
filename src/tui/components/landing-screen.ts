@@ -1,67 +1,53 @@
-import type { Component } from '../../pi-tui/index.js'
-import { visibleLen } from '../utils.js'
+import { Box, Text, useInput } from '@vue-tui/runtime'
+import { defineComponent, h, inject } from 'vue'
+import { kConfig } from '../context.js'
 import { APP_VERSION, colors } from './colors.js'
-import { PIXEL_LOGO_WIDTH, renderPixelLogo } from './pixel-logo.js'
+import { renderPixelLogo } from './pixel-logo.js'
 
-export class LandingScreen implements Component {
-  onSubmit?: (value: string) => void
-  private model: string
-  private provider: string
+export const LandingScreen = defineComponent({
+  emits: ['submit'],
+  setup(_props, { emit }) {
+    const config = inject(kConfig)!
 
-  constructor(model: string, provider: string) {
-    this.model = model
-    this.provider = provider
-  }
+    useInput((_input, key) => {
+      if (key.return) {
+        emit('submit')
+      }
+    })
 
-  invalidate(): void {}
+    return () => {
+      const logoLines = renderPixelLogo()
+      const logoText = logoLines.join('\n')
+      const divider = '\u2500'.repeat(36)
+      const cmds = '/mode  \u00B7  /model  \u00B7  /plans  \u00B7  /help'
 
-  handleInput(data: string): void {
-    if (data && this.onSubmit) {
-      this.onSubmit(data)
+      return h(
+        Box,
+        {
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexGrow: 1,
+        },
+        [
+          h(Text, { color: colors.dim }, logoText),
+          h(Box, { height: 1 }),
+          h(Text, { color: colors.separator }, divider),
+          h(Box, { height: 1 }),
+          h(Text, { color: colors.dim }, 'Type a message and press '),
+          h(Text, { color: colors.accent }, 'Enter'),
+          h(Text, { color: colors.dim }, ' to start'),
+          h(Box, { height: 1 }),
+          h(Text, { color: colors.dim }, 'Commands: '),
+          h(Text, { color: colors.inputPrompt }, cmds),
+          h(Box, { height: 1 }),
+          h(
+            Text,
+            { color: colors.dim },
+            `${config.provider}/${config.model} \u2502 v${APP_VERSION}`,
+          ),
+        ],
+      )
     }
-  }
-
-  private visibleLen(s: string): number {
-    return visibleLen(s)
-  }
-
-  render(width: number): string[] {
-    const lines: string[] = []
-    const center = (text: string, totalWidth: number): string => {
-      const textWidth = this.visibleLen(text)
-      const pad = Math.max(0, Math.floor((totalWidth - textWidth) / 2))
-      return ' '.repeat(pad) + text
-    }
-
-    const logoLines = renderPixelLogo()
-    const logoPad = Math.max(0, Math.floor((width - PIXEL_LOGO_WIDTH) / 2))
-    const padStr = ' '.repeat(logoPad)
-
-    for (const line of logoLines) {
-      lines.push(padStr + line)
-    }
-
-    const divider = colors.dim('\u2500'.repeat(Math.min(36, width - 4)))
-    lines.push(center(divider, width))
-
-    lines.push('')
-    const prompt =
-      colors.dim('Type a message and press ') + colors.accent('Enter') + colors.dim(' to start')
-    lines.push(center(prompt, width))
-    lines.push('')
-
-    const cmds = [
-      colors.inputPrompt('/mode'),
-      colors.inputPrompt('/model'),
-      colors.inputPrompt('/plans'),
-      colors.inputPrompt('/help'),
-    ].join(colors.dim('  \u00B7  '))
-    lines.push(center(colors.dim('Commands: ') + cmds, width))
-
-    const modelInfo = colors.dim(`${this.provider}/${this.model}`)
-    const versionInfo = colors.dim(`v${APP_VERSION}`)
-    lines.push(center(modelInfo + colors.separator('  \u2502  ') + versionInfo, width))
-
-    return lines
-  }
-}
+  },
+})

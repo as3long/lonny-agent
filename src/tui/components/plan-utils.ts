@@ -1,6 +1,5 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import type { SelectItem } from '../../pi-tui/index.js'
 import { PLAN_DIR } from '../../tools/edit/write_plan.js'
 import { colors } from './colors.js'
 
@@ -9,6 +8,12 @@ export interface PlanEntry {
   description: string
   fullPath: string
   mtime: number
+}
+
+export interface SelectItem {
+  value: string
+  label: string
+  description?: string
 }
 
 export function listPlans(cwd: string): PlanEntry[] {
@@ -22,9 +27,7 @@ export function listPlans(cwd: string): PlanEntry[] {
         let mtime = 0
         try {
           mtime = fs.statSync(fullPath).mtimeMs
-        } catch {
-          /* ignore */
-        }
+        } catch {}
         return {
           name: f.replace(/\.md$/, ''),
           description: f,
@@ -49,7 +52,7 @@ export function loadTodos(filePath: string): string {
       if (m) {
         const done = m[1] === 'x'
         const check = done ? '\u2705' : '\u2B1C'
-        todos.push(`${check} ${done ? colors.doneTodo(m[2]) : colors.todo(m[2])}`)
+        todos.push(`${check} ${done ? m[2] : m[2]}`)
       }
     }
     return todos.length > 0 ? todos.join('\n') : '(no todo items)'

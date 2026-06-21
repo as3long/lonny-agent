@@ -35,12 +35,14 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
+    "@vue-tui/runtime": "^0.1.0",
     "adm-zip": "^0.5.17",
     "commander": "^12.0.0",
     "get-east-asian-width": "1.6.0",
     "jest-diff": "^30.4.1",
     "marked": "15.0.12",
     "openai": "^4.0.0",
+    "vue": "^3.5.38",
     "web-tree-sitter": "^0.26.9",
     "ws": "^8.21.0",
     "zod": "^3.23.0"

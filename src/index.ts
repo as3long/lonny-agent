@@ -50,21 +50,12 @@ async function main() {
   if (continueSession || sessionId) {
     if (sessionId) {
       loadedSession = await Session.loadById(sessionId, config)
-      if (loadedSession) {
-        console.log(
-          `${BLD}Resuming session:${RS} ${loadedSession.sessionTitle || loadedSession.sessionId}`,
-        )
-      } else {
+      if (!loadedSession) {
         console.error(`${RE}Error:${RS} Session not found: ${sessionId}`)
         process.exit(1)
       }
     } else {
       loadedSession = await Session.load(config)
-      if (loadedSession) {
-        console.log(
-          `${BLD}Continuing last session:${RS} ${loadedSession.sessionTitle || loadedSession.sessionId}`,
-        )
-      }
     }
   }
 

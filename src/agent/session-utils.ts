@@ -43,8 +43,6 @@ export function sanitizeMessages(messages: LLMMessage[]): LLMMessage[] {
         j++
       }
       if (pendingIds.size > 0) {
-        const dropped = msg.tool_calls.map(tc => `${tc.name}(${tc.id})`).join(', ')
-        console.warn(`[session] Dropping assistant message with unfulfilled tool_calls: ${dropped}`)
         continue
       }
     }

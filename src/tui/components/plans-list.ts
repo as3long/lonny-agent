@@ -1,55 +1,100 @@
-import type { Component, SelectItem, SelectListTheme } from '../../pi-tui/index.js'
-import { SelectList } from '../../pi-tui/index.js'
+import { Box, Text, useInput } from '@vue-tui/runtime'
+import { defineComponent, h, inject, ref } from 'vue'
+import {
+  kConfig,
+  kPlansVersion,
+  kSelectedPlanName,
+  kShowPlanDetail,
+  kShowPlans,
+} from '../context.js'
+import { colors } from './colors.js'
+import { listPlans, plansToItems } from './plan-utils.js'
 
-export class PlansList implements Component {
-  private selectList: SelectList
-  private allItems: SelectItem[]
-  private maxVisible: number
-  private theme: SelectListTheme
-  onSelectionChange?: (item: SelectItem) => void
+export const PlansList = defineComponent({
+  setup() {
+    const config = inject(kConfig)!
+    const showPlans = inject(kShowPlans)!
+    const showPlanDetail = inject(kShowPlanDetail)!
+    const selectedPlanName = inject(kSelectedPlanName)!
+    const plansVersion = inject(kPlansVersion)!
+    const selectedIndex = ref(0)
 
-  constructor(items: SelectItem[], maxVisible: number, theme: SelectListTheme) {
-    this.allItems = items
-    this.selectList = new SelectList(items, maxVisible, theme)
-    this.maxVisible = maxVisible
-    this.theme = theme
-    this.selectList.onSelectionChange = item => {
-      if (this.onSelectionChange) this.onSelectionChange(item)
+    function getPlans() {
+      return plansToItems(listPlans(config.cwd))
     }
-  }
 
-  setFilter(filter: string): void {
-    this.selectList.setFilter(filter)
-  }
+    useInput((_input, key) => {
+      if (key.escape) {
+        showPlans.value = false
+        showPlanDetail.value = false
+        return
+      }
 
-  clearFilter(): void {
-    this.selectList.setFilter('')
-  }
+      if (key.return && !showPlanDetail.value) {
+        const plans = listPlans(config.cwd)
+        if (plans.length > 0 && plans[selectedIndex.value]) {
+          selectedPlanName.value = plans[selectedIndex.value].name
+          showPlanDetail.value = true
+        }
+        return
+      }
 
-  refresh(items: SelectItem[]): void {
-    this.allItems = items
-    const cb = this.onSelectionChange
-    this.selectList = new SelectList(items, this.maxVisible, this.theme)
-    this.selectList.onSelectionChange = cb
-  }
+      if (key.upArrow) {
+        selectedIndex.value = Math.max(0, selectedIndex.value - 1)
+        return
+      }
 
-  getSelectedItem(): SelectItem | null {
-    return this.selectList.getSelectedItem()
-  }
+      if (key.downArrow) {
+        const plans = listPlans(config.cwd)
+        selectedIndex.value = Math.min(plans.length - 1, selectedIndex.value + 1)
+        return
+      }
+    })
 
-  setSelectedIndex(index: number): void {
-    this.selectList.setSelectedIndex(index)
-  }
+    return () => {
+      const plans = listPlans(config.cwd)
+      const items = plansToItems(plans)
 
-  invalidate(): void {
-    this.selectList.invalidate()
-  }
+      const children: any[] = [
+        h(Box, { backgroundColor: colors.bgDark }, [
+          h(Text, { color: colors.accent }, `\u25B6 Plans (${plans.length})  `),
+          h(Text, { color: colors.dim }, 'Enter=view'),
+        ]),
+      ]
 
-  render(width: number): string[] {
-    return this.selectList.render(width)
-  }
+      if (plans.length === 0) {
+        children.push(h(Text, { color: colors.dim }, '  (no plans yet)'))
+      } else {
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i]
+          const isSelected = i === selectedIndex.value
+          const prefix = isSelected ? colors.accent : colors.dim
+          children.push(
+            h(
+              Text,
+              {
+                color: isSelected ? '#ffffff' : colors.dim,
+                backgroundColor: isSelected ? '#0080ff' : undefined,
+              },
+              ` ${prefix}\u25B6 ${item.label}`,
+            ),
+          )
+        }
+      }
 
-  handleInput(data: string): void {
-    this.selectList.handleInput(data)
-  }
-}
+      return h(
+        Box,
+        {
+          position: 'absolute',
+          right: 0,
+          top: '50%',
+          width: 45,
+          backgroundColor: colors.bgDark,
+          borderStyle: 'round',
+          borderColor: colors.dim,
+        },
+        children,
+      )
+    }
+  },
+})

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isDeepSeekOfficial } from '../balance.js'
+import { isDeepSeekOfficial } from '../../api/balance.js'
 
 describe('isDeepSeekOfficial', () => {
   it('returns true for official DeepSeek URL', () => {

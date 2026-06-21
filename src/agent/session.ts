@@ -147,15 +147,6 @@ export class Session {
 
   static async load(config: Config, output?: SessionOutput): Promise<Session | null> {
     const cwdSessions = getSessionFilesForCwd(config.cwd)
-    console.log(
-      `[session] Found ${cwdSessions.length} session files for cwd "${config.cwd}":`,
-      cwdSessions
-        .map(
-          f =>
-            `${f.fileName} (updatedAt=${f.data.updatedAt?.slice(0, 19)}, messages=${f.data.messages?.length || 0})`,
-        )
-        .join(', '),
-    )
     if (cwdSessions.length > 0) {
       cwdSessions.sort((a, b) => {
         const aLen = a.data.messages?.length || 0
@@ -163,7 +154,6 @@ export class Session {
         if (aLen !== bLen) return bLen - aLen
         return b.data.updatedAt.localeCompare(a.data.updatedAt)
       })
-      console.log(`[session] Loading session file: ${cwdSessions[0].fileName}`)
       return Session.loadFromData(cwdSessions[0].data, config, output)
     }
 
@@ -223,12 +213,7 @@ export class Session {
     output?: SessionOutput,
   ): Promise<Session> {
     const session = new Session(config, output)
-    session.messages = data.messages
-    console.log(`[session] Loading session ${data.id}: ${data.messages.length} messages from disk`)
-    session.messages = sanitizeMessages(session.messages)
-    console.log(
-      `[session] After sanitize: ${session.messages.length} messages (removed ${data.messages.length - session.messages.length})`,
-    )
+    session.messages = sanitizeMessages(data.messages)
     session.sessionId = data.id
     session.sessionTitle = data.title || ''
     session.sessionCreatedAt = data.createdAt
