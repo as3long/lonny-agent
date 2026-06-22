@@ -1,6 +1,7 @@
+import type { StaticSlotProps } from '@vue-tui/runtime'
 import { Box, Static, Text } from '@vue-tui/runtime'
 import { defineComponent, h, inject } from 'vue'
-import { kChatContent, kConfig } from '../context.js'
+import { kChatContent } from '../context.js'
 import { highlightLine } from '../highlight.js'
 import { colors } from './colors.js'
 import { ThinkingBlock } from './thinking-block.js'
@@ -81,77 +82,83 @@ function formatContent(text: string): Part[] {
   return parts
 }
 
+function renderPart(part: Part): ReturnType<typeof h> {
+  if (part.type === 'code') {
+    const lines = part.content.split('\n')
+    const highlighted = lines
+      .map(line => {
+        if (part.lang) {
+          return highlightLine(line, part.lang) || line
+        }
+        return line
+      })
+      .join('\n')
+
+    return h(
+      Box,
+      {
+        borderStyle: 'round',
+        borderColor: colors.dim,
+        paddingX: 1,
+        marginY: 1,
+      },
+      [h(Text, { color: '#c8c8c8' }, highlighted)],
+    )
+  }
+  if (part.type === 'user') {
+    return h(UserMessage, { content: part.content })
+  }
+  if (part.type === 'tool') {
+    return h(ToolResult, {
+      name: part.name,
+      status: part.status,
+      summary: part.summary,
+      details: part.details,
+    })
+  }
+  if (part.type === 'thinking') {
+    return h(ThinkingBlock, { content: part.content })
+  }
+  if (part.type === 'tool_call') {
+    return h(ToolInvocation, {
+      name: part.name,
+      icon: part.icon,
+      detail: part.detail,
+    })
+  }
+  if (part.type === 'token_stats') {
+    return h(TokenStats, { text: part.text })
+  }
+  return h(Text, { color: '#d4d4d4' }, part.content)
+}
+
 export const ChatMessages = defineComponent({
   setup() {
     const chatContent = inject(kChatContent)!
-    const config = inject(kConfig)!
-
-    const modelName = config.model
 
     return () => {
       const text = chatContent.value
-      if (!text) return h(Box, { flexGrow: 1, overflow: 'hidden' })
+      if (!text) return h(Box, { flexGrow: 1 })
 
       const parts = formatContent(text)
+      if (parts.length === 1) {
+        return h(Box, { flexDirection: 'column', flexGrow: 1, paddingX: 1 }, [renderPart(parts[0])])
+      }
 
-      const children = parts.map((part, i) => {
-        if (part.type === 'code') {
-          const lines = part.content.split('\n')
-          const highlighted = lines
-            .map(line => {
-              if (part.lang) {
-                return highlightLine(line, part.lang) || line
-              }
-              return line
-            })
-            .join('\n')
+      // All parts except the last are "completed" — rendered once via Static
+      const completedParts = parts.slice(0, -1)
+      const streamingPart = parts[parts.length - 1]
 
-          return h(
-            Box,
-            {
-              key: i,
-              borderStyle: 'round',
-              borderColor: colors.dim,
-              paddingX: 1,
-              marginY: 1,
-            },
-            [h(Text, { color: '#c8c8c8' }, highlighted)],
-          )
-        }
-        if (part.type === 'user') {
-          return h(UserMessage, { key: i, content: part.content })
-        }
-        if (part.type === 'tool') {
-          return h(ToolResult, {
-            key: i,
-            name: part.name,
-            status: part.status,
-            summary: part.summary,
-            details: part.details,
-          })
-        }
-        if (part.type === 'thinking') {
-          return h(ThinkingBlock, { key: i, content: part.content })
-        }
-        if (part.type === 'tool_call') {
-          return h(ToolInvocation, {
-            key: i,
-            name: part.name,
-            icon: part.icon,
-            detail: part.detail,
-          })
-        }
-        if (part.type === 'token_stats') {
-          return h(TokenStats, { key: i, text: part.text })
-        }
-        return h(Text, { key: i, color: '#d4d4d4' }, part.content)
-      })
-
-      return h(
-        Box,
-        { flexDirection: 'column', flexGrow: 1, paddingX: 1, minHeight: 0, overflow: 'hidden' },
-        children,
-      )
+      return h(Box, { flexDirection: 'column', flexGrow: 1, paddingX: 1, minHeight: 0 }, [
+        h(
+          Static,
+          { items: completedParts },
+          {
+            default: (slotProps: StaticSlotProps<Part>) => renderPart(slotProps.item),
+          },
+        ),
+        h(Box, { flexDirection: 'column', minHeight: 0 }, [renderPart(streamingPart)]),
+      ])
     }
   },
 })

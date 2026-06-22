@@ -255,7 +255,7 @@ export const Root = defineComponent({
 
       const mainContent = isLanding
         ? h(LandingScreen, { onSubmit: onLandingSubmit })
-        : h(Box, { flexDirection: 'column', flexGrow: 1, minHeight: 0, overflow: 'hidden' }, [
+        : h(Box, { flexDirection: 'column', flexGrow: 1, minHeight: 0 }, [
             h(ChatMessages),
             h(ChatInput, { onSubmit: handleSubmit }),
           ])
