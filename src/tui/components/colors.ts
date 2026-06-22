@@ -3,7 +3,7 @@ import * as fs from 'node:fs'
 export const colors = {
   bgDark: '#1e1e1e',
   bgDim: '#191919',
-  headerBg: '#aaaaaa',
+  headerBg: '#2a2a3a',
   separator: '#3c3c3c',
   statusBg: '#191923',
   running: '#00ff64',

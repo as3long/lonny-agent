@@ -38,7 +38,7 @@ export const HeaderBar = defineComponent({
 
       return h(Box, { flexDirection: 'column' }, [
         h(Box, { backgroundColor: colors.headerBg }, [
-          h(Text, { color: '#ffffff' }, `\u2588 lonny`),
+          h(Text, { color: colors.accent }, `\u2588 lonny`),
           h(Text, { color: colors.dim }, ` \u00B7  `),
           h(Text, { color: colors.dim }, rightPart),
         ]),
