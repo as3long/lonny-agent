@@ -135,7 +135,9 @@ export const ChatInput = defineComponent({
         return h(Box, {}, [h(Text, {}, '...')])
       }
       const children = [
-        h(Box, {}, [h(Text, {}, `> ${inputText.value}${showCursor.value ? '|' : ''}`)]),
+        h(Box, {}, [
+          h(Text, { wrap: 'truncate-start' }, `> ${inputText.value}${showCursor.value ? '|' : ''}`),
+        ]),
       ]
       if (showSuggestions.value) {
         children.push(h(Box, { height: 1 }))

@@ -1,3 +1,4 @@
+import { formatToolInput } from '../api/display-utils.js'
 import { saveTokenUsage } from '../config/tokens.js'
 import { fmtErr } from '../tools/errors.js'
 import type { ToolCall, ToolResult } from '../tools/types.js'
@@ -5,24 +6,50 @@ import { compact, shouldCompact } from './compaction.js'
 import { EventChannels, getGlobalEventBus } from './event-bus.js'
 import type { LLMMessage } from './llm.js'
 import type { Session, SessionOutput } from './session.js'
-import {
-  GY,
-  printTokenStats,
-  printToolInvocation,
-  printToolResult,
-  printUserMessage,
-  RE,
-  RS,
-  TH,
-  THINK_PREFIX_WIDTH,
-  termWidth,
-  thinkBottomBorder,
-  thinkTopBorder,
-  visibleWidth,
-  writeOut,
-} from './session-display.js'
+import { GY, RE, RS, THINK_END_MARKER, THINK_START_MARKER, writeOut } from './session-display.js'
 import { logToolError } from './session-persistence.js'
 import { getContinuationMessage, isTaskCompleteMessage, sanitizeMessages } from './session-utils.js'
+
+function formatToolResultText(tc: ToolCall, result: ToolResult): string {
+  const status = result.success ? 'OK' : 'ERROR'
+  if (!result.success) {
+    return `[TOOL ${tc.name} ${status}]\n${result.error || tc.name}\n[/TOOL]\n`
+  }
+  let summary = ''
+  const details: string[] = []
+  if (tc.name === 'read') {
+    const fileCount = (result.output.match(/^=== /gm) || []).length
+    summary = `read ${fileCount} file(s)`
+    for (const line of result.output.split('\n')) {
+      if (line.startsWith('=== ')) {
+        const fp = line.slice(4, line.includes(' ===') ? line.indexOf(' ===') + 4 : undefined)
+        details.push(fp)
+      }
+    }
+  } else if (tc.name === 'glob') {
+    const count = result.output.split('\n').filter(l => l && !l.startsWith('No')).length
+    summary = `glob ${count} match(es)`
+  } else if (tc.name === 'grep') {
+    const count = result.output.split('\n').filter(l => l && !l.startsWith('No')).length
+    summary = `grep ${count} match(es)`
+  } else if (tc.name === 'bash') {
+    const outLines = result.output.split('\n')
+    summary = outLines.length > 1 ? `bash (${outLines.length} lines)` : 'bash'
+  } else if (tc.name === 'edit') {
+    summary = 'edit'
+    for (const l of result.output.split('\n')) {
+      if (l.trim()) details.push(l.trim())
+    }
+  } else if (tc.name === 'write_plan') {
+    summary = result.output || tc.name
+  } else if (tc.name === 'search') {
+    summary = `search: ${String(tc.input.query || '').slice(0, 80)}`
+  } else {
+    summary = tc.name
+  }
+  const body = [summary, ...details].join('\n')
+  return `[TOOL ${tc.name} ${status}]\n${body}\n[/TOOL]\n`
+}
 
 // ── Context compaction helper ─────────────────────────────────────────────────
 
@@ -46,12 +73,55 @@ function tryCompact(
   }
 }
 
+function emitTokenStats(
+  bus: ReturnType<typeof getGlobalEventBus>,
+  session: Session,
+  out: SessionOutput | undefined,
+): void {
+  bus.emit(EventChannels.TOKEN_STATS, {
+    turnIn: session.turnInputTokens,
+    turnOut: session.turnOutputTokens,
+    totalIn: session.totalInputTokens,
+    totalOut: session.totalOutputTokens,
+    turnApi: session.turnApiCalls,
+    totalApi: session.totalApiCalls,
+    turnCacheHit: session.turnCacheHitTokens,
+    turnCacheMiss: session.turnCacheMissTokens,
+    totalCacheHit: session.totalCacheHitTokens,
+    totalCacheMiss: session.totalCacheMissTokens,
+  })
+  if (out?.suppressToolOutput) return
+  const total = session.totalInputTokens + session.totalOutputTokens
+  const cacheHit = session.totalCacheHitTokens ?? 0
+  const cacheMiss = session.totalCacheMissTokens ?? 0
+  const cacheTotal = cacheHit + cacheMiss
+  let msg = `▴${session.turnInputTokens} ▾${session.turnOutputTokens}  total ${total}  calls ${session.turnApiCalls}(${session.totalApiCalls})`
+  if (cacheTotal > 0) {
+    const pct = Math.round((cacheHit / cacheTotal) * 100)
+    msg += `  cached ${pct}%`
+  }
+  writeOut(`\n[TOKEN_STATS]\n${msg}\n[/TOKEN_STATS]\n`, out)
+}
+
+function emitToolInvocation(tc: ToolCall, out: SessionOutput | undefined): void {
+  const bus = getGlobalEventBus()
+  bus.emit(EventChannels.TOOL_INVOCATION, { name: tc.name, input: tc.input, id: tc.id })
+  if (out?.suppressToolOutput) return
+  const detail = formatToolInput(tc)
+  const isWrite = tc.name === 'write_plan' || tc.name === 'edit'
+  const icon = isWrite ? '◆' : '◇'
+  writeOut(`\n[TOOL_CALL ${tc.name} ${icon}]${detail ? ` ${detail}` : ''}\n[/TOOL_CALL]\n`, out)
+}
+
 // ── runChat ──────────────────────────────────────────────────────────────────
 
 export async function runChat(session: Session, userPrompt: string): Promise<void> {
   const bus = getGlobalEventBus()
   const out = session.output
-  printUserMessage(userPrompt, out)
+  bus.emit(EventChannels.USER_MESSAGE, { prompt: userPrompt })
+  if (!out?.suppressToolOutput) {
+    writeOut(`\n[USER]\n${userPrompt}\n[/USER]\n\n`, out)
+  }
   session.messages.push({ role: 'user', content: userPrompt })
   session.save()
 
@@ -81,7 +151,6 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
     let fullResponse = ''
     let reasoningContent: string | undefined
     let reasoningOutput = false
-    let reasoningLineStart = false
 
     bus.emit(EventChannels.TURN_START, { prompt: userPrompt, iteration: iterations })
     bus.emit(EventChannels.LLM_STREAM_START, { iteration: iterations })
@@ -98,97 +167,15 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
         if (chunk.reasoning_content) {
           reasoningContent = chunk.reasoning_content
           if (!chunk.text) {
-            bus.emit(EventChannels.THINKING, { text: chunk.reasoning_content })
             if (!reasoningOutput) {
-              reasoningOutput = true
-              reasoningLineStart = true
+              bus.emit(EventChannels.THINKING, { text: chunk.reasoning_content })
               if (!out?.suppressToolOutput) {
-                writeOut(thinkTopBorder(), out)
+                writeOut(`\n${THINK_START_MARKER}`, out)
               }
+              reasoningOutput = true
             }
             if (!out?.suppressToolOutput) {
-              let thinkCol = 0
-              let remaining = chunk.reasoning_content
-              const maxContentWidth = termWidth() - THINK_PREFIX_WIDTH
-              while (remaining.length > 0) {
-                if (reasoningLineStart) {
-                  writeOut(`  ${GY}│${RS}${TH}`, out)
-                  reasoningLineStart = false
-                  thinkCol = 0
-                }
-                const nlIdx = remaining.indexOf('\n')
-                if (nlIdx === -1) {
-                  while (remaining.length > 0) {
-                    const segWidth = visibleWidth(remaining)
-                    const avail = maxContentWidth - thinkCol
-                    if (segWidth <= avail) {
-                      writeOut(remaining, out)
-                      thinkCol += segWidth
-                      remaining = ''
-                    } else if (avail <= 0) {
-                      writeOut(`${RS}\n`, out)
-                      writeOut(`  ${GY}│${RS}${TH}`, out)
-                      thinkCol = 0
-                    } else {
-                      let cut = avail
-                      while (cut > 0 && visibleWidth(remaining.slice(0, cut)) > avail) cut--
-                      if (cut <= 0) cut = 1
-                      writeOut(remaining.slice(0, cut), out)
-                      writeOut(`${RS}\n`, out)
-                      writeOut(`  ${GY}│${RS}${TH}`, out)
-                      thinkCol = 0
-                      remaining = remaining.slice(cut)
-                    }
-                  }
-                } else {
-                  const segment = remaining.slice(0, nlIdx)
-                  const segWidth = visibleWidth(segment)
-                  const avail = maxContentWidth - thinkCol
-                  if (segWidth <= avail) {
-                    writeOut(segment, out)
-                    writeOut(`${RS}\n`, out)
-                    reasoningLineStart = true
-                    thinkCol = 0
-                  } else {
-                    let rest = segment
-                    if (avail > 0) {
-                      let cut = avail
-                      while (cut > 0 && visibleWidth(rest.slice(0, cut)) > avail) cut--
-                      if (cut <= 0) cut = 1
-                      writeOut(rest.slice(0, cut), out)
-                      rest = rest.slice(cut)
-                    }
-                    writeOut(`${RS}\n`, out)
-                    reasoningLineStart = true
-                    thinkCol = 0
-                    if (rest.length > 0) {
-                      writeOut(`  ${GY}│${RS}${TH}`, out)
-                      reasoningLineStart = false
-                      while (rest.length > 0) {
-                        const rw = visibleWidth(rest)
-                        if (rw <= maxContentWidth) {
-                          writeOut(rest, out)
-                          thinkCol = rw
-                          rest = ''
-                        } else {
-                          let cut = maxContentWidth
-                          while (cut > 0 && visibleWidth(rest.slice(0, cut)) > maxContentWidth)
-                            cut--
-                          if (cut <= 0) cut = 1
-                          writeOut(rest.slice(0, cut), out)
-                          writeOut(`${RS}\n`, out)
-                          writeOut(`  ${GY}│${RS}${TH}`, out)
-                          rest = rest.slice(cut)
-                        }
-                      }
-                    }
-                    writeOut(`${RS}\n`, out)
-                    reasoningLineStart = true
-                    thinkCol = 0
-                  }
-                  remaining = remaining.slice(nlIdx + 1)
-                }
-              }
+              writeOut(chunk.reasoning_content, out)
             }
           }
         }
@@ -196,11 +183,9 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
           if (reasoningOutput) {
             bus.emit(EventChannels.THINKING_END, {})
             if (!out?.suppressToolOutput) {
-              writeOut(`${RS}\n`, out)
-              writeOut(thinkBottomBorder(), out)
+              writeOut(`${THINK_END_MARKER}\n`, out)
             }
             reasoningOutput = false
-            reasoningLineStart = false
           }
           fullResponse += chunk.text
           writeOut(chunk.text, out)
@@ -229,19 +214,7 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
                 reasoning_content: reasoningContent,
               }
               session.messages.push(finalAssistantMsg)
-              printTokenStats(
-                session.turnInputTokens,
-                session.turnOutputTokens,
-                session.totalInputTokens,
-                session.totalOutputTokens,
-                session.turnApiCalls,
-                session.totalApiCalls,
-                out,
-                session.turnCacheHitTokens,
-                session.turnCacheMissTokens,
-                session.totalCacheHitTokens,
-                session.totalCacheMissTokens,
-              )
+              emitTokenStats(bus, session, out)
               writeOut('\n\n', out)
               saveTokenUsage(
                 session.config.cwd,
@@ -282,8 +255,7 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
         if (reasoningOutput) {
           bus.emit(EventChannels.THINKING_END, {})
           if (!out?.suppressToolOutput) {
-            writeOut(`${RS}\n`, out)
-            writeOut(thinkBottomBorder(), out)
+            writeOut(`${THINK_END_MARKER}\n`, out)
           }
         }
         bus.emit(EventChannels.LLM_STREAM_END, { iteration: iterations, toolCallCount: 0 })
@@ -318,11 +290,9 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
     if (reasoningOutput) {
       bus.emit(EventChannels.THINKING_END, {})
       if (!out?.suppressToolOutput) {
-        writeOut(`${RS}\n`, out)
-        writeOut(thinkBottomBorder(), out)
+        writeOut(`${THINK_END_MARKER}\n`, out)
       }
       reasoningOutput = false
-      reasoningLineStart = false
     }
 
     if (toolCalls.length === 0) {
@@ -333,19 +303,7 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
           reasoning_content: reasoningContent,
         }
         session.messages.push(finalAssistantMsg)
-        printTokenStats(
-          session.turnInputTokens,
-          session.turnOutputTokens,
-          session.totalInputTokens,
-          session.totalOutputTokens,
-          session.turnApiCalls,
-          session.totalApiCalls,
-          out,
-          session.turnCacheHitTokens,
-          session.turnCacheMissTokens,
-          session.totalCacheHitTokens,
-          session.totalCacheMissTokens,
-        )
+        emitTokenStats(bus, session, out)
         writeOut('\n\n', out)
       }
       saveTokenUsage(
@@ -417,9 +375,7 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
         return
       }
       bus.emit(EventChannels.TOOL_CALL, { name: tc.name, input: tc.input, id: tc.id })
-      if (!out?.suppressToolOutput) {
-        printToolInvocation(tc, out)
-      }
+      emitToolInvocation(tc, out)
       const result: ToolResult = await session.registry.dispatch(tc)
       if (result.success) {
         bus.emit(EventChannels.TOOL_RESULT, { name: tc.name, id: tc.id, output: result.output })
@@ -428,7 +384,7 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
         logToolError(tc, result, session.sessionId)
       }
       if (!out?.suppressToolOutput) {
-        printToolResult(tc, result, out)
+        writeOut(formatToolResultText(tc, result), out)
       }
 
       const resultMsg: LLMMessage = {
@@ -454,19 +410,7 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
   }
 
   if (iterations >= maxIterations) {
-    printTokenStats(
-      session.turnInputTokens,
-      session.turnOutputTokens,
-      session.totalInputTokens,
-      session.totalOutputTokens,
-      session.turnApiCalls,
-      session.totalApiCalls,
-      out,
-      session.turnCacheHitTokens,
-      session.turnCacheMissTokens,
-      session.totalCacheHitTokens,
-      session.totalCacheMissTokens,
-    )
+    emitTokenStats(bus, session, out)
     writeOut('\nAgent reached maximum iterations. Stopping.\n', out)
   }
 

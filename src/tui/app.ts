@@ -28,6 +28,7 @@ import {
   kStatusData,
   type StatusData,
 } from './context.js'
+import { processThinkingBlocks } from './thinking.js'
 
 export const Root = defineComponent({
   props: {
@@ -78,18 +79,7 @@ export const Root = defineComponent({
 
     const output: SessionOutput = {
       write: (text: string) => {
-        // 1. Strip ANSI color escape sequences
-        let clean = text.replace(/\x1b\[[0-9;]*m/g, '')
-        // 2. Detect thinking blocks via the OSC markers injected by session-display.ts,
-        //    strip the visual box-drawing characters, and wrap with simple [THINK] markers.
-        if (clean.includes('\x1b]0;THINK_START\x07')) {
-          clean = clean
-            .replace(/\x1b\]0;THINK_START\x07/g, '\n[THINK]\n')
-            .replace(/\x1b\]0;THINK_END\x07/g, '\n[/THINK]\n')
-            // Strip box-drawing chars from thinking block lines
-            .replace(/^[ \t]*[│╰╭─]/gm, line => line.replace(/[│╰╭─]/g, ' '))
-        }
-        chatContent.value += clean
+        chatContent.value += processThinkingBlocks(text)
       },
       suppressToolOutput: false,
       confirmTool: async (toolCalls: ToolCall[]) => {
@@ -256,7 +246,7 @@ export const Root = defineComponent({
 
       const mainContent = isLanding
         ? h(LandingScreen, { onSubmit: onLandingSubmit })
-        : h(Box, { flexDirection: 'column', flexGrow: 1 }, [
+        : h(Box, { flexDirection: 'column', flexGrow: 1, minHeight: 0 }, [
             h(ChatMessages),
             h(ChatInput, { onSubmit: handleSubmit }),
           ])
@@ -268,9 +258,7 @@ export const Root = defineComponent({
         { flexDirection: 'column', width: '100%', height: '100%', position: 'relative' },
         [
           h(HeaderBar),
-          // minHeight: 0 prevents flexGrow box from expanding beyond viewport
-          // when content is tall (Yoga default minHeight: auto would push header out)
-          h(Box, { flexGrow: 1, flexDirection: 'column', minHeight: 0 }, [content]),
+          h(Box, { flexDirection: 'column', flexGrow: 1, minHeight: 0 }, [content]),
           h(StatusBar),
           showPlans.value && !showPlanDetail.value ? h(PlansList) : null,
           showPlanDetail.value ? h(PlanDetail) : null,

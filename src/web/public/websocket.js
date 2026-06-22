@@ -7,6 +7,7 @@ import {
   addTokenStats,
   addToolCall,
   addToolResult,
+  addUserMessage,
   appendChunk,
   finalizeAssistantMessage,
   hideThinking,
@@ -85,6 +86,10 @@ function handleMessage(msg) {
 
     case 'thinking_end':
       hideThinking()
+      break
+
+    case 'user_message':
+      addUserMessage(msg.text || '')
       break
 
     case 'tool_call':

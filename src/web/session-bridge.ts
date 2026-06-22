@@ -86,6 +86,11 @@ export function startSessionBridge(
     send({ type: 'thinking_end' })
   })
 
+  const unsubUserMessage = bus.on(EventChannels.USER_MESSAGE, data => {
+    const d = data as { prompt: string }
+    send({ type: 'user_message', text: d.prompt })
+  })
+
   const unsubCompaction = bus.on(EventChannels.COMPACTION_TRIGGERED, data => {
     const d = data as { before: number; after: number }
     send({ type: 'compaction', before: d.before, after: d.after })
@@ -262,6 +267,7 @@ export function startSessionBridge(
       unsubTurnEnd()
       unsubThinking()
       unsubThinkingEnd()
+      unsubUserMessage()
       unsubCompaction()
       unsubTokenStats()
     },

@@ -44,6 +44,8 @@ export const EventChannels = {
   LLM_STREAM_END: 'llm:stream_end',
   THINKING: 'llm:thinking',
   THINKING_END: 'llm:thinking_end',
+  USER_MESSAGE: 'llm:user_message',
+  TOOL_INVOCATION: 'llm:tool_invocation',
 
   // Compaction events
   COMPACTION_TRIGGERED: 'compaction:triggered',

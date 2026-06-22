@@ -24,7 +24,7 @@ import {
 } from './session-persistence.js'
 import { sanitizeMessages } from './session-utils.js'
 
-export { formatToolInput } from './session-display.js'
+export { formatToolInput } from '../api/display-utils.js'
 
 // ── Session output interface ────────────────────────────────────────────────
 
