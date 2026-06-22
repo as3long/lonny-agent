@@ -152,12 +152,12 @@ export const ChatMessages = defineComponent({
       return h(Box, { flexDirection: 'column', flexGrow: 1, paddingX: 1, minHeight: 0 }, [
         h(
           Static,
-          { items: completedParts },
+          { items: completedParts, style: { paddingX: 1 } },
           {
             default: (slotProps: StaticSlotProps<Part>) => renderPart(slotProps.item),
           },
         ),
-        h(Box, { flexDirection: 'column', minHeight: 0 }, [renderPart(streamingPart)]),
+        h(Box, { flexDirection: 'column', minHeight: 0, paddingX: 1 }, [renderPart(streamingPart)]),
       ])
     }
   },
