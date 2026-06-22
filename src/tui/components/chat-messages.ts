@@ -126,16 +126,26 @@ export const ChatMessages = defineComponent({
       const completedParts = parts.slice(0, -1)
       const livePart = parts[parts.length - 1]
 
-      return h(Box, { flexDirection: 'column', flexGrow: 1, paddingX: 1, minHeight: 0 }, [
-        h(
-          Static,
-          { items: completedParts },
-          {
-            default: (slotProps: { item: Part }) => renderPart(slotProps.item),
-          },
-        ),
-        renderPart(livePart),
-      ])
+      return h(
+        Box,
+        {
+          flexDirection: 'column',
+          flexGrow: 1,
+          paddingX: 1,
+          minHeight: 0,
+          position: 'relative',
+        },
+        [
+          h(
+            Static,
+            { items: completedParts },
+            {
+              default: (slotProps: { item: Part }) => renderPart(slotProps.item),
+            },
+          ),
+          renderPart(livePart),
+        ],
+      )
     }
   },
 })
