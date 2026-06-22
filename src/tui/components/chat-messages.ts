@@ -90,7 +90,7 @@ export const ChatMessages = defineComponent({
 
     return () => {
       const text = chatContent.value
-      if (!text) return h(Box, { flexGrow: 1 })
+      if (!text) return h(Box, { flexGrow: 1, overflow: 'hidden' })
 
       const parts = formatContent(text)
 
@@ -147,7 +147,11 @@ export const ChatMessages = defineComponent({
         return h(Text, { key: i, color: '#d4d4d4' }, part.content)
       })
 
-      return h(Box, { flexDirection: 'column', flexGrow: 1, paddingX: 1, minHeight: 0 }, children)
+      return h(
+        Box,
+        { flexDirection: 'column', flexGrow: 1, paddingX: 1, minHeight: 0, overflow: 'hidden' },
+        children,
+      )
     }
   },
 })

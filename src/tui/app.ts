@@ -246,7 +246,7 @@ export const Root = defineComponent({
 
       const mainContent = isLanding
         ? h(LandingScreen, { onSubmit: onLandingSubmit })
-        : h(Box, { flexDirection: 'column', flexGrow: 1, minHeight: 0 }, [
+        : h(Box, { flexDirection: 'column', flexGrow: 1, minHeight: 0, overflow: 'hidden' }, [
             h(ChatMessages),
             h(ChatInput, { onSubmit: handleSubmit }),
           ])
@@ -255,10 +255,18 @@ export const Root = defineComponent({
 
       return h(
         Box,
-        { flexDirection: 'column', width: '100%', height: '100%', position: 'relative' },
+        {
+          flexDirection: 'column',
+          width: '100%',
+          height: '100%',
+          position: 'relative',
+          overflow: 'hidden',
+        },
         [
           h(HeaderBar),
-          h(Box, { flexDirection: 'column', flexGrow: 1, minHeight: 0 }, [content]),
+          h(Box, { flexDirection: 'column', flexGrow: 1, minHeight: 0, overflow: 'hidden' }, [
+            content,
+          ]),
           h(StatusBar),
           showPlans.value && !showPlanDetail.value ? h(PlansList) : null,
           showPlanDetail.value ? h(PlanDetail) : null,
