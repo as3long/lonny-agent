@@ -26,7 +26,7 @@ const BlinkingCursor = defineComponent({
       }, 500)
     })
     onUnmounted(() => clearInterval(timer))
-    return () => h(Text, { color: visible.value ? '#ffffff' : 'transparent' }, '|')
+    return () => h(Text, { color: visible.value ? '#00ffaa' : 'transparent', bold: true }, '|')
   },
 })
 
