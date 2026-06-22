@@ -1,8 +1,7 @@
 import { Box, Text } from '@vue-tui/runtime'
 import { defineComponent, Fragment, h, inject } from 'vue'
 import { kChatContent } from '../context.js'
-import { highlightLine } from '../highlight.js'
-import { colors } from './colors.js'
+import { HighlightBlock } from './highlight-block.js'
 import { ThinkingBlock } from './thinking-block.js'
 import { TokenStats } from './token-stats.js'
 import { ToolInvocation } from './tool-invocation.js'
@@ -83,26 +82,7 @@ function formatContent(text: string): Part[] {
 
 function renderPart(part: Part, key?: number): ReturnType<typeof h> {
   if (part.type === 'code') {
-    const lines = part.content.split('\n')
-    const highlighted = lines
-      .map(line => {
-        if (part.lang) {
-          return highlightLine(line, part.lang) || line
-        }
-        return line
-      })
-      .join('\n')
-
-    return h(
-      Box,
-      {
-        borderStyle: 'round',
-        borderColor: colors.dim,
-        paddingX: 1,
-        marginY: 1,
-      },
-      [h(Text, { color: '#c8c8c8' }, highlighted)],
-    )
+    return h(HighlightBlock, { lang: part.lang, content: part.content })
   }
   if (part.type === 'user') {
     return h(UserMessage, { content: part.content })
