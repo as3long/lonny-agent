@@ -148,6 +148,7 @@ export function startSessionBridge(
               commands: [
                 '/mode code|plan|ask|loop - Switch mode',
                 '/model <name> - Switch model',
+                '/compact - Compress context to reduce tokens',
                 '/sessions - List saved sessions',
                 '/session - Show current session info',
                 '/session title <name> - Name current session',

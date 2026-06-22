@@ -233,6 +233,7 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
                   commands: [
                     '/mode <code|plan|ask|loop> - Switch mode',
                     '/model <name> - Switch model',
+                    '/compact - Compress context to reduce tokens',
                     '/new - Start a new session',
                     '/stop - Stop the running agent',
                     '/skills - List active skills',

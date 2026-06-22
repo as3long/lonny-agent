@@ -1,6 +1,7 @@
 import type { Config } from '../config/index.js'
 import { resetTokenUsage } from '../config/tokens.js'
 import { fmtErr } from '../tools/errors.js'
+import { compact } from './compaction.js'
 import { resetGlobalEventBus } from './event-bus.js'
 import type { LLMMessage } from './llm.js'
 import { ensurePromptsDir, loadPromptTemplates } from './prompt-templates.js'
@@ -237,6 +238,24 @@ export function handleStop(env: CommandEnv): boolean {
   return true
 }
 
+export function handleCompact(env: CommandEnv): boolean {
+  if (env.isRunning) {
+    env.ui.write('Cannot compact while agent is running. Wait or use /stop first.')
+    return true
+  }
+  const result = compact(env.session.messages, env.session.config.contextWindow)
+  if (result.compressed) {
+    env.session.messages = result.messages
+    env.session.save()
+    env.ui.write(`Compacted context: ${result.originalCount} → ${result.newCount} messages`)
+    env.ui.onStateChange()
+  } else {
+    const total = result.messages.length
+    env.ui.write(`Context is within limits (${total} messages), no compaction needed.`)
+  }
+  return true
+}
+
 function lastUserQuestion(messages: LLMMessage[]): string | null {
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')
   if (!lastUserMsg || typeof lastUserMsg.content !== 'string') return null
@@ -268,6 +287,8 @@ export async function dispatchCommand(env: CommandEnv, cmd: string, arg: string)
       return handleInit(env)
     case 'stop':
       return handleStop(env)
+    case 'compact':
+      return handleCompact(env)
     default:
       return false
   }
