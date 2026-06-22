@@ -272,8 +272,7 @@ export const Root = defineComponent({
           overflow: 'hidden',
         },
         [
-          h(HeaderBar),
-          h(Box, { flexDirection: 'column', flexGrow: 1, minHeight: 0 }, [content]),
+          h(Box, { flexDirection: 'column', flexGrow: 1, minHeight: 0 }, [h(HeaderBar), content]),
           h(StatusBar),
           showPlans.value && !showPlanDetail.value ? h(PlansList) : null,
           showPlanDetail.value ? h(PlanDetail) : null,

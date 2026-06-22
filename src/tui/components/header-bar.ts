@@ -36,7 +36,7 @@ export const HeaderBar = defineComponent({
         if (s.planName) rightPart += ` ${s.planName}`
       }
 
-      return h(Box, { flexDirection: 'column' }, [
+      return h(Box, { flexDirection: 'column', flexShrink: 0 }, [
         h(Box, { backgroundColor: colors.headerBg }, [
           h(Text, { color: colors.accent }, `\u2588 lonny`),
           h(Text, { color: colors.dim }, ` \u00B7  `),
