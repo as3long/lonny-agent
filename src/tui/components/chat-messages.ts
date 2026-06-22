@@ -1,5 +1,5 @@
-import { Box, Text } from '@vue-tui/runtime'
-import { defineComponent, Fragment, h, inject } from 'vue'
+import { Box, Static, Text } from '@vue-tui/runtime'
+import { defineComponent, h, inject } from 'vue'
 import { kChatContent } from '../context.js'
 import { HighlightBlock } from './highlight-block.js'
 import { ThinkingBlock } from './thinking-block.js'
@@ -121,11 +121,21 @@ export const ChatMessages = defineComponent({
 
       const parts = formatContent(text)
 
-      return h(
-        Box,
-        { flexDirection: 'column', flexGrow: 1, paddingX: 1, minHeight: 0 },
-        parts.map((part, i) => h(Fragment, { key: i }, [renderPart(part)])),
-      )
+      // All parts except the last go to Static (rendered once, excluded from Yoga layout).
+      // The last part is rendered live — only this causes Yoga recalculation during streaming.
+      const completedParts = parts.slice(0, -1)
+      const livePart = parts[parts.length - 1]
+
+      return h(Box, { flexDirection: 'column', flexGrow: 1, paddingX: 1, minHeight: 0 }, [
+        h(
+          Static,
+          { items: completedParts },
+          {
+            default: (slotProps: { item: Part }) => renderPart(slotProps.item),
+          },
+        ),
+        renderPart(livePart),
+      ])
     }
   },
 })
