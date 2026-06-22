@@ -1,6 +1,5 @@
-import type { StaticSlotProps } from '@vue-tui/runtime'
-import { Box, Static, Text } from '@vue-tui/runtime'
-import { defineComponent, h, inject } from 'vue'
+import { Box, Text } from '@vue-tui/runtime'
+import { defineComponent, Fragment, h, inject } from 'vue'
 import { kChatContent } from '../context.js'
 import { highlightLine } from '../highlight.js'
 import { colors } from './colors.js'
@@ -82,7 +81,7 @@ function formatContent(text: string): Part[] {
   return parts
 }
 
-function renderPart(part: Part): ReturnType<typeof h> {
+function renderPart(part: Part, key?: number): ReturnType<typeof h> {
   if (part.type === 'code') {
     const lines = part.content.split('\n')
     const highlighted = lines
@@ -141,24 +140,12 @@ export const ChatMessages = defineComponent({
       if (!text) return h(Box, { flexGrow: 1 })
 
       const parts = formatContent(text)
-      if (parts.length === 1) {
-        return h(Box, { flexDirection: 'column', flexGrow: 1, paddingX: 1 }, [renderPart(parts[0])])
-      }
 
-      // All parts except the last are "completed" — rendered once via Static
-      const completedParts = parts.slice(0, -1)
-      const streamingPart = parts[parts.length - 1]
-
-      return h(Box, { flexDirection: 'column', flexGrow: 1, paddingX: 1, minHeight: 0 }, [
-        h(
-          Static,
-          { items: completedParts, style: { paddingX: 1 } },
-          {
-            default: (slotProps: StaticSlotProps<Part>) => renderPart(slotProps.item),
-          },
-        ),
-        h(Box, { flexDirection: 'column', minHeight: 0, paddingX: 1 }, [renderPart(streamingPart)]),
-      ])
+      return h(
+        Box,
+        { flexDirection: 'column', flexGrow: 1, paddingX: 1, minHeight: 0 },
+        parts.map((part, i) => h(Fragment, { key: i }, [renderPart(part)])),
+      )
     }
   },
 })
