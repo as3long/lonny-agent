@@ -1,4 +1,4 @@
-import { Box, Text, useInput } from '@vue-tui/runtime'
+﻿import { Box, Text, useInput } from '@vue-tui/runtime'
 import { computed, defineComponent, h, inject, onUnmounted, ref, watch } from 'vue'
 import { kIsRunning } from '../context.js'
 import { CommandSuggestions } from './command-suggestions.js'
@@ -132,11 +132,12 @@ export const ChatInput = defineComponent({
 
     return () => {
       if (isRunning.value) {
-        return h(Box, {}, [h(Text, {}, '...')])
+        return h(Box, { flexDirection: 'row' }, [h(Text, {}, '...')])
       }
       const children = [
-        h(Box, {}, [
-          h(Text, { wrap: 'truncate-start' }, `> ${inputText.value}${showCursor.value ? '|' : ''}`),
+        h(Box, { flexDirection: 'row' }, [
+          h(Text, { wrap: 'truncate-start' }, `> ${inputText.value}`),
+          h(Text, { color: showCursor.value ? '#ffffff' : 'transparent' }, '|'),
         ]),
       ]
       if (showSuggestions.value) {
