@@ -2,6 +2,16 @@ import { Box, Text } from '@vue-tui/runtime'
 import { defineComponent, h } from 'vue'
 import { colors } from './colors.js'
 
+const DIFF_RED = '#ff5050'
+const DIFF_GREEN = '#00c864'
+const DIFF_GRAY = '#969696'
+
+function diffColor(line: string): string {
+  if (line.startsWith('- ')) return DIFF_RED
+  if (line.startsWith('+ ')) return DIFF_GREEN
+  return DIFF_GRAY
+}
+
 export const ToolResult = defineComponent({
   props: {
     name: { type: String, required: true },
@@ -16,7 +26,7 @@ export const ToolResult = defineComponent({
 
     return () => {
       const detailLines = (props.details as string[]).map((line, i) =>
-        h(Text, { key: i, color: '#969696' }, line),
+        h(Text, { key: i, color: diffColor(line) }, line),
       )
 
       return h(

@@ -38,7 +38,8 @@ function formatToolResultText(tc: ToolCall, result: ToolResult): string {
   } else if (tc.name === 'edit') {
     summary = 'edit'
     for (const l of result.output.split('\n')) {
-      if (l.trim()) details.push(l.trim())
+      const clean = l.replace(/\x1b\[[0-9;]*m/g, '').trim()
+      if (clean) details.push(clean)
     }
   } else if (tc.name === 'write_plan') {
     summary = result.output || tc.name
