@@ -1,5 +1,5 @@
 ﻿import { Box, Text, useInput } from '@vue-tui/runtime'
-import { computed, defineComponent, h, inject, onUnmounted, ref, watch } from 'vue'
+import { computed, defineComponent, h, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { kIsRunning } from '../context.js'
 import { CommandSuggestions } from './command-suggestions.js'
 
@@ -16,21 +16,28 @@ const slashCommands = [
   { name: 'filter', description: 'Filter plans', argumentHint: '<query>' },
 ]
 
+const BlinkingCursor = defineComponent({
+  setup() {
+    const visible = ref(true)
+    let timer: ReturnType<typeof setInterval>
+    onMounted(() => {
+      timer = setInterval(() => {
+        visible.value = !visible.value
+      }, 500)
+    })
+    onUnmounted(() => clearInterval(timer))
+    return () => h(Text, { color: visible.value ? '#ffffff' : 'transparent' }, '|')
+  },
+})
+
 export const ChatInput = defineComponent({
   emits: ['submit'],
   setup(_props, { emit }) {
     const inputText = ref('')
     const history = ref<string[]>([])
     const historyIndex = ref(-1)
-    const showCursor = ref(true)
     const selectedSuggestionIndex = ref(0)
     const isRunning = inject(kIsRunning)!
-
-    let cursorInterval: ReturnType<typeof setInterval>
-    cursorInterval = setInterval(() => {
-      showCursor.value = !showCursor.value
-    }, 500)
-    onUnmounted(() => clearInterval(cursorInterval))
 
     const suggestions = computed(() => {
       if (!inputText.value.startsWith('/')) return []
@@ -137,7 +144,7 @@ export const ChatInput = defineComponent({
       const children = [
         h(Box, { flexDirection: 'row' }, [
           h(Text, { wrap: 'truncate-start' }, `> ${inputText.value}`),
-          h(Text, { color: showCursor.value ? '#ffffff' : 'transparent' }, '|'),
+          h(BlinkingCursor),
         ]),
       ]
       if (showSuggestions.value) {
