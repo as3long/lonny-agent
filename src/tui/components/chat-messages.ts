@@ -3,6 +3,7 @@ import { defineComponent, h, inject } from 'vue'
 import { kChatContent, kConfig } from '../context.js'
 import { highlightLine } from '../highlight.js'
 import { colors } from './colors.js'
+import { ThinkingBlock } from './thinking-block.js'
 import { TokenStats } from './token-stats.js'
 import { ToolInvocation } from './tool-invocation.js'
 import { ToolResult } from './tool-result.js'
@@ -130,17 +131,7 @@ export const ChatMessages = defineComponent({
           })
         }
         if (part.type === 'thinking') {
-          return h(
-            Box,
-            {
-              key: i,
-              borderStyle: 'round',
-              borderColor: colors.dim,
-              paddingX: 1,
-              marginY: 1,
-            },
-            [h(Text, { color: '#9696a0' }, part.content)],
-          )
+          return h(ThinkingBlock, { key: i, content: part.content })
         }
         if (part.type === 'tool_call') {
           return h(ToolInvocation, {
