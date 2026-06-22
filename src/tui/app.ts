@@ -77,9 +77,18 @@ export const Root = defineComponent({
 
     let sessionInst: Session | null = null
 
+    let writeBuf = ''
+    let writeTimer: ReturnType<typeof setTimeout> | null = null
     const output: SessionOutput = {
       write: (text: string) => {
-        chatContent.value += processThinkingBlocks(text)
+        writeBuf += processThinkingBlocks(text)
+        if (!writeTimer) {
+          writeTimer = setTimeout(() => {
+            chatContent.value += writeBuf
+            writeBuf = ''
+            writeTimer = null
+          }, 16)
+        }
       },
       suppressToolOutput: false,
       confirmTool: async (toolCalls: ToolCall[]) => {
