@@ -121,10 +121,19 @@ export const ChatMessages = defineComponent({
 
       const parts = formatContent(text)
 
-      // All parts except the last go to Static (rendered once, excluded from Yoga layout).
-      // The last part is rendered live — only this causes Yoga recalculation during streaming.
-      const completedParts = parts.slice(0, -1)
-      const livePart = parts[parts.length - 1]
+      // Text parts can be streaming (continuous growth); all other types
+      // (user, code, thinking, tool, etc.) are complete blocks bounded by
+      // explicit markers and never change after creation.
+      const lastIdx = parts.length - 1
+      const completedParts: Part[] = []
+      let livePart: Part | null = null
+      for (let i = 0; i < parts.length; i++) {
+        if (i < lastIdx || parts[i].type !== 'text') {
+          completedParts.push(parts[i])
+        } else {
+          livePart = parts[i]
+        }
+      }
 
       return h(
         Box,
@@ -143,7 +152,7 @@ export const ChatMessages = defineComponent({
               default: (slotProps: { item: Part }) => renderPart(slotProps.item),
             },
           ),
-          renderPart(livePart),
+          livePart && renderPart(livePart),
         ],
       )
     }
