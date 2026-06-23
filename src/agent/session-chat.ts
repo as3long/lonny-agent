@@ -169,12 +169,13 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
           reasoningContent = chunk.reasoning_content
           if (!chunk.text) {
             if (!reasoningOutput) {
-              bus.emit(EventChannels.THINKING, { text: chunk.reasoning_content })
+              bus.emit(EventChannels.THINKING, { text: '' })
               if (!out?.suppressToolOutput) {
                 writeOut(`\n${THINK_START_MARKER}`, out)
               }
               reasoningOutput = true
             }
+            bus.emit(EventChannels.THINKING, { text: chunk.reasoning_content })
             if (!out?.suppressToolOutput) {
               writeOut(chunk.reasoning_content, out)
             }
