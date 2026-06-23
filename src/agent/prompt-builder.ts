@@ -1,18 +1,63 @@
+import * as crypto from 'node:crypto'
 import * as os from 'node:os'
 import type { Config } from '../config/index.js'
 import type { ToolDefinition } from '../tools/types.js'
 import { formatMemoryForPrompt, loadMemory } from './memory.js'
+import { formatActivePlanForPrompt } from './plans.js'
 import { discoverProject, formatProjectContext } from './project.js'
 import type { BuildContext } from './prompt-builder-types.js'
 import { formatSkillsForPrompt, loadSkills } from './skills.js'
 import { getStrategyForMode } from './strategies/index.js'
 
+// ── Cache for system prompt rebuilding ─────────────────────────────────────
+
+interface PromptCacheEntry {
+  prompt: string
+  mode: string
+  /** Hash of the dynamic sections (project + memory + skills content) */
+  dynamicHash: string
+  /** Hash of the tool definitions (if any) */
+  definitionsHash: string
+  /** Last mode that was used */
+  lastMode: string
+}
+
+/** Module-level cache to avoid unnecessary system prompt rebuilds */
+let promptCache: PromptCacheEntry | null = null
+
+/**
+ * Compute a hash for dynamic sections (project, memory, skills).
+ * These change when the project files change, which is infrequent.
+ */
+function computeDynamicHash(config: Config): string {
+  const cwd = config.cwd
+  const skills = loadSkills(cwd)
+  const memories = loadMemory(cwd)
+  const plans = formatActivePlanForPrompt(cwd)
+  const hash = crypto.createHash('sha256')
+  hash.update(formatSkillsForPrompt(skills))
+  hash.update(formatMemoryForPrompt(memories))
+  hash.update(plans)
+  return hash.digest('hex').slice(0, 16)
+}
+
+/**
+ * Compute a hash for tool definitions (used for hierarchical tool trees).
+ */
+function computeDefinitionsHash(definitions?: ToolDefinition[]): string {
+  if (!definitions || definitions.length === 0) return ''
+  const hash = crypto.createHash('sha256')
+  for (const def of definitions) {
+    hash.update(def.name)
+    hash.update(def.description || '')
+  }
+  return hash.digest('hex').slice(0, 16)
+}
+
 /**
  * Build the system prompt for the current configuration.
- * Extracted from session.ts to keep module size manageable (<500 LoC target).
- *
- * Uses Strategy Pattern + Template Method Pattern internally
- * (see src/agent/strategies/ for each mode's strategy).
+ * Uses a module-level cache to avoid rebuilding when nothing changed.
+ * This maximizes prompt caching on the LLM provider side.
  *
  * @param config - Current configuration
  * @param definitions - Optional tool definitions for dynamic tree generation.
@@ -22,6 +67,18 @@ export async function buildSystemPrompt(
   config: Config,
   definitions?: ToolDefinition[],
 ): Promise<string> {
+  // ── Check cache ────────────────────────────────────────────────────────
+  const dynamicHash = computeDynamicHash(config)
+  const definitionsHash = computeDefinitionsHash(definitions)
+  if (
+    promptCache &&
+    promptCache.mode === config.mode &&
+    promptCache.dynamicHash === dynamicHash &&
+    promptCache.definitionsHash === definitionsHash
+  ) {
+    return promptCache.prompt
+  }
+
   const platform = os.platform()
   const release = os.release()
   const shell = process.env.SHELL || process.env.ComSpec || 'unknown'
@@ -58,7 +115,7 @@ ${isWindows ? '  - ⚠️  Do NOT use `Remove-Item -Recurse -Force` or `rm -rf` 
 ${isWindows ? '  - PowerShell code snippet template (use these patterns instead of guessing):' : ''}
 ${isWindows ? '    Get-Content file.txt                         # cat' : ''}
 ${isWindows ? '    Get-Content file.txt -Head 10                # head -10' : ''}
-${isWindows ? '    (Get-Content file.txt) -join "\`n"            # read whole file as single string' : ''}
+${isWindows ? '    (Get-Content file.txt) -join "`n"            # read whole file as single string' : ''}
 ${isWindows ? '    Get-ChildItem -Recurse -Filter "*.ts"        # find .' : ''}
 ${isWindows ? '    Get-ChildItem src -Recurse -Include "*.ts","*.js"  # find with multiple patterns' : ''}
 ${isWindows ? '    Select-String -Pattern "TODO" -Path "src/**/*.ts"  # grep -r' : ''}
@@ -90,6 +147,7 @@ RULES:
 `
 
   const memoryPromptSection = memorySection ? `\n## Long-term Memory\n\n${memorySection}` : ''
+  const planSection = formatActivePlanForPrompt(cwd)
 
   const context: BuildContext = {
     envSection,
@@ -97,9 +155,29 @@ RULES:
     projectSection,
     memorySection: memoryPromptSection,
     skillsSection,
+    planSection,
   }
 
   // ── Delegate to strategy ─────────────────────────────────────────────────
   const strategy = getStrategyForMode(config.mode)
-  return strategy.build(config, context, definitions)
+  const prompt = strategy.build(config, context, definitions)
+
+  // ── Update cache ────────────────────────────────────────────────────────
+  promptCache = {
+    prompt,
+    mode: config.mode,
+    dynamicHash,
+    definitionsHash,
+    lastMode: config.mode,
+  }
+
+  return prompt
+}
+
+/**
+ * Clear the system prompt cache (e.g., after memory or skills change).
+ * Forces next call to rebuild the prompt from scratch.
+ */
+export function clearPromptCache(): void {
+  promptCache = null
 }

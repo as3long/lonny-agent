@@ -9,6 +9,11 @@ export function formatTokens(n: number): string {
   return String(n)
 }
 
+export function formatCostShort(cost: string): string {
+  // cost is like "$0.12" or "<$0.01" — return as-is for header
+  return cost
+}
+
 export const HeaderBar = defineComponent({
   setup() {
     const config = inject(kConfig)!
@@ -32,9 +37,12 @@ export const HeaderBar = defineComponent({
 
       const totalTokens = s.totalInputTokens + s.totalOutputTokens
       if (totalTokens > 0) {
-        const tokenStr = `\u25B4${s.totalInputTokens} \u25BE${s.totalOutputTokens}  ${totalTokens}`
-        const callsStr = `${s.totalApiCalls} calls`
-        rightPart += `  |  ${tokenStr}  ${callsStr}`
+        const tokenStr = `\u25B4${formatTokens(s.totalInputTokens)} \u25BE${formatTokens(s.totalOutputTokens)}  ${formatTokens(totalTokens)}`
+        const callsStr = `${s.totalApiCalls}c`
+        rightPart += `  |  ${tokenStr} ${callsStr}`
+        if (s.cost) {
+          rightPart += `  ${s.cost}`
+        }
       }
 
       if (s.planCount > 0) {

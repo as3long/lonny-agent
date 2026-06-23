@@ -4,7 +4,7 @@ import { dispatchCommand } from '../agent/commands.js'
 import type { Session } from '../agent/session.js'
 import { fetchDeepSeekBalance, isDeepSeekOfficial } from '../api/balance.js'
 import type { Config } from '../config/index.js'
-import { loadTokenUsage } from '../config/tokens.js'
+import { getProjectCost, loadTokenUsage } from '../config/tokens.js'
 import type { StatusData } from './context.js'
 
 export function makeCommandUI(
@@ -38,6 +38,7 @@ export function updateFooterFromSession(
   isRunning: boolean,
 ) {
   const tokenStats = loadTokenUsage(config.cwd)
+  const cost = getProjectCost(config.cwd, config.model, config.provider)
   statusData.value = {
     ...statusData.value,
     agentStatus: isRunning ? 'running' : 'idle',
@@ -47,6 +48,7 @@ export function updateFooterFromSession(
     totalInputTokens: tokenStats.totalInputTokens,
     totalOutputTokens: tokenStats.totalOutputTokens,
     totalApiCalls: tokenStats.totalApiCalls,
+    cost,
   }
 }
 

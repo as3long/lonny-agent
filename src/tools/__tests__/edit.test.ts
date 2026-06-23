@@ -11,7 +11,12 @@ import {
   renderDiffTerminal,
 } from '../edit/diff-render.js'
 import { createEditTool } from '../edit/edit.js'
-import { findAllLinesSmart, findAllLinesTolerant, normalizeLine, normalizeLineSmart } from '../edit/matcher.js'
+import {
+  findAllLinesSmart,
+  findAllLinesTolerant,
+  normalizeLine,
+  normalizeLineSmart,
+} from '../edit/matcher.js'
 import { parseMarkdownEdit } from '../edit/parser.js'
 import { makeTempDir } from './helpers.js'
 
@@ -1218,11 +1223,13 @@ describe('edit tool �?edge cases', () => {
       applier.markRead(file)
       // old_string uses spaces, file uses tabs — exact + tolerant fail, smart succeeds
       const r = await tool().execute({
-        edits: [{
-          file_path: 'smart-tab.txt',
-          old_string: 'hello world',
-          new_string: 'HELLO WORLD',
-        }],
+        edits: [
+          {
+            file_path: 'smart-tab.txt',
+            old_string: 'hello world',
+            new_string: 'HELLO WORLD',
+          },
+        ],
       })
       expect(r.success).toBe(true)
       const content = fs.readFileSync(file, 'utf8')
@@ -1235,11 +1242,13 @@ describe('edit tool �?edge cases', () => {
       fs.writeFileSync(file, 'line one\nhello\tworld\tfoo\nline three\n')
       applier.markRead(file)
       const r = await tool().execute({
-        edits: [{
-          file_path: 'smart-multi-tab.txt',
-          old_string: 'hello world foo',
-          new_string: 'HELLO WORLD FOO',
-        }],
+        edits: [
+          {
+            file_path: 'smart-multi-tab.txt',
+            old_string: 'hello world foo',
+            new_string: 'HELLO WORLD FOO',
+          },
+        ],
       })
       expect(r.success).toBe(true)
       const content = fs.readFileSync(file, 'utf8')
@@ -1252,11 +1261,13 @@ describe('edit tool �?edge cases', () => {
       fs.writeFileSync(file, 'hello world\n')
       applier.markRead(file)
       const r = await tool().execute({
-        edits: [{
-          file_path: 'smart-exact.txt',
-          old_string: 'hello world',
-          new_string: 'HELLO WORLD',
-        }],
+        edits: [
+          {
+            file_path: 'smart-exact.txt',
+            old_string: 'hello world',
+            new_string: 'HELLO WORLD',
+          },
+        ],
       })
       expect(r.success).toBe(true)
       expect(r.output).not.toContain('[smart-matched]')

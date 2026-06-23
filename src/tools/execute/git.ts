@@ -68,7 +68,7 @@ COMMON USE CASES:
   git({ command: "show <hash>" })        # Show a specific commit
   git({ command: "branch" })             # List branches
   git({ command: "branch -a" })          # List all branches (including remote)
-  git({ command: "commit -m \"msg\"" })  # Commit staged changes (allowed, read-only-only mode)
+  git({ command: "commit -m "msg"" })  # Commit staged changes (allowed, read-only-only mode)
   git({ command: "add ." })              # Stage all changes (allowed)
 
 NOTES:

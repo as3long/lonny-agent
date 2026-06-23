@@ -23,6 +23,8 @@ export interface StatusData {
   totalInputTokens: number
   totalOutputTokens: number
   totalApiCalls: number
+  /** Estimated total cost in USD (as formatted string, e.g. "$0.12") */
+  cost: string
   balance: string
   webBalance: string
   phase: 'landing' | 'chat'

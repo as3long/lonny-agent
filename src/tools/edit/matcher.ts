@@ -1,4 +1,4 @@
-  import type { MatchPos } from './types.js'
+import type { MatchPos } from './types.js'
 
 /**
  * Normalize a line for whitespace-tolerant comparison:
@@ -30,7 +30,7 @@ export function normalizeLine(s: string): string {
 export function normalizeLineSmart(s: string): string {
   return s
     .trim()
-    .replace(/\t/g, ' ')     // tabs → single space
+    .replace(/\t/g, ' ') // tabs → single space
     .replace(/[ \t]+/g, ' ') // collapse ALL whitespace runs
     .trim()
 }

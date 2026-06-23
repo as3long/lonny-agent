@@ -275,7 +275,7 @@ interface JsonConfig {
 
 let cachedJsonConfig: JsonConfig | null = null
 
-function loadJsonConfig(): JsonConfig {
+export function loadJsonConfig(): JsonConfig {
   if (cachedJsonConfig) return cachedJsonConfig
   const configPath = path.join(os.homedir(), '.lonny', 'config.json')
   try {
@@ -288,7 +288,7 @@ function loadJsonConfig(): JsonConfig {
   }
 }
 
-function saveJsonConfig(config: JsonConfig): void {
+export function saveJsonConfig(config: JsonConfig): void {
   const configPath = path.join(os.homedir(), '.lonny', 'config.json')
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
   cachedJsonConfig = config

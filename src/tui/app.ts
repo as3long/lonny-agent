@@ -4,7 +4,7 @@ import type { SessionOutput } from '../agent/session.js'
 import { formatToolInput, Session } from '../agent/session.js'
 import { fetchDeepSeekBalance, isDeepSeekOfficial } from '../api/balance.js'
 import type { Config } from '../config/index.js'
-import { loadTokenUsage } from '../config/tokens.js'
+import { getProjectCost, loadTokenUsage } from '../config/tokens.js'
 import type { ToolCall } from '../tools/types.js'
 import { sendMessage as cmdSendMessage } from './commands.js'
 import { ChatInput } from './components/chat-input.js'
@@ -59,6 +59,7 @@ export const Root = defineComponent({
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalApiCalls: 0,
+      cost: '',
       balance: '',
       webBalance: '',
       phase: 'landing',
@@ -107,11 +108,13 @@ export const Root = defineComponent({
 
     function updateTokenStats() {
       const tokenStats = loadTokenUsage(config.cwd)
+      const cost = getProjectCost(config.cwd, config.model, config.provider)
       statusData.value = {
         ...statusData.value,
         totalInputTokens: tokenStats.totalInputTokens,
         totalOutputTokens: tokenStats.totalOutputTokens,
         totalApiCalls: tokenStats.totalApiCalls,
+        cost,
       }
     }
 

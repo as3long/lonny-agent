@@ -1,4 +1,93 @@
+import type { ToolCall, ToolResult } from '../tools/types.js'
 import type { LLMMessage } from './llm.js'
+
+/**
+ * Compress a tool result for storage in message history.
+ * Keeps essential context while dramatically reducing token usage.
+ * The LLM saw the full output during streaming — this is for future turns
+ * where only key facts matter. The LLM can re-read files if needed later.
+ * Extracted to a shared utility so both the main agent and sub-agents use it.
+ */
+export function compressToolResult(tc: ToolCall, result: ToolResult): string {
+  if (!result.success) {
+    return `ERROR: ${result.error || tc.name}`
+  }
+  const output = result.output
+
+  if (tc.name === 'read') {
+    // Parse file headers from read output
+    const lines = output.split('\n')
+    const fileHeaders: string[] = []
+    let totalLines = 0
+    for (const line of lines) {
+      if (line.startsWith('===')) {
+        const fp = line.slice(4, line.includes(' ===') ? line.indexOf(' ===') : undefined)
+        fileHeaders.push(fp ? fp.trim() : line)
+      } else if (line.match(/^\d+:/)) {
+        totalLines++
+      }
+    }
+    if (fileHeaders.length === 0) {
+      // Fallback: keep as-is but capped
+      return output.length <= 500
+        ? output
+        : `[read result] ${output.slice(0, 300)}…\n[truncated: ${output.length} total chars]`
+    }
+    // Compress: just file paths + line counts
+    return `[read result] ${fileHeaders.length} file(s): ${fileHeaders.join(', ')} (${totalLines} total lines shown)`
+  }
+
+  if (tc.name === 'bash') {
+    const lines = output.split('\n')
+    if (lines.length <= 20 && output.length <= 800) {
+      return output // Keep short outputs as-is
+    }
+    const description = lines[0]?.startsWith('[bash]') ? lines[0] : ''
+    const body = description ? lines.slice(1).join('\n') : output
+    const head = body.slice(0, 300)
+    const tail = body.length > 500 ? body.slice(-200) : ''
+    let compressed = description ? `${description}\n` : ''
+    compressed += head
+    if (tail) {
+      compressed += `\n… [truncated: ${body.length} total chars, showing first 300 + last 200]\n`
+      compressed += tail
+    }
+    return compressed
+  }
+
+  if (tc.name === 'grep') {
+    const matchLines = output.split('\n').filter(l => l.trim() && !l.startsWith('No match'))
+    if (matchLines.length <= 25 && output.length <= 1000) {
+      return output
+    }
+    return (
+      matchLines.slice(0, 25).join('\n') +
+      (matchLines.length > 25 ? `\n… [${matchLines.length - 25} more matches suppressed]` : '')
+    )
+  }
+
+  if (tc.name === 'glob') {
+    const files = output.split('\n').filter(l => l.trim() && !l.startsWith('No'))
+    if (files.length <= 50 && output.length <= 500) {
+      return output
+    }
+    return (
+      files.slice(0, 30).join('\n') +
+      (files.length > 30 ? `\n… [${files.length - 30} more files suppressed]` : '')
+    )
+  }
+
+  if (tc.name === 'edit') {
+    // Already compressed by the tool, but clean up ANSI codes
+    const clean = output.replace(/\x1b\[[0-9;]*m/g, '')
+    if (clean.length <= 500) return clean
+    return clean.slice(0, 400) + `\n… [truncated: ${clean.length} total chars]`
+  }
+
+  // Default: keep as-is but cap at 1000 chars
+  if (output.length <= 1000) return output
+  return output.slice(0, 700) + `\n… [truncated: ${output.length} total chars]`
+}
 
 export function isTaskCompleteMessage(text: string): boolean {
   if (!text) return false
@@ -64,18 +153,48 @@ function getDelegationHint(messages: LLMMessage[]): string {
   return ''
 }
 
+/**
+ * Count recent tool calls to give the LLM a sense of progress.
+ */
+function countRecentOps(messages: LLMMessage[]): { reads: number; edits: number; bash: number } {
+  let reads = 0
+  let edits = 0
+  let bash = 0
+  // Look at the last 10 assistant messages
+  let count = 0
+  for (let i = messages.length - 1; i >= 0 && count < 10; i--) {
+    const m = messages[i]
+    if (m.role === 'assistant' && m.tool_calls) {
+      count++
+      for (const tc of m.tool_calls) {
+        if (tc.name === 'read' || tc.name === 'grep' || tc.name === 'glob') reads++
+        else if (tc.name === 'edit') edits++
+        else if (tc.name === 'bash') bash++
+      }
+    }
+  }
+  return { reads, edits, bash }
+}
+
 export function getContinuationMessage(messages: LLMMessage[]): string {
   const firstUserMsg = messages.find(m => m.role === 'user')
   const taskHint =
     firstUserMsg && typeof firstUserMsg.content === 'string'
-      ? firstUserMsg.content.slice(0, 200)
+      ? firstUserMsg.content.slice(0, 100)
       : 'the original task'
 
   const delegationHint = getDelegationHint(messages)
+  const { reads, edits, bash } = countRecentOps(messages)
 
-  return `[auto-continuation] The previous turn completed. Continue working on the original task: ${taskHint}
+  // Build a compact progress line (only if there was activity)
+  const progressParts: string[] = []
+  if (edits > 0) progressParts.push(`${edits} edits`)
+  if (reads > 0) progressParts.push(`${reads} reads`)
+  if (bash > 0) progressParts.push(`${bash} cmds`)
+  const progress = progressParts.length > 0 ? ` [recent: ${progressParts.join(', ')}]` : ''
 
-If you believe the task is complete, call the task_complete tool with a summary of what was accomplished to end the session. Otherwise, continue with the next steps.${delegationHint}`
+  return `[auto-continuation] Continue: ${taskHint}.${progress}
+End by calling task_complete when done.${delegationHint}`
 }
 
 export function sanitizeMessages(messages: LLMMessage[]): LLMMessage[] {

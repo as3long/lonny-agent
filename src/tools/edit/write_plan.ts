@@ -44,8 +44,7 @@ export function createWritePlanTool(
         },
         file: {
           type: 'string',
-          description:
-            'Alias for filename (e.g. "plan.md"). One of filename or file is required.',
+          description: 'Alias for filename (e.g. "plan.md"). One of filename or file is required.',
           required: false,
         },
         content: {
@@ -66,7 +65,8 @@ export function createWritePlanTool(
         return {
           success: false,
           output: '',
-          error: 'filename is required (string). Use write_plan({ filename: "plan.md", content: "..." }) or write_plan({ file: "plan.md", content: "..." })',
+          error:
+            'filename is required (string). Use write_plan({ filename: "plan.md", content: "..." }) or write_plan({ file: "plan.md", content: "..." })',
         }
       }
       if (typeof input.content !== 'string') {

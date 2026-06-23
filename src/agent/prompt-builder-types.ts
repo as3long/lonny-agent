@@ -7,6 +7,7 @@ export interface BuildContext {
   projectSection: string
   memorySection: string
   skillsSection: string
+  planSection: string
 }
 
 export interface PromptStrategy {

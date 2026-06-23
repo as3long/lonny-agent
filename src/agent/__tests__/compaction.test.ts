@@ -129,21 +129,28 @@ describe('compact', () => {
     }
   })
 
-  test('summary contains exchange statistics', () => {
+  test('summary contains activity and changes info', () => {
     const messages: LLMMessage[] = [sys()]
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 10; i++) {
       messages.push(user(`message number ${i}`))
     }
     messages.push(
       assistantWithToolCall('edit', { file_path: 'test.ts', old_string: 'a', new_string: 'b' }),
     )
     messages.push(toolResult('edit'))
+    for (let i = 11; i < 25; i++) {
+      messages.push(user(`message number ${i}`))
+    }
 
     const result = compact(messages, 100, 5)
     if (result.compressed) {
       // Summary is always the last message (appended at end for prompt cache stability)
       const summary = result.messages[result.messages.length - 1].content || ''
-      expect(summary).toContain('Total exchanges')
+      expect(summary).toContain('## Activity')
+      expect(summary).toContain('## User Requests')
+      // Edit should be mentioned in the changes section
+      expect(summary).toContain('test.ts')
+      expect(summary).toContain('edit(1)')
     }
   })
 

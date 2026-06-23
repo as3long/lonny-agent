@@ -372,7 +372,8 @@ ${suggestion}`)
                 let hint = ''
                 const isScattered =
                   foundIndices.length >= 2 &&
-                  foundIndices[foundIndices.length - 1]! - foundIndices[0]! + 1 > foundIndices.length
+                  foundIndices[foundIndices.length - 1]! - foundIndices[0]! + 1 >
+                    foundIndices.length
 
                 if (isScattered) {
                   hint = `\n  ⚠️  ${foundIndices.length} lines of old_string were found in the file, but they are NOT contiguous — you skipped lines between them.
@@ -384,7 +385,9 @@ ${suggestion}`)
                     const normFirst = normalizeLine(firstLine)
                     const similarIdx = contentLines.findIndex(
                       l =>
-                        l.length > 0 && normFirst.length > 0 && normalizeLine(l).includes(normFirst),
+                        l.length > 0 &&
+                        normFirst.length > 0 &&
+                        normalizeLine(l).includes(normFirst),
                     )
                     if (similarIdx !== -1) {
                       const start = Math.max(0, similarIdx - 1)

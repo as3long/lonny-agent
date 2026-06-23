@@ -160,67 +160,206 @@ export function compact(
 /**
  * Build a text summary of old messages.
  * Extracts key information: user requests, tool operations, file changes.
+ * Produces a structured summary with:
+ * - What was accomplished (key file edits and their purpose)
+ * - Key design decisions extracted from user/assistant messages
+ * - Test outcomes
+ * - Current progress / remaining tasks
  */
 function buildSummary(messages: LLMMessage[]): string {
-  const parts: string[] = []
-  let userCount = 0
-  let toolCallCount = 0
-  let editCount = 0
+  // ── Collect structured data ────────────────────────────────────────────
+  const userMessages: string[] = []
+  const editedFiles = new Map<string, string[]>() // file -> new_string snippets
   const readFiles = new Set<string>()
   const bashCommands: string[] = []
+  const testResults: string[] = []
+  const toolCallCounts: Record<string, number> = {}
+  let totalToolCalls = 0
 
   for (const m of messages) {
-    if (m.role === 'user') {
-      userCount++
-      const preview = (m.content || '').slice(0, 120)
-      parts.push(`- User: ${preview}${(m.content || '').length > 120 ? '…' : ''}`)
+    if (m.role === 'user' && m.content) {
+      const text = typeof m.content === 'string' ? m.content : ''
+      // Skip auto-continuation messages (they're boilerplate)
+      if (text.startsWith('[auto-continuation]')) continue
+      userMessages.push(text)
     }
+
     if (m.role === 'assistant' && m.tool_calls) {
       for (const tc of m.tool_calls) {
-        toolCallCount++
-        if (tc.name === 'edit') {
-          editCount++
-          const paths = extractEditPaths(tc.input)
-          parts.push(`- Edited: ${paths.join(', ')}`)
-        } else if (tc.name === 'read') {
+        totalToolCalls++
+        const name = tc.name
+        toolCallCounts[name] = (toolCallCounts[name] || 0) + 1
+
+        if (name === 'edit') {
+          // Extract file paths and what was added (new_string snippets)
+          const edits = (tc.input as Record<string, unknown>).edits as
+            | Record<string, unknown>[]
+            | undefined
+          if (edits) {
+            for (const e of edits) {
+              const fp = e.file_path as string | undefined
+              if (fp) {
+                const newStr = (e.new_string as string) || ''
+                // Extract function/class/interface names from new_string
+                const symbols = extractSymbols(newStr)
+                const existing = editedFiles.get(fp) || []
+                if (symbols.length > 0) {
+                  existing.push(...symbols)
+                } else {
+                  // Fallback: show first meaningful line
+                  const firstLine = newStr.split('\n')[0]?.trim().slice(0, 80)
+                  if (firstLine) existing.push(firstLine)
+                }
+                editedFiles.set(fp, [...new Set(existing)])
+              }
+            }
+          } else {
+            // Direct format: { file_path, new_string }
+            const fp = tc.input.file_path as string | undefined
+            if (fp) {
+              const newStr = (tc.input.new_string as string) || ''
+              const symbols = extractSymbols(newStr)
+              const existing = editedFiles.get(fp) || []
+              if (symbols.length > 0) {
+                existing.push(...symbols)
+              } else {
+                const firstLine = newStr.split('\n')[0]?.trim().slice(0, 80)
+                if (firstLine) existing.push(firstLine)
+              }
+              editedFiles.set(fp, [...new Set(existing)])
+            }
+          }
+        } else if (name === 'read') {
           const paths = tc.input.paths as string[] | undefined
           if (paths) paths.forEach(p => readFiles.add(p as string))
-        } else if (tc.name === 'bash') {
+        } else if (name === 'bash') {
           const cmd = tc.input.command as string | undefined
-          if (cmd) bashCommands.push(cmd.length > 60 ? `${cmd.slice(0, 60)}…` : cmd)
+          if (cmd) bashCommands.push(cmd.length > 80 ? `${cmd.slice(0, 80)}…` : cmd)
+        }
+      }
+    }
+
+    // Check tool result messages for test outcomes
+    if (m.role === 'tool' && m.content && typeof m.content === 'string') {
+      const content = m.content
+      // Detect test run results
+      if (
+        content.includes('PASS') ||
+        content.includes('FAIL') ||
+        content.includes('Tests:') ||
+        content.includes('test file') ||
+        content.includes('✓') ||
+        content.includes('×')
+      ) {
+        // Extract the test summary line
+        const lines = content.split('\n')
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (
+            trimmed.startsWith('Tests:') ||
+            trimmed.startsWith('Test Files:') ||
+            trimmed.startsWith('✓') ||
+            trimmed.startsWith('×') ||
+            trimmed.startsWith('PASS') ||
+            trimmed.startsWith('FAIL')
+          ) {
+            testResults.push(trimmed.slice(0, 120))
+          }
         }
       }
     }
   }
 
-  const summary: string[] = []
-  summary.push(`Total exchanges: ${userCount} user messages, ${toolCallCount} tool calls`)
-  if (editCount > 0) summary.push(`Files edited: ${editCount} operations`)
-  if (readFiles.size > 0) summary.push(`Files read: ${readFiles.size} unique files`)
-  if (bashCommands.length > 0) {
-    summary.push(
-      `Commands executed: ${bashCommands.slice(0, 5).join(', ')}${bashCommands.length > 5 ? ` (+${bashCommands.length - 5} more)` : ''}`,
-    )
+  // ── Build structured summary ───────────────────────────────────────────
+  const sections: string[] = []
+
+  // Section: User requests (key ones only, deduplicated)
+  if (userMessages.length > 0) {
+    // Only keep the most important user messages (first + last few)
+    const shown: string[] = []
+    if (userMessages.length <= 3) {
+      for (const msg of userMessages) shown.push(`- ${msg.slice(0, 200)}`)
+    } else {
+      // First message + last 2
+      shown.push(`- [initial] ${userMessages[0].slice(0, 200)}`)
+      for (const msg of userMessages.slice(-2)) {
+        shown.push(`- ${msg.slice(0, 200)}`)
+      }
+      if (userMessages.length > 3) {
+        shown.push(`- … (${userMessages.length - 3} more user messages in between)`)
+      }
+    }
+    sections.push(`## User Requests\n${shown.join('\n')}`)
   }
 
-  return summary.join('\n')
+  // Section: Changes made (files edited and what was added/modified)
+  if (editedFiles.size > 0) {
+    const changeLines: string[] = []
+    for (const [fp, symbols] of editedFiles) {
+      if (symbols.length > 0) {
+        changeLines.push(
+          `- ${fp}: ${symbols.slice(0, 3).join(', ')}${symbols.length > 3 ? ` (+${symbols.length - 3} more)` : ''}`,
+        )
+      } else {
+        changeLines.push(`- ${fp}: modified`)
+      }
+    }
+    sections.push(`## Changes Made\n${changeLines.join('\n')}`)
+  }
+
+  // Section: Test outcomes
+  if (testResults.length > 0) {
+    const unique = [...new Set(testResults)]
+    sections.push('## Test Results\n' + unique.join('\n'))
+  }
+
+  // Section: Tool usage summary (compact)
+  const toolSummary = Object.entries(toolCallCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => `${name}(${count})`)
+    .join(', ')
+  const readSummary = readFiles.size > 0 ? `, read ${readFiles.size} files` : ''
+  const bashSummary =
+    bashCommands.length > 0
+      ? `, ${bashCommands.length} bash cmds (${bashCommands.slice(0, 3).join('; ')}${bashCommands.length > 3 ? '…' : ''})`
+      : ''
+
+  sections.push(
+    '## Activity\n' + `${totalToolCalls} tool calls: ${toolSummary}${readSummary}${bashSummary}`,
+  )
+
+  return sections.join('\n\n')
 }
 
-function extractEditPaths(input: Record<string, unknown>): string[] {
-  const paths: string[] = []
-  // Accumulate paths from legacy input format: { edits: [{ file_path: '...' }, ...] }
-  if (Array.isArray(input.edits)) {
-    for (const e of input.edits) {
-      if (typeof e === 'object' && e && 'file_path' in e) {
-        paths.push((e as Record<string, unknown>).file_path as string)
+/**
+ * Extract meaningful symbol names (function/class/interface/variable declarations)
+ * from a code snippet. Returns up to 3 meaningful names.
+ */
+function extractSymbols(code: string): string[] {
+  const symbols: string[] = []
+
+  // Match function/class/interface/type/enum/const/let/var declarations
+  const patterns = [
+    /\bexport\s+(?:default\s+)?(?:async\s+)?function\s+(\w+)/g,
+    /\b(?:async\s+)?function\s+(\w+)/g,
+    /\b(?:export\s+)?(?:default\s+)?class\s+(\w+)/g,
+    /\b(?:export\s+)?interface\s+(\w+)/g,
+    /\b(?:export\s+)?type\s+(\w+)\s*=/g,
+    /\b(?:export\s+)?enum\s+(\w+)/g,
+    /\b(?:export\s+)?(?:const|let|var)\s+(\w+)\s*(?::|=[^=])/g,
+    /\bimport\s+\{\s*(\w+)/g,
+  ]
+
+  for (const pattern of patterns) {
+    let match: RegExpExecArray | null
+    while ((match = pattern.exec(code)) !== null) {
+      const name = match[1]
+      if (name && name !== 'default' && !symbols.includes(name)) {
+        symbols.push(name)
+        if (symbols.length >= 5) return symbols
       }
     }
   }
-  // Also support direct input format used by tests: { file_path: '...' }
-  const direct = input as Record<string, unknown>
-  if (typeof direct.file_path === 'string') {
-    paths.push(direct.file_path)
-  }
-  // Deduplicate to avoid reporting duplicates
-  return Array.from(new Set(paths))
+
+  return symbols
 }

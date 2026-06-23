@@ -47,7 +47,8 @@ export function createReadTool(applier: FileReadTracker, cwd: string): Tool {
         return {
           success: false,
           output: '',
-          error: 'paths must be a non-empty array. Use: read({ paths: ["file1.ts", "file2.ts"] }) or read({ paths: ["src/file.ts"], startLine: 1, maxLines: 50 })',
+          error:
+            'paths must be a non-empty array. Use: read({ paths: ["file1.ts", "file2.ts"] }) or read({ paths: ["src/file.ts"], startLine: 1, maxLines: 50 })',
         }
       }
 

@@ -1,14 +1,156 @@
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 import { formatToolInput } from '../api/display-utils.js'
-import { saveTokenUsage } from '../config/tokens.js'
+import {
+  appendTokenHistory,
+  calculateCost,
+  formatCost,
+  getPricing,
+  saveTokenUsage,
+} from '../config/tokens.js'
 import { fmtErr } from '../tools/errors.js'
-import type { ToolCall, ToolResult } from '../tools/types.js'
+import type { ToolCall, ToolDefinition, ToolResult } from '../tools/types.js'
 import { compact, estimateMessagesTokens, shouldCompact } from './compaction.js'
 import { EventChannels, getGlobalEventBus } from './event-bus.js'
-import type { LLMMessage } from './llm.js'
+import type { LLMChunk, LLMMessage, LLMProvider } from './llm.js'
 import type { Session, SessionOutput } from './session.js'
 import { GY, RE, RS, THINK_END_MARKER, THINK_START_MARKER, writeOut } from './session-display.js'
+import { processToolCall, resetAutoMemory, startTurn } from './session-memory.js'
 import { logToolError } from './session-persistence.js'
-import { getContinuationMessage, isTaskCompleteMessage, sanitizeMessages } from './session-utils.js'
+import {
+  compressToolResult,
+  getContinuationMessage,
+  isTaskCompleteMessage,
+  sanitizeMessages,
+} from './session-utils.js'
+
+// ── Retry helpers ──────────────────────────────────────────────────────────
+
+const STREAM_RETRY_DELAYS = [1_000, 3_000] // 1s, 3s exponential backoff
+const MAX_STREAM_RETRIES = STREAM_RETRY_DELAYS.length
+
+/** Check if an error is retryable (network blips, rate limits, server errors). */
+function isRetryableError(err: unknown): boolean {
+  const msg = fmtErr(err).toLowerCase()
+  // Network / connection errors
+  if (
+    msg.includes('econnrefused') ||
+    msg.includes('econnreset') ||
+    msg.includes('etimedout') ||
+    msg.includes('enotfound') ||
+    msg.includes('socket') ||
+    msg.includes('network') ||
+    msg.includes('timeout')
+  )
+    return true
+  // Server errors (5xx)
+  if (/5\d{2}/.test(msg) || msg.includes('server error') || msg.includes('internal server'))
+    return true
+  // Rate limits (429)
+  if (msg.includes('429') || msg.includes('rate limit') || msg.includes('too many requests'))
+    return true
+  // API overload
+  if (msg.includes('overloaded') || msg.includes('try again') || msg.includes('temporarily'))
+    return true
+  return false
+}
+
+/** Check if a bash error indicates a missing command. */
+function isCommandNotFoundError(error: string): boolean {
+  return /command not found|not recognized|'[^']+' is not|the term '[^']+' is not recognized/i.test(
+    error,
+  )
+}
+
+/** Check if an edit error is due to old_string not matching. */
+function isOldStringNotFoundError(error: string): boolean {
+  return /old_string not found/i.test(error)
+}
+
+/**
+ * Create a streaming chat with automatic retry.
+ * Retries up to MAX_STREAM_RETRIES times with exponential backoff.
+ * Only retries on retryable errors (network, rate limit, server).
+ */
+async function* chatWithRetry(
+  provider: LLMProvider,
+  messages: LLMMessage[],
+  tools: ToolDefinition[],
+  signal?: AbortSignal,
+): AsyncGenerator<LLMChunk> {
+  const bus = getGlobalEventBus()
+  let lastError: unknown
+  for (let attempt = 0; attempt <= MAX_STREAM_RETRIES; attempt++) {
+    try {
+      const stream = provider.chat(messages, tools, signal)
+      for await (const chunk of stream) {
+        yield chunk
+      }
+      return // success
+    } catch (e) {
+      lastError = e
+      if (signal?.aborted) throw e // don't retry on abort
+      if (attempt < MAX_STREAM_RETRIES && isRetryableError(e)) {
+        const delay = STREAM_RETRY_DELAYS[attempt]
+        console.error(
+          `[retry] Stream error (attempt ${attempt + 1}/${MAX_STREAM_RETRIES}), retrying in ${delay}ms:`,
+          fmtErr(e),
+        )
+        bus.emit(EventChannels.TOOL_RESULT, {
+          name: 'system',
+          output: `⚠️ Stream error, retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${MAX_STREAM_RETRIES})`,
+        })
+        await new Promise(resolve => setTimeout(resolve, delay))
+        continue
+      }
+      throw e // not retryable or out of retries
+    }
+  }
+  throw lastError
+}
+
+/**
+ * Attempt to recover a failed tool call by enriching the error message.
+ * Returns a modified ToolResult with recovery hints, or null if no recovery was possible.
+ */
+function tryRecoverToolError(tc: ToolCall, result: ToolResult, cwd: string): ToolResult | null {
+  if (!result.error) return null
+
+  // ── Edit: old_string not found → read file and embed current content ──
+  if (tc.name === 'edit' && isOldStringNotFoundError(result.error)) {
+    const filePath = ((tc.input as Record<string, unknown>)?.file_path as string) || ''
+    if (filePath) {
+      const resolved = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath)
+      try {
+        const content = fs.readFileSync(resolved, 'utf-8')
+        const lines = content.split('\n')
+        const preview = lines.slice(0, 30).join('\n')
+        const hint = `
+[RECOVERY HINT: The target file has changed since the edit was generated.
+Read the file with \`read({ paths: ["${filePath}"] })\` to get the current content, then retry the edit.
+Current content (first ${Math.min(lines.length, 30)} of ${lines.length} lines):
+"""${preview}"""]`
+        return { ...result, error: result.error + hint }
+      } catch {
+        // Can't read file, return original error
+        return null
+      }
+    }
+  }
+
+  // ── Bash: command not found → add install hint ──
+  if (tc.name === 'bash' && isCommandNotFoundError(result.error)) {
+    const cmd =
+      typeof tc.input === 'string' ? tc.input : (tc.input as Record<string, unknown>)?.command
+    const hint = `
+[RECOVERY HINT: The command "${cmd || 'unknown'}" wasn't found.
+You may need to install it first, or use an alternative approach.
+Suggestions: check spelling, look for alternative commands, or install the required package.]`
+    return { ...result, error: result.error + hint }
+  }
+
+  return null
+}
 
 function formatToolResultText(tc: ToolCall, result: ToolResult): string {
   const status = result.success ? 'OK' : 'ERROR'
@@ -79,6 +221,11 @@ function emitTokenStats(
   session: Session,
   out: SessionOutput | undefined,
 ): void {
+  // Calculate cost for this turn and total
+  const pricing = getPricing(session.config.model, session.config.provider)
+  const turnCost = calculateCost(session.turnInputTokens, session.turnOutputTokens, pricing)
+  const totalCost = calculateCost(session.totalInputTokens, session.totalOutputTokens, pricing)
+
   bus.emit(EventChannels.TOKEN_STATS, {
     turnIn: session.turnInputTokens,
     turnOut: session.turnOutputTokens,
@@ -91,8 +238,21 @@ function emitTokenStats(
     totalCacheHit: session.totalCacheHitTokens,
     totalCacheMiss: session.totalCacheMissTokens,
     currentTokens: estimateMessagesTokens(session.messages),
+    turnCost,
+    totalCost,
   })
   if (out?.suppressToolOutput) return
+
+  // Append to CSV history
+  appendTokenHistory(
+    session.config.cwd,
+    session.turnInputTokens,
+    session.turnOutputTokens,
+    session.turnApiCalls,
+    session.config.model,
+    session.config.provider,
+  )
+
   const total = session.totalInputTokens + session.totalOutputTokens
   const cacheHit = session.totalCacheHitTokens ?? 0
   const cacheMiss = session.totalCacheMissTokens ?? 0
@@ -102,6 +262,7 @@ function emitTokenStats(
     const pct = Math.round((cacheHit / cacheTotal) * 100)
     msg += `  cached ${pct}%`
   }
+  msg += `  cost ${formatCost(turnCost)} (total ${formatCost(totalCost)})`
   writeOut(`\n[TOKEN_STATS]\n${msg}\n[/TOKEN_STATS]\n`, out)
 }
 
@@ -138,10 +299,12 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
 
   session.resetStopped()
   session.abortController = new AbortController()
+  resetAutoMemory()
 
   let toolCalls: ToolCall[] = []
 
   while (iterations < maxIterations) {
+    startTurn()
     if (session.isStopped()) {
       bus.emit(EventChannels.TURN_END, { iterations, toolCallCount: toolCalls.length })
       return
@@ -158,7 +321,8 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
     bus.emit(EventChannels.LLM_STREAM_START, { iteration: iterations })
 
     session.messages = sanitizeMessages(session.messages)
-    const stream = session.provider.chat(
+    const stream = chatWithRetry(
+      session.provider,
       session.messages,
       session.registry.getCoreDefinitions(),
       session.abortController.signal,
@@ -379,20 +543,31 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
       }
       bus.emit(EventChannels.TOOL_CALL, { name: tc.name, input: tc.input, id: tc.id })
       emitToolInvocation(tc, out)
-      const result: ToolResult = await session.registry.dispatch(tc)
+      let result: ToolResult = await session.registry.dispatch(tc)
       if (result.success) {
         bus.emit(EventChannels.TOOL_RESULT, { name: tc.name, id: tc.id, output: result.output })
       } else {
         bus.emit(EventChannels.TOOL_ERROR, { name: tc.name, id: tc.id, error: result.error })
         logToolError(tc, result, session.sessionId)
+        // Smart recovery for common tool failures (enrich error with hints)
+        const enriched = tryRecoverToolError(tc, result, session.config.cwd)
+        if (enriched) {
+          result = enriched
+          bus.emit(EventChannels.TOOL_RESULT, {
+            name: 'system',
+            output: `📎 Recovery hint added for ${tc.name}`,
+          })
+        }
       }
+      // Auto-detect patterns and save memory (e.g. error fixes, dev commands, conventions)
+      processToolCall(tc, result, session.config.cwd)
       if (!out?.suppressToolOutput) {
         writeOut(formatToolResultText(tc, result), out)
       }
 
       const resultMsg: LLMMessage = {
         role: 'tool',
-        content: result.success ? result.output : `ERROR: ${result.error}`,
+        content: compressToolResult(tc, result),
         tool_call_id: tc.id,
         name: tc.name,
       }

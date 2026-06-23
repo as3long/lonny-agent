@@ -36,6 +36,9 @@ export const StatusBar = defineComponent({
         const tokenStr = `\u25B4${formatTokens(s.totalInputTokens)} \u25BE${formatTokens(s.totalOutputTokens)}  ${formatTokens(totalTokens)}`
         restSegments.push(tokenStr)
         restSegments.push(`${s.totalApiCalls}c`)
+        if (s.cost) {
+          restSegments.push(s.cost)
+        }
       }
 
       if (s.webBalance) {

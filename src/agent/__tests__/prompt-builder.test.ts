@@ -27,6 +27,7 @@ const mockContext: BuildContext = {
   projectSection: '\n## Project Context\n\nTest project\n',
   memorySection: '\n## Long-term Memory\n\nTest memory\n',
   skillsSection: '\n## Skills\n\nTest skill\n',
+  planSection: '',
 }
 
 function mockDefinition(name: string): ToolDefinition {
@@ -86,6 +87,9 @@ describe('CodePromptStrategy', () => {
     expect(result).toContain('RULES (code-specific)')
     expect(result).toContain('COST OPTIMIZATION')
     expect(result).toContain('CONTEXT OPTIMIZATION')
+    expect(result).toContain('TEST-DRIVEN DEVELOPMENT')
+    expect(result).toContain('Write the test file first')
+    expect(result).toContain('Run the full test suite to confirm no regressions')
     expect(result).not.toContain('Available tools')
   })
 

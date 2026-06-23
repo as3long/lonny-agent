@@ -3,6 +3,7 @@ import { AnthropicProvider } from '../agent/providers/anthropic.js'
 import { GoogleProvider } from '../agent/providers/google.js'
 import { OllamaProvider } from '../agent/providers/ollama.js'
 import { OpenAIProvider } from '../agent/providers/openai.js'
+import { compressToolResult } from '../agent/session-utils.js'
 import { buildSubAgentPrompt, buildSubAgentToolDefinitions } from '../agent/sub-agent.js'
 import type { Config } from '../config/index.js'
 import type { ToolRegistry } from '../tools/registry.js'
@@ -222,7 +223,7 @@ export function createDelegateTool(config: Config, registry: ToolRegistry): Tool
 
           const resultMsg: LLMMessage = {
             role: 'tool',
-            content: result.success ? result.output : `ERROR: ${result.error}`,
+            content: compressToolResult(tc, result),
             tool_call_id: tc.id,
             name: tc.name,
           }

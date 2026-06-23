@@ -34,6 +34,12 @@ export abstract class PromptBuilderBase implements PromptStrategy {
     result += context.memorySection
     result += context.skillsSection
 
+    // Plan section (from .lonny/*.md with ## Todo List) — injected at the end
+    // for maximum prompt cache stability (changes infrequently)
+    if (context.planSection) {
+      result += `\n${context.planSection}`
+    }
+
     return result
   }
 }

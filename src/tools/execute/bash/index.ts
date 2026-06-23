@@ -61,7 +61,7 @@ For git operations (status, diff, log), use the 'git' tool instead.`,
       return {
         success: false,
         output: '',
-        error: `Destructive command blocked: ${destructiveHint}.\nUse the 'edit' tool for file modifications instead.\nIf you need to clean up temporary test artifacts, use a targeted approach:\n  - Remove a single file: del <filepath>\n  - Remove contents of a known-safe directory: Remove-Item \"<dir>\\*\" (without -Recurse on directories with subfolders)`,
+        error: `Destructive command blocked: ${destructiveHint}.\nUse the 'edit' tool for file modifications instead.\nIf you need to clean up temporary test artifacts, use a targeted approach:\n  - Remove a single file: del <filepath>\n  - Remove contents of a known-safe directory: Remove-Item "<dir>\\*" (without -Recurse on directories with subfolders)`,
       }
     }
 

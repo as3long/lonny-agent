@@ -39,6 +39,8 @@ export const HelpOverlay = defineComponent({
               cmd('/mode', ' code|plan|ask|loop|review', 'Switch mode'),
               cmd('/model', ' <name>', 'Switch model'),
               cmd('/compact', '', 'Compress context to reduce tokens'),
+              cmd('/tokens', ' [reset]', 'Show token usage & cost'),
+              cmd('/plan', ' [name|load]', 'List / show / reload plans'),
               cmd('/plans', '', 'Show plans'),
               cmd('/help', '', 'This help'),
               cmd('/exit', '', 'Exit'),

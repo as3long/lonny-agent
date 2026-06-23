@@ -62,7 +62,12 @@ RULES (code-specific):
   11. TODO LIST MAINTENANCE: After completing a task item, update the corresponding plan file in \`.lonny/\` by checking off the TODO item (change \`- [ ]\` to \`- [x]\`). Use \`read\` to find the plan file, then \`edit\` to update the checkbox.
   12. CONTEXT OPTIMIZATION: For well-defined, self-contained subtasks that don't need the full conversation history, use \`delegate\` tool via \`tool({ name: "delegate", params: { task: "...", context: "..." }})\`. The sub-agent starts fresh with minimal context and reports back with a summary — this saves tokens and keeps the main context focused. Good candidates: implementing a single function, writing focused tests, fixing a specific bug, refactoring a small module.
   13. ⚠️  NEVER use \`bash\` to edit or create files. If you are thinking of running \`echo\`, \`cat\`, \`New-Item\`, \`Set-Content\`, \`Add-Content\`, \`Out-File\`, \`fs.writeFile\`, \`Write-Output\`, redirect operators (\`>\`, \`>>\`), or any other file-writing command in bash — STOP and use the \`edit\` tool instead. The \`edit\` tool is the ONLY correct way to modify file content.
-  14. On Windows, use \`git commit --no-verify\` to bypass pre-commit hooks that may fail due to CRLF warnings in PowerShell. The \`git\` tool auto-adds \`--no-verify\` on Windows, but if using \`bash\` to run git, add \`--no-verify\` explicitly.`
+  14. On Windows, use \`git commit --no-verify\` to bypass pre-commit hooks that may fail due to CRLF warnings in PowerShell. The \`git\` tool auto-adds \`--no-verify\` on Windows, but if using \`bash\` to run git, add \`--no-verify\` explicitly.
+  15. TEST-DRIVEN DEVELOPMENT: When the project contains test files or a test framework (vitest/jest/mocha — see the Project Context section of this prompt), you MUST follow this order:
+      a. Write the test file first (verify expected behavior: happy path + error cases + edge cases)
+      b. Run the test(s) to confirm they fail (proving the test is valid)
+      c. Implement the feature code until the test(s) pass
+      d. Run the full test suite to confirm no regressions`
   }
 
   getMethodology(): string {
