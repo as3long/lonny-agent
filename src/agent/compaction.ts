@@ -1,3 +1,4 @@
+import { eastAsianWidthType } from 'get-east-asian-width'
 import type { LLMMessage } from './llm.js'
 
 /**
@@ -14,13 +15,34 @@ const DEFAULT_MAX_TOKENS = 256_000
 export const DEFAULT_CONTEXT_WINDOW = DEFAULT_MAX_TOKENS
 const COMPACTION_THRESHOLD = 0.75 // compact when usage exceeds 75% of budget
 
-/** Rough token estimation (4 chars ~= 1 token).
- * NOTE: This is a very rough approximation. CJK characters (Chinese, Japanese,
- * Korean) can be 2-3 tokens each, and JSON/tool_call content is also denser.
- * For a 128K token budget, this may cause over- or under-compaction.
- * Consider using tiktoken or a similar tokenizer for better accuracy. */
+// Token density multipliers
+// Wide (CJK) characters: 1 char ≈ 2 tokens (conservative; actual can be 2-3)
+// Narrow (ASCII) characters: 4 chars ≈ 1 token
+const WIDE_TOKENS_PER_CHAR = 2
+const NARROW_CHARS_PER_TOKEN = 4
+
+/**
+ * Estimate the number of tokens in a text string.
+ *
+ * Uses `get-east-asian-width` to distinguish narrow (ASCII) from
+ * wide (CJK / fullwidth) characters, which have different token densities.
+ * This is still a heuristic — for exact counts, use the API's reported usage.
+ */
 export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4)
+  let wide = 0
+  let narrow = 0
+  for (let i = 0; i < text.length; i++) {
+    const cp = text.codePointAt(i)
+    if (cp === undefined) continue
+    // BMP characters are single code unit; non-BMP take two
+    if (cp > 0xffff) i++
+    if (eastAsianWidthType(cp) === 'wide') {
+      wide++
+    } else {
+      narrow++
+    }
+  }
+  return wide * WIDE_TOKENS_PER_CHAR + Math.ceil(narrow / NARROW_CHARS_PER_TOKEN)
 }
 
 /** Estimate tokens in a message */
