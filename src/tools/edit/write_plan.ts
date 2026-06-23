@@ -42,6 +42,12 @@ export function createWritePlanTool(
             'File name (e.g. "plan.md" or "feature-x/plan.md"). Must NOT be absolute or contain "..". Will be placed under .lonny/.',
           required: true,
         },
+        file: {
+          type: 'string',
+          description:
+            'Alias for filename (e.g. "plan.md"). One of filename or file is required.',
+          required: false,
+        },
         content: {
           type: 'string',
           description:
@@ -51,14 +57,22 @@ export function createWritePlanTool(
       },
     },
     async execute(input): Promise<ToolResult> {
-      if (typeof input.filename !== 'string' || !input.filename) {
-        return { success: false, output: '', error: 'filename is required (string)' }
+      // Accept both "filename" and "file" parameters (backward compatibility)
+      let filename = input.filename
+      if (typeof filename !== 'string' || !filename) {
+        filename = input.file
+      }
+      if (typeof filename !== 'string' || !filename) {
+        return {
+          success: false,
+          output: '',
+          error: 'filename is required (string). Use write_plan({ filename: "plan.md", content: "..." }) or write_plan({ file: "plan.md", content: "..." })',
+        }
       }
       if (typeof input.content !== 'string') {
         return { success: false, output: '', error: 'content is required (string)' }
       }
 
-      const filename = input.filename
       const content = input.content
 
       // Check content size

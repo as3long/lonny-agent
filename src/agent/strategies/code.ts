@@ -53,13 +53,16 @@ RULES (code-specific):
    Use separate \`\`\`edit blocks for multiple files.
 3. After making edits to a file, if you need to make ANOTHER edit to the SAME file, you MUST re-read it first to get the updated content.
 4. If \`edit\` reports \`old_string not found\`, do NOT retry with the same old_string — re-read the file immediately to see its actual current content, then retry with correctly-copied text.
- 5. When copying old_string from \`read\` output, include 2-3 lines of context BEFORE and AFTER the target change to make the string unique in the file.
- 6. CRITICAL: old_string must be CONTIGUOUS — do NOT skip any lines between the old_string start and end. If you need to modify non-adjacent sections, use separate \`\`\`edit blocks.
- 7. The \`|\` (pipe) after \`old:\` / \`new:\` supports chomping: \`|\` keeps trailing newline, \`|-\` strips it. Use \`|\` (not \`|-\`) when copying old_string — wrong chomping causes "old_string not found".
- 8. On Windows, files may use CRLF (\\r\\n) line endings, but the \`edit\` tool normalizes them to LF (\\n). Always use \`\\n\` (not \`\\r\\n\`) in old_string/new_string.
-  9. COST OPTIMIZATION (CRITICAL): Each API call costs money. You have a hard limit of ~5 API calls per task.
- 10. TODO LIST MAINTENANCE: After completing a task item, update the corresponding plan file in \`.lonny/\` by checking off the TODO item (change \`- [ ]\` to \`- [x]\`). Use \`read\` to find the plan file, then \`edit\` to update the checkbox.
- 11. CONTEXT OPTIMIZATION: For well-defined, self-contained subtasks that don't need the full conversation history, use \`delegate\` tool via \`tool({ name: "delegate", params: { task: "...", context: "..." }})\`. The sub-agent starts fresh with minimal context and reports back with a summary — this saves tokens and keeps the main context focused. Good candidates: implementing a single function, writing focused tests, fixing a specific bug, refactoring a small module.`
+  5. When copying old_string from \`read\` output, include 2-3 lines of context BEFORE and AFTER the target change to make the string unique in the file.
+  6. CRITICAL: old_string must be CONTIGUOUS — do NOT skip any lines between the old_string start and end. If you need to modify non-adjacent sections, use separate \`\`\`edit blocks.
+  7. On Windows, do NOT use \`$var.member\` in PowerShell commands — use \`\${var}.member\` instead (e.g. \`\${lines}.Length\` not \`$lines.Length\`).
+  8. The \`|\` (pipe) after \`old:\` / \`new:\` supports chomping: \`|\` keeps trailing newline, \`|-\` strips it. Use \`|\` (not \`|-\`) when copying old_string — wrong chomping causes "old_string not found".
+  9. On Windows, files may use CRLF (\\r\\n) line endings, but the \`edit\` tool normalizes them to LF (\\n). Always use \`\\n\` (not \`\\r\\n\`) in old_string/new_string.
+  10. COST OPTIMIZATION (CRITICAL): Each API call costs money. You have a hard limit of ~5 API calls per task.
+  11. TODO LIST MAINTENANCE: After completing a task item, update the corresponding plan file in \`.lonny/\` by checking off the TODO item (change \`- [ ]\` to \`- [x]\`). Use \`read\` to find the plan file, then \`edit\` to update the checkbox.
+  12. CONTEXT OPTIMIZATION: For well-defined, self-contained subtasks that don't need the full conversation history, use \`delegate\` tool via \`tool({ name: "delegate", params: { task: "...", context: "..." }})\`. The sub-agent starts fresh with minimal context and reports back with a summary — this saves tokens and keeps the main context focused. Good candidates: implementing a single function, writing focused tests, fixing a specific bug, refactoring a small module.
+  13. ⚠️  NEVER use \`bash\` to edit or create files. If you are thinking of running \`echo\`, \`cat\`, \`New-Item\`, \`Set-Content\`, \`Add-Content\`, \`Out-File\`, \`fs.writeFile\`, \`Write-Output\`, redirect operators (\`>\`, \`>>\`), or any other file-writing command in bash — STOP and use the \`edit\` tool instead. The \`edit\` tool is the ONLY correct way to modify file content.
+  14. On Windows, use \`git commit --no-verify\` to bypass pre-commit hooks that may fail due to CRLF warnings in PowerShell. The \`git\` tool auto-adds \`--no-verify\` on Windows, but if using \`bash\` to run git, add \`--no-verify\` explicitly.`
   }
 
   getMethodology(): string {

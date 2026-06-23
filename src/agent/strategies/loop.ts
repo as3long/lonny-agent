@@ -59,13 +59,16 @@ RULES (loop-specific):
 5. When copying old_string from \`read\` output, include 2-3 lines of context BEFORE and AFTER the target change to make the string unique in the file.
  6. On Windows, files may use CRLF (\\r\\n) line endings, but the \`edit\` tool normalizes them to LF (\\n). Always use \`\\n\` (not \`\\r\\n\`) in old_string/new_string.
  7. CRITICAL: old_string must be CONTIGUOUS — do NOT skip any lines between the old_string start and end. If you need to modify non-adjacent sections, use separate \`\`\`edit blocks.
- 8. The \`|\` (pipe) after \`old:\` / \`new:\` supports chomping: \`|\` keeps trailing newline, \`|-\` strips it. Use \`|\` (not \`|-\`) when copying old_string — wrong chomping causes "old_string not found".
- 9. COST OPTIMIZATION (CRITICAL): Each API call costs money. You MUST maximize work per call. Use \`read(paths: [...])\` to read multiple files at once. Use \`edit({ content: "..." })\` with multiple \`\`\`edit blocks to edit multiple files at once.
- 10. TODO LIST MAINTENANCE: After completing a task item, update the corresponding plan file in \`.lonny/\` by checking off the TODO item (change \`- [ ]\` to \`- [x]\`). Use \`read\` to find the plan file, then \`edit\` to update the checkbox.
- 11. CONTEXT OPTIMIZATION: For well-defined, self-contained subtasks that don't need the full conversation history, use \`delegate\` tool via \`tool({ name: "delegate", params: { task: "...", context: "..." }})\`. The sub-agent starts fresh with minimal context and reports back with a summary — this saves tokens and keeps the main context focused. Use \`delegate\` for tasks like implementing a single function, writing focused tests, fixing a specific bug, or refactoring a small module.
- 12. LOOP BEHAVIOR: After this turn ends, you will AUTOMATICALLY receive a continuation prompt to continue working on the same task. You do NOT need to stop and wait for the user — keep going until the task is complete.
- 13. If you believe the task is COMPLETE, end your response with a clear summary of what was accomplished. The system will detect this and stop the loop.
- 14. You can use /stop at any time to halt execution.`
+  8. The \`|\` (pipe) after \`old:\` / \`new:\` supports chomping: \`|\` keeps trailing newline, \`|-\` strips it. Use \`|\` (not \`|-\`) when copying old_string — wrong chomping causes "old_string not found".
+  9. On Windows, do NOT use \`$var.member\` in PowerShell commands — use \`\${var}.member\` instead (e.g. \`\${lines}.Length\` not \`$lines.Length\`).
+  10. COST OPTIMIZATION (CRITICAL): Each API call costs money. You MUST maximize work per call. Use \`read(paths: [...])\` to read multiple files at once. Use \`edit({ content: "..." })\` with multiple \`\`\`edit blocks to edit multiple files at once.
+  11. TODO LIST MAINTENANCE: After completing a task item, update the corresponding plan file in \`.lonny/\` by checking off the TODO item (change \`- [ ]\` to \`- [x]\`). Use \`read\` to find the plan file, then \`edit\` to update the checkbox.
+  12. CONTEXT OPTIMIZATION: For well-defined, self-contained subtasks that don't need the full conversation history, use \`delegate\` tool via \`tool({ name: "delegate", params: { task: "...", context: "..." }})\`. The sub-agent starts fresh with minimal context and reports back with a summary — this saves tokens and keeps the main context focused. Use \`delegate\` for tasks like implementing a single function, writing focused tests, fixing a specific bug, or refactoring a small module.
+  13. LOOP BEHAVIOR: After this turn ends, you will AUTOMATICALLY receive a continuation prompt to continue working on the same task. You do NOT need to stop and wait for the user — keep going until the task is complete.
+  14. If you believe the task is COMPLETE, end your response with a clear summary of what was accomplished. The system will detect this and stop the loop.
+   15. You can use /stop at any time to halt execution.
+    16. ⚠️  NEVER use \`bash\` to edit or create files. If you are thinking of running \`echo\`, \`cat\`, \`New-Item\`, \`Set-Content\`, \`Add-Content\`, \`Out-File\`, \`fs.writeFile\`, \`Write-Output\`, redirect operators (\`>\`, \`>>\`), or any other file-writing command in bash — STOP and use the \`edit\` tool instead. The \`edit\` tool is the ONLY correct way to modify file content.
+    17. On Windows, use \`git commit --no-verify\` to bypass pre-commit hooks that may fail due to CRLF warnings in PowerShell. The \`git\` tool auto-adds \`--no-verify\` on Windows, but if using \`bash\` to run git, add \`--no-verify\` explicitly.`
   }
 
   getMethodology(): string {

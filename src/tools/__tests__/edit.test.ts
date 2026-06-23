@@ -11,7 +11,7 @@ import {
   renderDiffTerminal,
 } from '../edit/diff-render.js'
 import { createEditTool } from '../edit/edit.js'
-import { findAllLinesTolerant, normalizeLine } from '../edit/matcher.js'
+import { findAllLinesSmart, findAllLinesTolerant, normalizeLine, normalizeLineSmart } from '../edit/matcher.js'
 import { parseMarkdownEdit } from '../edit/parser.js'
 import { makeTempDir } from './helpers.js'
 
@@ -152,6 +152,113 @@ describe('findAllLinesTolerant', () => {
 function contentSlice(s: string, m: { index: number; length: number }): string {
   return s.slice(m.index, m.index + m.length)
 }
+
+describe('normalizeLineSmart', () => {
+  it('normalizes tabs to spaces', () => {
+    expect(normalizeLineSmart('a\tb')).toBe('a b')
+  })
+
+  it('normalizes multiple tabs to single space', () => {
+    expect(normalizeLineSmart('a\t\tb')).toBe('a b')
+  })
+
+  it('normalizes mixed tabs and spaces', () => {
+    expect(normalizeLineSmart('a \t b')).toBe('a b')
+  })
+
+  it('trims leading whitespace like normalizeLine', () => {
+    expect(normalizeLineSmart('  hello')).toBe('hello')
+  })
+
+  it('trims trailing whitespace', () => {
+    expect(normalizeLineSmart('hello  ')).toBe('hello')
+  })
+
+  it('collapses internal space runs', () => {
+    expect(normalizeLineSmart('a    b')).toBe('a b')
+  })
+
+  it('handles empty string', () => {
+    expect(normalizeLineSmart('')).toBe('')
+  })
+
+  it('normalizes tab-only line to empty string', () => {
+    expect(normalizeLineSmart('\t\t')).toBe('')
+  })
+
+  it('preserves single spaces', () => {
+    expect(normalizeLineSmart('a b c')).toBe('a b c')
+  })
+})
+
+describe('findAllLinesSmart', () => {
+  it('finds exact match (same as tolerant)', () => {
+    const result = findAllLinesSmart('hello\nworld\nfoo\n', 'hello\nworld')
+    expect(result).toHaveLength(1)
+    expect(result[0]!.index).toBe(0)
+    expect(result[0]!.length).toBe('hello\nworld'.length)
+  })
+
+  it('finds match with tab vs space differences', () => {
+    const result = findAllLinesSmart('hello\tworld\nfoo\n', 'hello world\nfoo')
+    expect(result).toHaveLength(1)
+    // Should match despite tab vs space
+    expect(result[0]!.index).toBe(0)
+  })
+
+  it('finds match with mixed tabs and spaces', () => {
+    const result = findAllLinesSmart('a\t\tb\nc\td\n', 'a b\nc d')
+    expect(result).toHaveLength(1)
+    expect(result[0]!.index).toBe(0)
+  })
+
+  it('finds match with multiple tabs collapsed', () => {
+    const result = findAllLinesSmart('a\t\t\tb\n', 'a b')
+    expect(result).toHaveLength(1)
+  })
+
+  it('finds single-line substring match when line-by-line fails', () => {
+    // old_string 'mode' is a substring of content line '  mode: strict'
+    const result = findAllLinesSmart('alpha\n  mode: strict\nomega\n', 'mode')
+    expect(result).toHaveLength(1)
+    // Should match the first content line containing 'mode'
+    expect(result[0]!.index).toBe(6) // 'alpha\n' = 6 chars
+  })
+
+  it('does not do substring match for multi-line old_string', () => {
+    // Multi-line old_string should not use substring strategy
+    const result = findAllLinesSmart('alpha\nbeta\ngamma\n', 'alpha\nnonexistent')
+    expect(result).toHaveLength(0)
+  })
+
+  it('finds match ignoring whitespace differences', () => {
+    const result = findAllLinesSmart('  hello\n  world\n', 'hello\nworld')
+    expect(result).toHaveLength(1)
+  })
+
+  it('returns empty for empty oldString', () => {
+    expect(findAllLinesSmart('abc', '')).toEqual([])
+  })
+
+  it('returns empty when oldString longer than content', () => {
+    expect(findAllLinesSmart('a', 'a\nb\nc')).toEqual([])
+  })
+
+  it('returns empty when not found', () => {
+    expect(findAllLinesSmart('abc\ndef\n', 'xyz')).toEqual([])
+  })
+
+  it('finds multiple matches', () => {
+    const result = findAllLinesSmart('a\nb\na\nb\n', 'a\nb')
+    expect(result).toHaveLength(2)
+  })
+
+  it('computes correct index for non-first match', () => {
+    const result = findAllLinesSmart('x\na\nb\n', 'a\nb')
+    expect(result).toHaveLength(1)
+    expect(result[0]!.index).toBe(2)
+  })
+})
 
 describe('computeDiff', () => {
   it('returns empty array for empty strings', () => {
@@ -1101,6 +1208,59 @@ describe('edit tool �?edge cases', () => {
       })
       expect(r.success).toBe(false)
       expect(fs.existsSync(path.join(tmpDir, 'rollback-new.txt'))).toBe(false)
+    })
+  })
+
+  describe('smart matching integration', () => {
+    it('matches with tab vs space differences', async () => {
+      const file = path.join(tmpDir, 'smart-tab.txt')
+      fs.writeFileSync(file, 'hello\tworld\nfoo\tbar\n')
+      applier.markRead(file)
+      // old_string uses spaces, file uses tabs — exact + tolerant fail, smart succeeds
+      const r = await tool().execute({
+        edits: [{
+          file_path: 'smart-tab.txt',
+          old_string: 'hello world',
+          new_string: 'HELLO WORLD',
+        }],
+      })
+      expect(r.success).toBe(true)
+      const content = fs.readFileSync(file, 'utf8')
+      expect(content).toContain('HELLO WORLD')
+      expect(r.output).toContain('[smart-matched]')
+    })
+
+    it('matches with mixed tabs in multi-line content', async () => {
+      const file = path.join(tmpDir, 'smart-multi-tab.txt')
+      fs.writeFileSync(file, 'line one\nhello\tworld\tfoo\nline three\n')
+      applier.markRead(file)
+      const r = await tool().execute({
+        edits: [{
+          file_path: 'smart-multi-tab.txt',
+          old_string: 'hello world foo',
+          new_string: 'HELLO WORLD FOO',
+        }],
+      })
+      expect(r.success).toBe(true)
+      const content = fs.readFileSync(file, 'utf8')
+      expect(content).toContain('HELLO WORLD FOO')
+      expect(r.output).toContain('[smart-matched]')
+    })
+
+    it('falls back to exact match when possible (no smart label)', async () => {
+      const file = path.join(tmpDir, 'smart-exact.txt')
+      fs.writeFileSync(file, 'hello world\n')
+      applier.markRead(file)
+      const r = await tool().execute({
+        edits: [{
+          file_path: 'smart-exact.txt',
+          old_string: 'hello world',
+          new_string: 'HELLO WORLD',
+        }],
+      })
+      expect(r.success).toBe(true)
+      expect(r.output).not.toContain('[smart-matched]')
+      expect(r.output).not.toContain('tolerant')
     })
   })
 

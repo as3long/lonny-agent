@@ -49,7 +49,16 @@ export const fetchTool: Tool = {
       if (err instanceof Error && err.name === 'AbortError') {
         return { success: false, output: '', error: `Request timed out after ${timeout}ms` }
       }
-      return { success: false, output: '', error: `Fetch failed: ${fmtErr(err)}` }
+      const msg = fmtErr(err)
+      // Detect common parameter formatting errors
+      if (msg.includes('Failed to parse URL') || msg.includes('URL')) {
+        return {
+          success: false,
+          output: '',
+          error: `Fetch failed: ${msg}\n\nMake sure params is passed as an OBJECT, not a string:\n  ✅ tool({ name: "fetch", params: { url: "https://..." } })\n  ❌ tool({ name: "fetch", params: "{\\"url\\": \\"https://...\\"}" })`,
+        }
+      }
+      return { success: false, output: '', error: `Fetch failed: ${msg}` }
     }
   },
 }

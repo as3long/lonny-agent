@@ -300,7 +300,7 @@ describe('LoopPromptStrategy', () => {
     expect(result).toContain('operating in LOOP mode')
     expect(result).toContain('RULES (loop-specific)')
     expect(result).toContain('LOOP BEHAVIOR')
-    expect(result).toContain('14. You can use /stop')
+    expect(result).toContain('15. You can use /stop')
   })
 
   it('getToolList() returns same full tool list as code mode', () => {

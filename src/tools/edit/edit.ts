@@ -4,7 +4,7 @@ import type { FileReadTracker } from '../../diff/apply.js'
 import { fmtErr } from '../errors.js'
 import type { Tool, ToolResult } from '../types.js'
 import { generateDiff, generateDiffWithContext } from './diff-render.js'
-import { findAllLinesTolerant, normalizeLine } from './matcher.js'
+import { findAllLinesSmart, findAllLinesTolerant, normalizeLine } from './matcher.js'
 import { buildDiag, extractEditsFromJSON, parseMarkdownEdit, summarizeRawInput } from './parser.js'
 import type { Edit, SingleEdit } from './types.js'
 
@@ -294,8 +294,11 @@ ${suggestion}`)
           // ── Tier 1: Exact match ──────────────────────────────────────
           const exactIdx = content.indexOf(e.old_string)
 
-          let matchInfo: { index: number; length: number; strategy: 'exact' | 'tolerant' } | null =
-            null
+          let matchInfo: {
+            index: number
+            length: number
+            strategy: 'exact' | 'tolerant' | 'smart'
+          } | null = null
 
           if (exactIdx !== -1) {
             // Exact match found — check for duplicates
@@ -316,61 +319,13 @@ ${suggestion}`)
           } else {
             // ── Tier 2: Whitespace-normalized fallback ─────────────────
             const tolerant = findAllLinesTolerant(content, e.old_string)
-            if (tolerant.length === 0) {
-              // Not found by any strategy — check if old_string lines are scattered (non-contiguous)
-              const contentLines = content.split('\n')
-              const oldLines = e.old_string.split('\n').filter(l => l.trim())
-              const foundIndices: number[] = []
-              for (const ol of oldLines) {
-                const normOl = normalizeLine(ol.trim())
-                if (!normOl) continue
-                const idx = contentLines.findIndex(
-                  (cl, ci) => !foundIndices.includes(ci) && normalizeLine(cl).includes(normOl),
-                )
-                if (idx !== -1) foundIndices.push(idx)
+            if (tolerant.length === 1) {
+              matchInfo = {
+                index: tolerant[0]!.index,
+                length: tolerant[0]!.length,
+                strategy: 'tolerant',
               }
-              let hint = ''
-              const isScattered =
-                foundIndices.length >= 2 &&
-                foundIndices[foundIndices.length - 1]! - foundIndices[0]! + 1 > foundIndices.length
-
-              if (isScattered) {
-                hint = `\n  ⚠️  ${foundIndices.length} lines of old_string were found in the file, but they are NOT contiguous — you skipped lines between them.
-  old_string must be a CONTIGUOUS chunk of the file. Use separate \`\`\`edit blocks for each section (see "Multiple files" example above).
-  Matched at lines: ${foundIndices.map(i => i + 1).join(', ')}`
-              } else {
-                const firstLine = (e.old_string.split('\n')[0] || '').trim()
-                if (firstLine) {
-                  const normFirst = normalizeLine(firstLine)
-                  const similarIdx = contentLines.findIndex(
-                    l =>
-                      l.length > 0 && normFirst.length > 0 && normalizeLine(l).includes(normFirst),
-                  )
-                  if (similarIdx !== -1) {
-                    const start = Math.max(0, similarIdx - 1)
-                    const end = Math.min(contentLines.length, similarIdx + 2)
-                    const snippet = contentLines.slice(start, end).join('\n')
-                    hint = `\n  Near line ${similarIdx + 1}:\n  """\n${snippet}\n  """`
-                  }
-                }
-                if (!hint && contentLines.length > 0) {
-                  const lines = contentLines.slice(0, Math.min(contentLines.length, 5))
-                  hint = `\n  File content (first ${lines.length} lines):\n  """\n${lines.join('\n')}\n  """`
-                }
-              }
-              const diag = buildDiag(e)
-              const readHint = readWarning ? `\n  ${readWarning}` : ''
-              const suggestion = `  → Read the file again with read({ paths: ["${e.file_path}"] }) to get current content, then retry with exact matching text. Include 2-3 lines of surrounding context for uniqueness.${readHint}`
-              results.push(`  FAIL ${relPath}: old_string not found${hint}
-  Edit: ${diag}
-${suggestion}`)
-              if (!anyFailed) {
-                anyFailed = true
-                firstError = `old_string not found in ${relPath}${hint}`
-              }
-              break
-            }
-            if (tolerant.length > 1) {
+            } else if (tolerant.length > 1) {
               const diag = buildDiag(e)
               const suggestion = `  → Include more surrounding context lines (2-3 lines before and after) in old_string to make the match unique.`
               results.push(
@@ -381,20 +336,93 @@ ${suggestion}`)
                 firstError = `old_string appears MULTIPLE times in ${relPath} (whitespace-normalized)`
               }
               break
-            }
-            matchInfo = {
-              index: tolerant[0]!.index,
-              length: tolerant[0]!.length,
-              strategy: 'tolerant',
+            } else {
+              // ── Tier 3: Smart matching (aggressive normalization) ────
+              const smart = findAllLinesSmart(content, e.old_string)
+              if (smart.length === 1) {
+                matchInfo = {
+                  index: smart[0]!.index,
+                  length: smart[0]!.length,
+                  strategy: 'smart',
+                }
+              } else if (smart.length > 1) {
+                const diag = buildDiag(e)
+                const suggestion = `  → Include more surrounding context lines (2-3 lines before and after) in old_string to make the match unique.`
+                results.push(
+                  `  FAIL ${relPath}: old_string appears MULTIPLE times (smart-matched)\n  Edit: ${diag}\n${suggestion}`,
+                )
+                if (!anyFailed) {
+                  anyFailed = true
+                  firstError = `old_string appears MULTIPLE times in ${relPath} (smart-matched)`
+                }
+                break
+              } else {
+                // Not found by any strategy — check if old_string lines are scattered (non-contiguous)
+                const contentLines = content.split('\n')
+                const oldLines = e.old_string.split('\n').filter(l => l.trim())
+                const foundIndices: number[] = []
+                for (const ol of oldLines) {
+                  const normOl = normalizeLine(ol.trim())
+                  if (!normOl) continue
+                  const idx = contentLines.findIndex(
+                    (cl, ci) => !foundIndices.includes(ci) && normalizeLine(cl).includes(normOl),
+                  )
+                  if (idx !== -1) foundIndices.push(idx)
+                }
+                let hint = ''
+                const isScattered =
+                  foundIndices.length >= 2 &&
+                  foundIndices[foundIndices.length - 1]! - foundIndices[0]! + 1 > foundIndices.length
+
+                if (isScattered) {
+                  hint = `\n  ⚠️  ${foundIndices.length} lines of old_string were found in the file, but they are NOT contiguous — you skipped lines between them.
+  old_string must be a CONTIGUOUS chunk of the file. Use separate \`\`\`edit blocks for each section (see "Multiple files" example above).
+  Matched at lines: ${foundIndices.map(i => i + 1).join(', ')}`
+                } else {
+                  const firstLine = (e.old_string.split('\n')[0] || '').trim()
+                  if (firstLine) {
+                    const normFirst = normalizeLine(firstLine)
+                    const similarIdx = contentLines.findIndex(
+                      l =>
+                        l.length > 0 && normFirst.length > 0 && normalizeLine(l).includes(normFirst),
+                    )
+                    if (similarIdx !== -1) {
+                      const start = Math.max(0, similarIdx - 1)
+                      const end = Math.min(contentLines.length, similarIdx + 2)
+                      const snippet = contentLines.slice(start, end).join('\n')
+                      hint = `\n  Near line ${similarIdx + 1}:\n  """\n${snippet}\n  """`
+                    }
+                  }
+                  if (!hint && contentLines.length > 0) {
+                    const lines = contentLines.slice(0, Math.min(contentLines.length, 5))
+                    hint = `\n  File content (first ${lines.length} lines):\n  """\n${lines.join('\n')}\n  """`
+                  }
+                }
+                const diag = buildDiag(e)
+                const readHint = readWarning ? `\n  ${readWarning}` : ''
+                const suggestion = `  → Read the file again with read({ paths: ["${e.file_path}"] }) to get current content, then retry with exact matching text. Include 2-3 lines of surrounding context for uniqueness.${readHint}`
+                results.push(`  FAIL ${relPath}: old_string not found${hint}
+  Edit: ${diag}
+${suggestion}`)
+                if (!anyFailed) {
+                  anyFailed = true
+                  firstError = `old_string not found in ${relPath}${hint}`
+                }
+                break
+              }
             }
           }
 
-          // For tolerant matching, use the actual file text at the match position
+          // For tolerant/smart matching, use the actual file text at the match position
           // so the diff reflects what was really in the file (with original whitespace).
+          let smartLabel = ''
           const matchedOld =
-            matchInfo.strategy === 'tolerant'
-              ? content.slice(matchInfo.index, matchInfo.index + matchInfo.length)
-              : e.old_string
+            matchInfo.strategy === 'exact'
+              ? e.old_string
+              : content.slice(matchInfo.index, matchInfo.index + matchInfo.length)
+          if (matchInfo.strategy === 'smart') {
+            smartLabel = ' [smart-matched]'
+          }
           const diff = generateDiffWithContext(
             content,
             matchedOld,
@@ -402,7 +430,7 @@ ${suggestion}`)
             matchInfo.index,
             matchInfo.length,
           )
-          results.push(`  Edited ${relPath}:\n${diff}`)
+          results.push(`  Edited ${relPath}:${smartLabel}\n${diff}`)
           content =
             content.slice(0, matchInfo.index) +
             e.new_string +

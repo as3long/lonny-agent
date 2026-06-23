@@ -44,7 +44,11 @@ export function createReadTool(applier: FileReadTracker, cwd: string): Tool {
     async execute(input): Promise<ToolResult> {
       const paths = input.paths as string[]
       if (!paths || !Array.isArray(paths) || paths.length === 0) {
-        return { success: false, output: '', error: 'paths must be a non-empty array' }
+        return {
+          success: false,
+          output: '',
+          error: 'paths must be a non-empty array. Use: read({ paths: ["file1.ts", "file2.ts"] }) or read({ paths: ["src/file.ts"], startLine: 1, maxLines: 50 })',
+        }
       }
 
       const startLine = typeof input.startLine === 'number' ? Math.max(1, input.startLine) : 1
