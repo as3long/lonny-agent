@@ -187,6 +187,23 @@ function formatToolResultText(tc: ToolCall, result: ToolResult): string {
     summary = result.output || tc.name
   } else if (tc.name === 'search') {
     summary = `search: ${String(tc.input.query || '').slice(0, 80)}`
+  } else if (tc.name === 'task_complete') {
+    // Format: "TASK_COMPLETE: <summary text>"
+    // Extract the summary text and checks for a clean display
+    const raw = result.output || ''
+    const outputText = raw.startsWith('TASK_COMPLETE:')
+      ? raw.slice('TASK_COMPLETE:'.length).trim()
+      : raw
+    // Use the first line as the summary
+    const lines = outputText.split('\n').filter(l => l.trim())
+    summary = lines[0] || 'done'
+    // Extract verification checks into details
+    const checks = lines.filter(l => /^\s*Check \d/i.test(l.trim()))
+    if (checks.length > 0) {
+      details.push(...checks)
+    } else if (lines.length > 1) {
+      details.push(...lines.slice(1).map(l => `  ${l}`))
+    }
   } else {
     summary = tc.name
   }

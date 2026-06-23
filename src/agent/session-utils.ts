@@ -81,12 +81,17 @@ export function compressToolResult(tc: ToolCall, result: ToolResult): string {
     // Already compressed by the tool, but clean up ANSI codes
     const clean = output.replace(/\x1b\[[0-9;]*m/g, '')
     if (clean.length <= 500) return clean
-    return clean.slice(0, 400) + `\n… [truncated: ${clean.length} total chars]`
+    return `${clean.slice(0, 400)}\n… [truncated: ${clean.length} total chars]`
+  }
+
+  // task_complete: always keep full summary (it's a concise accomplishment record)
+  if (tc.name === 'task_complete') {
+    return output
   }
 
   // Default: keep as-is but cap at 1000 chars
   if (output.length <= 1000) return output
-  return output.slice(0, 700) + `\n… [truncated: ${output.length} total chars]`
+  return `${output.slice(0, 700)}\n… [truncated: ${output.length} total chars]`
 }
 
 export function isTaskCompleteMessage(text: string): boolean {

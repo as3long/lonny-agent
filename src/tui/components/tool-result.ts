@@ -6,9 +6,19 @@ const DIFF_RED = '#ff5050'
 const DIFF_GREEN = '#00c864'
 const DIFF_GRAY = '#969696'
 
+const TASK_COMPLETE_GREEN = '#00ff7f'
+const TASK_COMPLETE_BORDER = '#00aa55'
+
 function diffColor(line: string): string {
   if (line.startsWith('- ')) return DIFF_RED
   if (line.startsWith('+ ')) return DIFF_GREEN
+  return DIFF_GRAY
+}
+
+function headerColor(line: string): string {
+  const t = line.trim()
+  if (/^Check\s+\d/i.test(t)) return '#d4d4d4'
+  if (/^(✔|✖|✅|⚠️)/.test(t)) return TASK_COMPLETE_GREEN
   return DIFF_GRAY
 }
 
@@ -21,13 +31,28 @@ export const ToolResult = defineComponent({
   },
   setup(props) {
     const isOk = props.status === 'OK'
-    const iconColor = isOk ? colors.success : colors.error
-    const borderColor = isOk ? colors.dim : colors.error
+    const isComplete = props.name === 'task_complete'
+    const iconColor = isComplete ? TASK_COMPLETE_GREEN : isOk ? colors.success : colors.error
+    const borderColor = isComplete ? TASK_COMPLETE_BORDER : isOk ? colors.dim : colors.error
 
     return () => {
-      const detailLines = (props.details as string[]).map((line, i) =>
-        h(Text, { key: i, color: diffColor(line) }, line),
+      const rawDetails = props.details as string[]
+
+      const detailLines = rawDetails.map((line, i) =>
+        h(
+          Text,
+          {
+            key: i,
+            color: isComplete ? headerColor(line) : diffColor(line),
+          },
+          line,
+        ),
       )
+
+      // Header line: for task_complete, show a clean "✅ <summary>" without the tool name
+      const headerText = isComplete
+        ? `✅ ${props.summary || 'done'}`
+        : `${isOk ? '✔' : '✖'} ${props.name}${props.summary ? ` ${props.summary}` : ''}`
 
       return h(
         Box,
@@ -35,15 +60,11 @@ export const ToolResult = defineComponent({
           flexDirection: 'column',
           paddingX: 1,
           marginY: 1,
-          borderStyle: 'round',
+          borderStyle: isComplete ? 'double' : 'round',
           borderColor: borderColor,
         },
         [
-          h(
-            Text,
-            { color: iconColor },
-            `${isOk ? '✔' : '✖'} ${props.name}${props.summary ? ` ${props.summary}` : ''}`,
-          ),
+          h(Text, { color: iconColor, bold: isComplete }, headerText),
           detailLines.length > 0
             ? h(Box, { flexDirection: 'column', marginTop: 1 }, detailLines)
             : null,

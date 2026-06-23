@@ -62,18 +62,42 @@ export function startSessionBridge(
 
   const unsubToolResult = bus.on(EventChannels.TOOL_RESULT, data => {
     const d = data as { name: string; id: string; output: string }
+    // For task_complete, format the output nicely for web display
+    let output = d.name === 'edit' ? d.output : stripAnsi(d.output)
+    if (d.name === 'task_complete' && output) {
+      // Strip "TASK_COMPLETE:" prefix; format checks as bullet points
+      const body = output.startsWith('TASK_COMPLETE:')
+        ? output.slice('TASK_COMPLETE:'.length).trim()
+        : output
+      const lines = body.split('\n').filter(l => l.trim())
+      const summary = lines[0] || ''
+      const checks = lines.slice(1).filter(l => /Check\s+\d/i.test(l.trim()))
+      const extras = lines.slice(1).filter(l => !/Check\s+\d/i.test(l.trim()))
+      output = summary
+      if (checks.length > 0) {
+        output += `\n${checks.map(l => `  ✔ ${l.trim()}`).join('\n')}`
+      }
+      if (extras.length > 0) {
+        output += `\n${extras.join('\n')}`
+      }
+    }
     send({
       type: 'tool_result',
       name: d.name,
       id: d.id,
       success: true,
-      output: d.name === 'edit' ? d.output : stripAnsi(d.output),
+      output,
     })
   })
 
   const unsubToolError = bus.on(EventChannels.TOOL_ERROR, data => {
     const d = data as { name: string; id: string; error: string }
-    send({ type: 'tool_result', name: d.name, id: d.id, success: false, error: stripAnsi(d.error) })
+    // For task_complete errors, clean up the message
+    let error = stripAnsi(d.error)
+    if (d.name === 'task_complete' && error) {
+      error = error.replace(/^TASK_COMPLETE:\s*/i, '')
+    }
+    send({ type: 'tool_result', name: d.name, id: d.id, success: false, error })
   })
 
   const unsubTurnEnd = bus.on(EventChannels.TURN_END, data => {
