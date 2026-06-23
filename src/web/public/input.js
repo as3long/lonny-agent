@@ -1,6 +1,6 @@
-/* â”€â”€ Input Handling, Event Listeners, Slash Hints â”€â”€ */
+/* ©¤©¤ Input Handling, Event Listeners, Slash Hints ©¤©¤ */
 
-import { addErrorMessage, addUserMessage } from './messages.js'
+import { addErrorMessage } from './messages.js'
 import { switchTab } from './sidebar.js'
 import { chatInput, sendBtn, sidebarTabs, slashHint, state, stopBtn } from './state.js'
 import { sendWsMsg } from './ws.js'
@@ -9,7 +9,6 @@ function sendMessage() {
   const text = chatInput.value.trim()
   if (!text || state.isRunning) return
 
-  addUserMessage(text)
   chatInput.value = ''
 
   if (!sendWsMsg({ type: 'message', text })) {

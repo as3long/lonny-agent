@@ -4,7 +4,7 @@ import { kIsRunning } from '../context.js'
 import { CommandSuggestions } from './command-suggestions.js'
 
 const slashCommands = [
-  { name: 'mode', description: 'Switch mode', argumentHint: 'code|plan|ask|loop' },
+  { name: 'mode', description: 'Switch mode', argumentHint: 'code|plan|ask|loop|review' },
   { name: 'model', description: 'Switch model', argumentHint: '<name>' },
   { name: 'plans', description: 'Show plans overlay' },
   { name: 'prompts', description: 'List prompt templates' },

@@ -36,8 +36,14 @@ export function handleNew(env: CommandEnv): Session {
 }
 
 export async function handleMode(env: CommandEnv, mode: string): Promise<boolean> {
-  if (mode !== 'code' && mode !== 'plan' && mode !== 'ask' && mode !== 'loop') {
-    env.ui.write(`Usage: /mode code|plan|ask|loop  (current: ${env.session.config.mode})`)
+  if (
+    mode !== 'code' &&
+    mode !== 'plan' &&
+    mode !== 'ask' &&
+    mode !== 'loop' &&
+    mode !== 'review'
+  ) {
+    env.ui.write(`Usage: /mode code|plan|ask|loop|review  (current: ${env.session.config.mode})`)
     return true
   }
   await env.session.setMode(mode)

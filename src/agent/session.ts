@@ -72,13 +72,16 @@ export class Session {
     this.config = config
     this.output = output
     this.applier = new FileReadTracker()
-    this.registry = new ToolRegistry({
-      cwd: config.cwd,
-      autoApprove: config.autoApprove,
-      applier: this.applier,
-      mode: config.mode,
-      onPlanWritten: this.onPlanWritten,
-    })
+    this.registry = new ToolRegistry(
+      {
+        cwd: config.cwd,
+        autoApprove: config.autoApprove,
+        applier: this.applier,
+        mode: config.mode,
+        onPlanWritten: this.onPlanWritten,
+      },
+      config,
+    )
 
     if (config.provider === 'openai') {
       this.provider = new OpenAIProvider(
@@ -368,7 +371,7 @@ export class Session {
     return fullPath
   }
 
-  async setMode(mode: 'code' | 'plan' | 'ask' | 'loop'): Promise<void> {
+  async setMode(mode: 'code' | 'plan' | 'ask' | 'loop' | 'review'): Promise<void> {
     this.config.mode = mode
     this.registry.setMode(mode)
     const prompt = await buildSystemPrompt(this.config, this.registry.getDefinitions())

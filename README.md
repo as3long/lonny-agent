@@ -272,18 +272,71 @@ lonny 为 AI 模型提供了以下工具：
 
 > **注意**：`search` 工具需要配置 Tavily API 密钥。在 `~/.lonny/config.json` 中添加 `"tavilyApiKey": "tvly-..."` 即可启用。
 
-## 模式对比
+## 子代理（Sub-Agent / Delegate Tool）
 
-| 特性 | code | plan | ask |
-|------|------|------|-----|
-| 读取/搜索文件 | ✅ | ✅ | ❌ |
-| 编辑文件 | ✅ | ❌ | ❌ |
-| 编写计划文档 | ❌ | ✅ | ❌ |
-| exec 沙箱编排 | ✅ | ❌ | ❌ |
-| 联网搜索/抓取 | ✅ | ✅ | ✅ |
-| 安装技能 | ✅ | ✅ | ❌ |
+子代理是一个内置的上下文优化工具，允许主 AI 将明确定义的子任务委托给一个全新的、上下文最小化的独立代理执行。
 
-## 开发
+### 为什么需要子代理？
+
+每轮对话的完整上下文都会被发送给 LLM，如果所有子任务都在主会话中完成，上下文会快速膨胀，导致：
+- Token 消耗增加（每次 API 调用都要发送全部历史）
+- 模型注意力分散（无关的上下文干扰当前任务）
+- 成本上升（按 Token 计费）
+
+子代理将这些子任务的上下文隔离在独立的 mini 会话中，只把最终摘要返回给主会话，大幅节省 token。
+
+### 什么时候该用？
+
+| 适合委托的场景 | 不适合委托的场景 |
+|---------------|-----------------|
+| 实现单个函数/模块 | 需要完整项目上下文的任务 |
+| 编写单元测试 | 跨多文件的架构评审 |
+| 修复已知的特定 bug | 需要长期记忆的任务 |
+| 重构小模块（< 200 行） | 需要主会话记录完整中间步骤的任务 |
+| 独立的工具编排任务 | 任意工具调用（主 agent：`code` 模式、`loop` 模式均可） |
+
+### 使用方法
+
+子代理通过 `delegate` 工具调用，有两种使用方式：
+
+#### 方式一：自动使用（推荐）
+
+在 `code` 或 `loop` 模式下，AI 会自动判断何时委托子任务。当发现一个明确定义的子任务时，它会自动调用 `delegate` 工具。
+
+系统 prompt 中的规则已引导 AI 在合适场景使用子代理：
+
+> **CONTEXT OPTIMIZATION**: For well-defined, self-contained subtasks that don't need the full conversation history, use `delegate` tool...
+
+#### 方式二：手动触发（通过系统提示词引导）
+
+你可以在提示词中明确建议 AI 使用子代理：
+
+```text
+重构 src/utils.ts 的 parseConfig 函数。请使用 delegate 让子代理实现，以减少上下文开销。
+
+### 子代理的工作原理
+
+```text
+主会话 -> delegate({ task, context })
+  |
+  +-- 创建独立 mini 会话
+  +-- 子代理循环（最多 5 次 LLM 调用）
+  |   +-- 调用 LLM
+  |   +-- 有工具调用 -> 执行 -> 继续
+  |   +-- 无工具调用 -> 结束，返回摘要
+  |
+  +-- 返回摘要到主会话
+      [Sub-Agent Stats: Iterations, Tool calls, Tokens saved]
+
+### 子代理可以使用的工具
+
+子代理可以调用主会话中的大部分工具（read、edit、bash、glob、grep、fetch、search 等），但 delegate 和 task_complete 被禁止调用。
+
+### 注意事项
+
+1. 默认最多 5 次 LLM 调用（可通过 maxIterations 参数调整，上限 15）
+2. 子代理的 system prompt 包含平台信息（Windows/Linux、Shell 类型），能正确处理平台差异
+3. Token 节省数据会显示在返回结果中
 
 ```bash
 # 克隆仓库

@@ -34,6 +34,7 @@ export function startSessionBridge(
     version: WS_PROTOCOL_VERSION,
     sessionId: session.sessionId,
     sessionTitle: session.sessionTitle || undefined,
+    cwd: config.cwd,
     mode: config.mode,
     model: config.model,
     provider: config.provider,
@@ -42,6 +43,7 @@ export function startSessionBridge(
     totalApi: session.totalApiCalls,
     totalCacheHit: session.totalCacheHitTokens || undefined,
     totalCacheMiss: session.totalCacheMissTokens || undefined,
+    contextWindow: config.contextWindow,
   })
 
   // ── Subscribe to EventBus ──
@@ -128,9 +130,13 @@ export function startSessionBridge(
 
           if (
             cmd === 'mode' &&
-            (arg === 'code' || arg === 'plan' || arg === 'ask' || arg === 'loop')
+            (arg === 'code' ||
+              arg === 'plan' ||
+              arg === 'ask' ||
+              arg === 'loop' ||
+              arg === 'review')
           ) {
-            session.setMode(arg as 'code' | 'plan' | 'ask' | 'loop')
+            session.setMode(arg as 'code' | 'plan' | 'ask' | 'loop' | 'review')
             send({ type: 'mode_changed', mode: arg })
             return
           }
@@ -146,7 +152,7 @@ export function startSessionBridge(
             send({
               type: 'help',
               commands: [
-                '/mode code|plan|ask|loop - Switch mode',
+                '/mode code|plan|ask|loop|review - Switch mode',
                 '/model <name> - Switch model',
                 '/compact - Compress context to reduce tokens',
                 '/sessions - List saved sessions',

@@ -231,7 +231,7 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
                 JSON.stringify({
                   type: 'help',
                   commands: [
-                    '/mode <code|plan|ask|loop> - Switch mode',
+                    '/mode <code|plan|ask|loop|review> - Switch mode',
                     '/model <name> - Switch model',
                     '/compact - Compress context to reduce tokens',
                     '/new - Start a new session',
@@ -353,39 +353,27 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
       if (bridge) bridge.close()
     })
 
-    // Fetch DeepSeek balance (non-blocking) and send with initial state
+    // Fetch DeepSeek balance (non-blocking) and send as balance_update
     ;(async () => {
-      let balanceDisplay = ''
-      let webBalanceDisplay = ''
       try {
         if (isDeepSeekOfficial(config.baseUrl) && config.apiKey) {
           const balance = await fetchDeepSeekBalance(config.apiKey)
           lastBalanceFetch = Date.now()
           if (balance.isAvailable && balance.display) {
-            balanceDisplay = balance.display
-            webBalanceDisplay = balance.webDisplay
+            ws.send(
+              JSON.stringify({
+                type: 'balance_update',
+                balance: balance.display,
+                webBalance: balance.webDisplay,
+              }),
+            )
           }
         }
       } catch {
         // Silently ignore balance fetch errors
       }
-      ws.send(
-        JSON.stringify({
-          type: 'hello',
-          version: 1,
-          cwd: config.cwd,
-          mode: config.mode,
-          model: config.model,
-          provider: config.provider,
-          totalIn: sessionWithOutput.totalInputTokens,
-          totalOut: sessionWithOutput.totalOutputTokens,
-          totalApi: sessionWithOutput.totalApiCalls,
-          balance: balanceDisplay,
-          webBalance: webBalanceDisplay,
-        }),
-      )
-      sendPlanData()
     })()
+    sendPlanData()
 
     // Send full session history (exclude system prompt, strip ANSI from non-edit tool results)
     const historyMessages = sessionWithOutput.messages

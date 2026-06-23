@@ -432,4 +432,97 @@ describe('ToolRegistry', () => {
     reg.setMode('loop')
     expect(reg.getCoreDefinitions().map(d => d.name)).toContain('tool')
   })
+
+  it('registers bash, git, write_plan in review mode and excludes edit', () => {
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'review',
+    })
+    const defs = reg.getDefinitions()
+    const names = defs.map(d => d.name)
+    // Base tools
+    expect(names).toContain('read')
+    expect(names).toContain('glob')
+    expect(names).toContain('grep')
+    expect(names).toContain('ls')
+    expect(names).toContain('find')
+    expect(names).toContain('fetch')
+    expect(names).toContain('search')
+    // Review-specific additions
+    expect(names).toContain('bash')
+    expect(names).toContain('git')
+    expect(names).toContain('write_plan')
+    // Write tools NOT available
+    expect(names).not.toContain('edit')
+    expect(names).not.toContain('install_skill')
+    expect(names).not.toContain('save_memory')
+    expect(names).not.toContain('delete_memory')
+    expect(names).not.toContain('task_complete')
+    expect(names).not.toContain('delegate')
+  })
+
+  it('setMode switches from code to review correctly', () => {
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'code',
+    })
+    reg.setMode('review')
+    const names = reg.getDefinitions().map(d => d.name)
+    // Review tools present
+    expect(names).toContain('bash')
+    expect(names).toContain('git')
+    expect(names).toContain('write_plan')
+    expect(names).toContain('read')
+    // Write tools removed
+    expect(names).not.toContain('edit')
+    expect(names).not.toContain('install_skill')
+    expect(names).not.toContain('save_memory')
+    expect(names).not.toContain('task_complete')
+  })
+
+  it('setMode switches from review to code correctly', () => {
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'review',
+    })
+    reg.setMode('code')
+    const names = reg.getDefinitions().map(d => d.name)
+    // Write tools now available
+    expect(names).toContain('edit')
+    expect(names).toContain('bash')
+    expect(names).toContain('read')
+    // write_plan removed
+    expect(names).not.toContain('write_plan')
+  })
+
+  it('getCoreDefinitions returns core tools in review mode', () => {
+    const reg = new ToolRegistry({
+      cwd: tmpDir,
+      autoApprove: true,
+      applier: new FileReadTracker(),
+      mode: 'review',
+    })
+    const core = reg.getCoreDefinitions()
+    const names = core.map(d => d.name)
+    // Core tools in review mode
+    expect(names).toContain('read')
+    expect(names).toContain('glob')
+    expect(names).toContain('grep')
+    expect(names).toContain('bash')
+    expect(names).toContain('tool')
+    // write_plan is extended → not in core
+    expect(names).not.toContain('write_plan')
+    expect(names).not.toContain('edit')
+    expect(names).not.toContain('git')
+    expect(names).not.toContain('ls')
+    expect(names).not.toContain('find')
+    expect(names).not.toContain('fetch')
+    expect(names).not.toContain('search')
+  })
 })

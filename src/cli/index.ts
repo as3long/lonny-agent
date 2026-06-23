@@ -83,7 +83,7 @@ export async function parseArgs(argv: string[]): Promise<CliOptions> {
 
   let prompt: string | undefined
   let autoApprove: boolean | undefined
-  let mode: 'code' | 'plan' | 'ask' | 'loop' | undefined
+  let mode: 'code' | 'plan' | 'ask' | 'loop' | 'review' | undefined
   let web = false
   let port: number | undefined
   let continueSession = false
@@ -96,7 +96,7 @@ export async function parseArgs(argv: string[]): Promise<CliOptions> {
     } else if (arg === '--auto-approve') {
       autoApprove = true
     } else if (arg === '--mode') {
-      mode = args[++i] as 'code' | 'plan' | 'ask' | 'loop'
+      mode = args[++i] as 'code' | 'plan' | 'ask' | 'loop' | 'review'
     } else if (arg === '--web') {
       web = true
     } else if (arg === '--port') {

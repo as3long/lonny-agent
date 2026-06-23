@@ -8,6 +8,7 @@ export const stopBtn = document.getElementById('stop-btn')
 export const statusIndicator = document.getElementById('status-indicator')
 export const modeDisplay = document.getElementById('mode-display')
 export const modelDisplay = document.getElementById('model-display')
+export const contextSize = document.getElementById('context-size')
 export const tokenIn = document.getElementById('token-in')
 export const tokenOut = document.getElementById('token-out')
 export const tokenCalls = document.getElementById('token-calls')
@@ -42,6 +43,7 @@ export const state = {
   currentPlanName: '',
   todos: [],
   pendingConfirmResolve: null,
+  contextWindow: 0,
 }
 
 export const pendingToolCalls = new Map()

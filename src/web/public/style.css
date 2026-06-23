@@ -90,6 +90,11 @@ body {
   color: var(--text-secondary);
   font-size: 12px;
 }
+.context-size {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
 .token-stats {
   color: var(--text-dim);
   font-size: 12px;

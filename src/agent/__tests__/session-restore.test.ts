@@ -2,18 +2,45 @@ import * as crypto from 'node:crypto'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import type { Config } from '../../config/index.js'
 import type { LLMMessage } from '../llm.js'
 import { Session } from '../session.js'
 
+const TEST_SESSIONS_ROOT = path.join(process.cwd(), '.test-sessions')
+
+beforeAll(() => {
+  // Clean up any stale .test-sessions subdirectories left from previous runs
+  if (fs.existsSync(TEST_SESSIONS_ROOT)) {
+    for (const entry of fs.readdirSync(TEST_SESSIONS_ROOT)) {
+      const fullPath = path.join(TEST_SESSIONS_ROOT, entry)
+      try {
+        fs.rmSync(fullPath, { recursive: true, force: true })
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+})
+
+afterAll(() => {
+  // Clean up all .test-sessions subdirectories after the suite completes
+  if (fs.existsSync(TEST_SESSIONS_ROOT)) {
+    try {
+      fs.rmSync(TEST_SESSIONS_ROOT, { recursive: true, force: true })
+    } catch {
+      /* ignore */
+    }
+  }
+})
+
 /**
  * Helper: build a minimal Config with a project-subdir cwd for test session files.
  * Using the project directory ensures detectPackageManager etc. find a valid cwd.
- * Each test gets a fresh subdirectory that gets cleaned up after.
+ * Each test gets a fresh subdirectory.
  */
 function testConfig(): Config {
-  const testDir = path.join(process.cwd(), '.test-sessions', crypto.randomUUID().slice(0, 8))
+  const testDir = path.join(TEST_SESSIONS_ROOT, crypto.randomUUID().slice(0, 8))
   fs.mkdirSync(testDir, { recursive: true })
   // Create a package.json so detectPackageManager doesn't fail async
   fs.writeFileSync(path.join(testDir, 'package.json'), JSON.stringify({ name: 'test' }), 'utf-8')
@@ -68,8 +95,8 @@ describe('Session save/load cycle', () => {
     } catch {
       /* ignore */
     }
-    // Don't clean up .test-sessions dir — buildSystemPrompt fires async and may
-    // still be reading the cwd. The dir is gitignored and cleaned on restart.
+    // Don't clean up per-test .test-sessions subdir here — buildSystemPrompt fires async and may
+    // still be reading the cwd. The root .test-sessions/ is cleaned by afterAll instead.
   })
 
   test('restores assistant message with text + tool_calls + tool results', async () => {

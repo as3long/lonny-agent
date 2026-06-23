@@ -17,7 +17,13 @@ export const HeaderBar = defineComponent({
     return () => {
       const s = statusData.value
       const modeColor =
-        s.mode === 'ask' ? colors.success : s.mode === 'loop' ? colors.accent : colors.warn
+        s.mode === 'ask'
+          ? colors.success
+          : s.mode === 'loop'
+            ? colors.accent
+            : s.mode === 'review'
+              ? colors.success
+              : colors.warn
       const statusDot = s.agentStatus === 'running' ? colors.running : colors.dim
       const statusLabel = s.agentStatus === 'running' ? 'running' : 'idle'
       const modelInfo = `${s.provider}/${s.model}`

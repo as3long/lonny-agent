@@ -12,7 +12,7 @@ export interface SessionInfo {
   cwd: string
   title: string
   messageCount: number
-  mode: 'code' | 'plan' | 'ask' | 'loop'
+  mode: 'code' | 'plan' | 'ask' | 'loop' | 'review'
   model: string
   provider: string
   totalInputTokens: number
@@ -33,7 +33,7 @@ export interface SessionData {
   totalApiCalls: number
   totalCacheHitTokens?: number
   totalCacheMissTokens?: number
-  mode: 'code' | 'plan' | 'ask' | 'loop'
+  mode: 'code' | 'plan' | 'ask' | 'loop' | 'review'
   model: string
   provider: string
   createdAt: string

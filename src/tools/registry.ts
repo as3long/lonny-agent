@@ -1,3 +1,4 @@
+import type { Config } from '../config/index.js'
 import type { FileReadTracker } from '../diff/apply.js'
 import { createAstTools } from './codebase/ast/tools.js'
 import { createFindTool } from './codebase/find.js'
@@ -5,6 +6,7 @@ import { globTool } from './codebase/glob.js'
 import { createGrepTool } from './codebase/grep.js'
 import { createLsTool } from './codebase/ls.js'
 import { createReadTool } from './codebase/read.js'
+import { createDelegateTool } from './delegate.js'
 import { createEditTool } from './edit/edit.js'
 import { createWritePlanTool } from './edit/write_plan.js'
 import { fmtErr } from './errors.js'
@@ -86,7 +88,7 @@ export interface ToolContext {
   cwd: string
   autoApprove: boolean
   applier: FileReadTracker
-  mode: 'code' | 'plan' | 'ask' | 'loop'
+  mode: 'code' | 'plan' | 'ask' | 'loop' | 'review'
   onPlanWritten?: (display: string) => void
 }
 
@@ -105,9 +107,11 @@ export class ToolRegistry {
   private context: ToolContext
   private plugins: Map<string, ToolPlugin> = new Map()
   private gatewayTool: Tool
+  private config?: Config
 
-  constructor(context: ToolContext) {
+  constructor(context: ToolContext, config?: Config) {
     this.context = context
+    this.config = config
     this.gatewayTool = this.createGatewayTool()
     this.registerBuiltins()
   }
@@ -202,20 +206,32 @@ Examples:
       // Register task_complete tool so the model can explicitly signal completion
       // (most useful in loop mode, but available in code mode too)
       this.register(taskCompleteTool)
+
+      // Register delegate tool for sub-agent task delegation
+      // (requires config to create provider instances for sub-agents)
+      if (this.config) {
+        this.register(createDelegateTool(this.config, this))
+      }
+    } else if (this.context.mode === 'review') {
+      // Review mode: read-only investigation + bash/git + write_plan
+      this.register(bashTool)
+      this.register(createGitTool(this.context.cwd))
+      this.register(createWritePlanTool(this.context.cwd, this.context.onPlanWritten))
     } else {
       // Plan mode: read-only investigation + write_plan
       this.register(createWritePlanTool(this.context.cwd, this.context.onPlanWritten))
     }
   }
 
-  setMode(mode: 'code' | 'plan' | 'ask' | 'loop'): void {
+  setMode(mode: 'code' | 'plan' | 'ask' | 'loop' | 'review'): void {
     // Update context.mode FIRST so registerBuiltins() and mode-based logic
     // use the NEW mode, not the stale one (fixes bug when switching from
     // ask→code or plan→code where all tools would be missing)
     this.context.mode = mode
 
-    if (mode === 'code' || mode === 'loop') {
-      // Code/Loop mode: Re-register all built-in tools for full toolset
+    if (mode === 'code' || mode === 'loop' || mode === 'review') {
+      // Code/Loop/Review modes: Re-register all built-in tools for full toolset
+      // registerBuiltins() branches internally based on this.context.mode
       this.tools.clear()
       this.registerBuiltins()
     } else if (mode === 'plan') {

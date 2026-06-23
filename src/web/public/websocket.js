@@ -20,6 +20,7 @@ import {
   balanceDisplay,
   balanceSep,
   connectionOverlay,
+  contextSize,
   cwdDisplay,
   MAX_RECONNECT_ATTEMPTS,
   messagesEl,
@@ -73,6 +74,11 @@ function handleMessage(msg) {
       if (msg.cwd) {
         const maxLen = 35
         cwdDisplay.textContent = msg.cwd.length > maxLen ? `...${msg.cwd.slice(-maxLen)}` : msg.cwd
+      }
+      if (msg.contextWindow) {
+        state.contextWindow = msg.contextWindow
+        const currentTokens = (msg.totalIn || 0) + (msg.totalOut || 0)
+        contextSize.textContent = `ctx: ${formatTokenCount(currentTokens)}/${formatTokenCount(msg.contextWindow)}`
       }
       break
 
@@ -194,6 +200,10 @@ function handleMessage(msg) {
         msg.totalCacheHit,
         msg.totalCacheMiss,
       )
+      if (state.contextWindow > 0) {
+        const currentTokens = (msg.totalIn || 0) + (msg.totalOut || 0)
+        contextSize.textContent = `ctx: ${formatTokenCount(currentTokens)}/${formatTokenCount(state.contextWindow)}`
+      }
       break
 
     case 'tool_confirm_request': {
