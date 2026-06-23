@@ -77,8 +77,7 @@ function handleMessage(msg) {
       }
       if (msg.contextWindow) {
         state.contextWindow = msg.contextWindow
-        const currentTokens = (msg.totalIn || 0) + (msg.totalOut || 0)
-        contextSize.textContent = `ctx: ${formatTokenCount(currentTokens)}/${formatTokenCount(msg.contextWindow)}`
+        contextSize.textContent = `ctx: ${formatTokenCount(msg.currentTokens || 0)}/${formatTokenCount(msg.contextWindow)}`
       }
       break
 
@@ -201,8 +200,7 @@ function handleMessage(msg) {
         msg.totalCacheMiss,
       )
       if (state.contextWindow > 0) {
-        const currentTokens = (msg.totalIn || 0) + (msg.totalOut || 0)
-        contextSize.textContent = `ctx: ${formatTokenCount(currentTokens)}/${formatTokenCount(state.contextWindow)}`
+        contextSize.textContent = `ctx: ${formatTokenCount(msg.currentTokens || 0)}/${formatTokenCount(state.contextWindow)}`
       }
       break
 

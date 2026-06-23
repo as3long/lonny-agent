@@ -2,7 +2,7 @@ import { formatToolInput } from '../api/display-utils.js'
 import { saveTokenUsage } from '../config/tokens.js'
 import { fmtErr } from '../tools/errors.js'
 import type { ToolCall, ToolResult } from '../tools/types.js'
-import { compact, shouldCompact } from './compaction.js'
+import { compact, estimateMessagesTokens, shouldCompact } from './compaction.js'
 import { EventChannels, getGlobalEventBus } from './event-bus.js'
 import type { LLMMessage } from './llm.js'
 import type { Session, SessionOutput } from './session.js'
@@ -90,6 +90,7 @@ function emitTokenStats(
     turnCacheMiss: session.turnCacheMissTokens,
     totalCacheHit: session.totalCacheHitTokens,
     totalCacheMiss: session.totalCacheMissTokens,
+    currentTokens: estimateMessagesTokens(session.messages),
   })
   if (out?.suppressToolOutput) return
   const total = session.totalInputTokens + session.totalOutputTokens

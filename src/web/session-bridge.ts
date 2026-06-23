@@ -1,3 +1,4 @@
+import { estimateMessagesTokens } from '../agent/compaction.js'
 import { EventChannels, getGlobalEventBus } from '../agent/event-bus.js'
 import type { Session } from '../agent/session.js'
 import type { Config } from '../config/index.js'
@@ -44,6 +45,7 @@ export function startSessionBridge(
     totalCacheHit: session.totalCacheHitTokens || undefined,
     totalCacheMiss: session.totalCacheMissTokens || undefined,
     contextWindow: config.contextWindow,
+    currentTokens: estimateMessagesTokens(session.messages),
   })
 
   // ── Subscribe to EventBus ──
@@ -110,6 +112,7 @@ export function startSessionBridge(
       turnCacheMiss?: number
       totalCacheHit?: number
       totalCacheMiss?: number
+      currentTokens: number
     }
     send({ type: 'token_stats', ...d })
   })
