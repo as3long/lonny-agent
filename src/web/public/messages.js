@@ -90,6 +90,7 @@ export function addToolCall(name, input, id) {
   div.dataset.toolId = id || ''
 
   if (name === 'edit') {
+    let hasEmptyOld = false
     let paths = []
     if (Array.isArray(input?.edits)) {
       paths = input.edits.map(e => e.file_path).filter(Boolean)
