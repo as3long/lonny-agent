@@ -63,12 +63,35 @@ function extractPowerShellNativeOutput(stderr: string): string | null {
       continue
     }
 
-    // Remove leading whitespace from the first content line (the "<command> : <message>" line)
+    // Skip garbled CJK position indicator lines (e.g. "����λ�� ��:1 �ַ�: 1")
+    // These appear between "<command> : <message>" and "+ ..." lines in Chinese Windows
+    if (/[\u4e00-\u9fff]/.test(trimmed)) {
+      continue
+    }
+
+    // Extract actual message from "<command> : <message>" format (e.g. "git : To https://...")
+    const prefixMatch = trimmed.match(/^(\S+(?:\.exe)?)\s*:\s+(.+)/)
+    if (prefixMatch) {
+      outputLines.push(prefixMatch[2].trim())
+      continue
+    }
+
+    // Keep all other non-metadata lines as-is
     outputLines.push(line)
   }
 
   const result = outputLines.join('\n').trim()
   return result || null
+}
+
+/**
+ * Checks if text contains real error indicators (not just PowerShell wrapping noise).
+ * Used to distinguish between:
+ *   - PowerShell wrapping stderr of a SUCCESSFUL command (exitCode wrongly reports 1)
+ *   - A genuinely FAILED command that wrote errors to stderr
+ */
+export function containsErrorKeywords(text: string): boolean {
+  return /fatal:|^error:|rejected|^failed|denied|not found|CONFLICT/i.test(text)
 }
 
 /**

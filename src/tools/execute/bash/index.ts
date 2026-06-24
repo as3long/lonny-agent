@@ -3,7 +3,12 @@ import * as os from 'node:os'
 import { fmtErr } from '../../errors.js'
 import type { Tool, ToolResult } from '../../types.js'
 import { MAX_OUTPUT_LENGTH } from './constants.js'
-import { buildErrorMsg, extractPowerShellNativeOutput, truncateOutput } from './errors.js'
+import {
+  buildErrorMsg,
+  containsErrorKeywords,
+  extractPowerShellNativeOutput,
+  truncateOutput,
+} from './errors.js'
 import { execCommand } from './execution.js'
 import { ENCODING, env } from './platform.js'
 import { checkDestructive, redactSensitive } from './security.js'
@@ -111,6 +116,17 @@ For git operations (status, diff, log), use the 'git' tool instead.`,
           success: false,
           output,
           error: buildErrorMsg(0, stderr, command, true, cwd),
+        }
+      }
+
+      // On Windows, PowerShell may falsely report exit code 1 when a native
+      // command's stderr is wrapped in ErrorRecord format via 2>&1.
+      if (exitCode !== 0 && os.platform() === 'win32' && stderrTrimmed) {
+        const cleaned = extractPowerShellNativeOutput(stderrTrimmed)
+        if (cleaned && !containsErrorKeywords(cleaned)) {
+          if (output) output += '\n'
+          output += cleaned
+          return { success: true, output }
         }
       }
 
