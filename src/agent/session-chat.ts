@@ -299,7 +299,8 @@ export async function runChat(session: Session, userPrompt: string): Promise<voi
   const bus = getGlobalEventBus()
   const out = session.output
   bus.emit(EventChannels.USER_MESSAGE, { prompt: userPrompt })
-  if (!out?.suppressToolOutput) {
+  // Don't display auto-continuation messages as [USER] — they're not real user input
+  if (!out?.suppressToolOutput && !userPrompt.startsWith('[auto-continuation]')) {
     writeOut(`\n[USER]\n${userPrompt}\n[/USER]\n\n`, out)
   }
   session.messages.push({ role: 'user', content: userPrompt })

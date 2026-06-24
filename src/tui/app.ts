@@ -80,9 +80,29 @@ export const Root = defineComponent({
 
     let writeBuf = ''
     let writeTimer: ReturnType<typeof setTimeout> | null = null
+
+    /** Flush the write buffer immediately, canceling any pending flush timer. */
+    function flushOutput(): void {
+      if (writeTimer) {
+        clearTimeout(writeTimer)
+        writeTimer = null
+      }
+      if (writeBuf) {
+        chatContent.value += writeBuf
+        writeBuf = ''
+      }
+    }
+
     const output: SessionOutput = {
       write: (text: string) => {
-        writeBuf += processThinkingBlocks(text)
+        const processed = processThinkingBlocks(text)
+        // Flush immediately for user messages so they appear before LLM response
+        if (processed.includes('[USER]')) {
+          writeBuf += processed
+          flushOutput()
+          return
+        }
+        writeBuf += processed
         if (!writeTimer) {
           writeTimer = setTimeout(() => {
             chatContent.value += writeBuf

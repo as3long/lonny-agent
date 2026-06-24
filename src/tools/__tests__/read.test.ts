@@ -30,21 +30,21 @@ describe('read tool', () => {
     expect(result.output).toContain('hello world')
   })
 
-  it('prefixes each line with its 1-based line number', async () => {
+  it('outputs file content without line number prefixes', async () => {
     const result = await tool().execute({ paths: ['a.txt'] })
-    expect(result.output).toContain('1: hello world')
-    expect(result.output).toContain('2: foo bar')
-    expect(result.output).toContain('3: baz qux')
-    // Should not emit a trailing blank "4: " line for the final \n.
-    expect(result.output).not.toMatch(/^4: /m)
+    expect(result.output).toContain('hello world')
+    expect(result.output).toContain('foo bar')
+    expect(result.output).toContain('baz qux')
+    // Should NOT contain line number prefixes
+    expect(result.output).not.toMatch(/^\d+:/m)
   })
 
-  it('pads line numbers to a consistent width', async () => {
-    const big = `${Array.from({ length: 12 }, (_, i) => `line${i + 1}`).join('\n')}\n`
-    fs.writeFileSync(path.join(tmpDir, 'big.txt'), big)
-    const result = await tool().execute({ paths: ['big.txt'] })
-    expect(result.output).toContain(' 1: line1')
-    expect(result.output).toContain('12: line12')
+  it('shows pagination range in header when startLine/maxLines used', async () => {
+    const result = await tool().execute({ paths: ['a.txt'], startLine: 2, maxLines: 2 })
+    expect(result.output).toContain('(lines 2-3 of 3)')
+    expect(result.output).toContain('foo bar')
+    expect(result.output).toContain('baz qux')
+    expect(result.output).not.toContain('hello world')
   })
 
   it('reads multiple files', async () => {

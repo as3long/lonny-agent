@@ -9,7 +9,7 @@ export const UserMessage = defineComponent({
   setup(props) {
     return () => {
       const lines = props.content.split('\n')
-      const children = lines.map((line, i) => h(Text, { key: i, color: '#d4d4d4' }, line))
+      const children = lines.map((line, i) => h(Text, { key: i, color: '#e0e0e0' }, line))
       return h(
         Box,
         {
@@ -18,6 +18,7 @@ export const UserMessage = defineComponent({
           marginY: 1,
           borderStyle: 'round',
           borderColor: colors.userLabel,
+          backgroundColor: '#2a2a20',
         },
         [
           h(Text, { color: colors.userLabel, bold: true }, 'You'),

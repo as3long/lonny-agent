@@ -138,14 +138,12 @@ export class OpenAIProvider implements LLMProvider {
               arguments: JSON.stringify(tc.input),
             },
           })),
-          ...(m.reasoning_content ? { reasoning_content: m.reasoning_content } : {}),
         } as ChatCompletionMessageParam
       }
       if (m.role === 'assistant') {
         return {
           role: 'assistant',
           content: m.content || '',
-          ...(m.reasoning_content ? { reasoning_content: m.reasoning_content } : {}),
         } as ChatCompletionMessageParam
       }
       return {

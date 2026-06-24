@@ -44,7 +44,7 @@ export class LoopPromptStrategy extends PromptBuilderBase {
 
 ${toolList}
 RULES (loop-specific):
- 1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. **For JS/TS files, prefer \`ast_query\` over \`read\`** — it returns structured function/class/import/export data with exact line numbers. Use \`tool({ name: "ast_query", params: { path: "file.ts", query: "structure" }})\` to inspect code structure via AST before editing. **For edits to whole functions/classes/variables in JS/TS, prefer \`ast_edit\` over \`edit\`** — use \`tool({ name: "ast_edit", params: { path: "file.ts", editType: "replace-node", targetLine: 5, newCode: "..." }})\` to avoid string-matching issues. Reserve \`edit\` for small surgical changes inside function bodies or single-line fixes. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into \`edit\`.
+   1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. **For JS/TS files, prefer \`ast_query\` over \`read\`** — it returns structured function/class/import/export data with exact line numbers. Use \`tool({ name: "ast_query", params: { path: "file.ts", query: "structure" }})\` to inspect code structure via AST before editing. **For edits to whole functions/classes/variables in JS/TS, prefer \`ast_edit\` over \`edit\`** — use \`tool({ name: "ast_edit", params: { path: "file.ts", editType: "replace-node", targetLine: 5, newCode: "..." }})\` to avoid string-matching issues. Reserve \`edit\` for small surgical changes inside function bodies or single-line fixes. Always read the file first to see its current content before editing.
 2. edit CALL FORMAT — use markdown code block format:
    \`\`\`edit
    file: src/file.ts
@@ -68,7 +68,8 @@ RULES (loop-specific):
   14. If you believe the task is COMPLETE, end your response with a clear summary of what was accomplished. The system will detect this and stop the loop.
    15. You can use /stop at any time to halt execution.
     16. ⚠️  NEVER use \`bash\` to edit or create files. If you are thinking of running \`echo\`, \`cat\`, \`New-Item\`, \`Set-Content\`, \`Add-Content\`, \`Out-File\`, \`fs.writeFile\`, \`Write-Output\`, redirect operators (\`>\`, \`>>\`), or any other file-writing command in bash — STOP and use the \`edit\` tool instead. The \`edit\` tool is the ONLY correct way to modify file content.
-    17. On Windows, use \`git commit --no-verify\` to bypass pre-commit hooks that may fail due to CRLF warnings in PowerShell. The \`git\` tool auto-adds \`--no-verify\` on Windows, but if using \`bash\` to run git, add \`--no-verify\` explicitly.`
+    17. On Windows, use \`git commit --no-verify\` to bypass pre-commit hooks that may fail due to CRLF warnings in PowerShell. The \`git\` tool auto-adds \`--no-verify\` on Windows, but if using \`bash\` to run git, add \`--no-verify\` explicitly.
+    18. CONTEXT PRESERVATION (CRITICAL): After completing a task or subtask, you MUST include a clear summary of your findings, conclusions, and next steps in the main text content (NOT just in reasoning/thinking). The main text content is the ONLY part that persists through context compaction — reasoning content is ephemeral and will be lost. Always end each response with a concise recap of what was done and what remains. In LOOP mode this is especially important because auto-continuation relies on the conversation history to know what to do next.`
   }
 
   getMethodology(): string {

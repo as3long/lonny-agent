@@ -1,14 +1,14 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lonny - AI 编码代理</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/normalize.css@8.0.1/normalize.css">
-  <link rel="stylesheet" href="/style.css">
-</head>
+  <!DOCTYPE html>
+  <html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lonny — AI 编码代理</title>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.0/build/styles/github-dark-dimmed.min.css">
+  </head>
 <body>
-  <!-- Status Bar -->
+  <!-- Status Bar (Three-Column Layout) -->
   <header id="status-bar">
     <div class="status-left">
       <span class="logo">lonny</span>
@@ -19,11 +19,16 @@
       <span class="separator">|</span>
       <span id="cwd-display" class="cwd-text"></span>
     </div>
-    <div class="status-right">
-      <span id="context-size" class="context-size">ctx: 0/128K</span>
-      <span class="separator">|</span>
+    <div class="status-center">
       <span id="model-display" class="model-name">loading...</span>
-      <span class="separator">|</span>
+      <div id="ctx-progress" class="ctx-progress">
+        <span id="ctx-label" class="ctx-label">ctx: 0/128K</span>
+        <div class="ctx-bar">
+          <div id="ctx-bar-fill" class="ctx-bar-fill" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+    <div class="status-right">
       <span class="token-stats">
         <span class="token-in" id="token-in">0</span>
         <span class="token-sep">/</span>
@@ -33,14 +38,30 @@
       </span>
       <span class="separator" id="balance-sep" style="display:none">|</span>
       <span id="balance-display" class="balance-display" style="display:none"></span>
+      <span class="separator">|</span>
+      <button id="theme-toggle" class="btn-icon" title="Toggle Theme" style="font-size:14px">◑</button>
+      <button id="fullscreen-btn" class="btn-icon" title="Toggle Fullscreen" style="font-size:14px">□</button>
     </div>
   </header>
 
-  <!-- App Content (chat + sidebar) -->
+  <!-- App Content (Three-Column Layout) -->
   <div id="app-content">
+    <!-- Left Sidebar: File Tree -->
+    <aside id="sidebar-left">
+      <div class="panel-header">
+        <span class="panel-title">Files</span>
+        <button class="btn-icon" id="file-reveal-btn" title="Reveal in File Tree">🔍</button>
+      </div>
+      <nav id="file-tree">
+        <!-- File tree rendered by JS -->
+      </nav>
+    </aside>
+
+    <!-- Resize Handle (left) -->
+    <div class="resize-handle" id="resize-handle-left"></div>
+
     <!-- Chat Panel -->
     <div id="chat-panel">
-      <!-- Chat Container -->
       <main id="chat-container">
         <div id="messages">
           <!-- Messages will be rendered here -->
@@ -79,20 +100,35 @@
       </footer>
     </div>
 
-    <!-- Right Sidebar -->
-    <aside id="sidebar">
-      <div class="sidebar-tabs">
-        <button class="sidebar-tab active" data-tab="plans">░ Plans</button>
-        <button class="sidebar-tab" data-tab="todos">☑ Todo</button>
-      </div>
-      <div class="sidebar-content">
-        <div class="sidebar-pane active" id="plans-pane">
-          <div id="plans-placeholder" class="sidebar-placeholder">Loading plans...</div>
-          <div id="plans-list"></div>
+    <!-- Resize Handle (right) -->
+    <div class="resize-handle" id="resize-handle-right"></div>
+
+    <!-- Right Sidebar: Plans + Tool Log -->
+    <aside id="sidebar-right">
+      <div id="plans-panel" class="sidebar-panel">
+        <div class="panel-header">
+          <span class="panel-title">Plans</span>
+          <button class="btn-icon" id="new-plan-btn" title="New Plan">＋</button>
         </div>
-        <div class="sidebar-pane" id="todos-pane">
-          <div id="todos-placeholder" class="sidebar-placeholder">Loading todos...</div>
-          <div id="todos-list"></div>
+        <div class="plan-filters">
+          <button class="plan-filter active" data-filter="active">进行中</button>
+          <button class="plan-filter" data-filter="completed">已完成</button>
+          <button class="plan-filter" data-filter="archived">已归档</button>
+        </div>
+        <div id="plans-content" class="panel-body">
+          <div id="plans-placeholder" class="panel-placeholder">Loading plans...</div>
+          <div id="plans-list"></div>
+          <div id="plans-pagination" class="pagination"></div>
+        </div>
+      </div>
+      <div class="panel-divider"></div>
+      <div id="tool-log-panel" class="sidebar-panel">
+        <div class="panel-header">
+          <span class="panel-title">Tool Log</span>
+          <button class="btn-icon" id="tool-log-clear-btn" title="Clear Log">✕</button>
+        </div>
+        <div id="tool-log-content" class="panel-body">
+          <!-- Tool log entries rendered by JS -->
         </div>
       </div>
     </aside>
@@ -118,6 +154,7 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.0/build/highlight.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.4/marked.min.js"></script>
   <script type="module" src="/app.js"></script>
 </body>

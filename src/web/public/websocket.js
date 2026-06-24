@@ -15,12 +15,14 @@ import {
   showThinking,
   startAssistantMessage,
 } from './messages.js'
-import { updatePlansAndTodos } from './sidebar.js'
+import { addToolLogEntry, updatePlansAndTodos } from './sidebar.js'
+import { renderFileTree, updateTreeChildren } from './file-tree.js'
 import {
   balanceDisplay,
   balanceSep,
   connectionOverlay,
-  contextSize,
+  ctxLabel,
+  ctxBarFill,
   cwdDisplay,
   MAX_RECONNECT_ATTEMPTS,
   messagesEl,
@@ -35,8 +37,18 @@ import {
   tokenIn,
   tokenOut,
 } from './state.js'
-import { formatTokenCount, getWsUrl, scrollToBottom } from './utils.js'
+import { formatTokenCount, getWsUrl, scrollToBottom, truncate } from './utils.js'
 import { setWs } from './ws.js'
+
+// ── Context Display Helper ──
+function updateContextDisplay(currentTokens, contextWindow) {
+  if (!contextWindow) return
+  const label = `ctx: ${formatTokenCount(currentTokens || 0)}/${formatTokenCount(contextWindow)}`
+  const pct = Math.min((currentTokens || 0) / contextWindow * 100, 100)
+  ctxLabel.textContent = label
+  ctxBarFill.style.width = `${pct}%`
+  ctxBarFill.className = 'ctx-bar-fill' + (pct > 95 ? ' danger' : pct > 80 ? ' warning' : '')
+}
 
 function handleMessage(msg) {
   switch (msg.type) {
@@ -77,7 +89,7 @@ function handleMessage(msg) {
       }
       if (msg.contextWindow) {
         state.contextWindow = msg.contextWindow
-        contextSize.textContent = `ctx: ${formatTokenCount(msg.currentTokens || 0)}/${formatTokenCount(msg.contextWindow)}`
+        updateContextDisplay(msg.currentTokens, msg.contextWindow)
       }
       break
 
@@ -94,18 +106,22 @@ function handleMessage(msg) {
       break
 
     case 'user_message':
+      console.log('[ws] user_message received:', { text: msg.text?.substring(0, 50) })
       addUserMessage(msg.text || '')
       break
 
     case 'tool_call':
       addToolCall(msg.name, msg.input, msg.id)
+      addToolLogEntry(msg.name, '(' + truncate(String(msg.input), 50) + ')', false)
       break
 
     case 'tool_result':
       if (msg.success) {
         addToolResult(msg.name, true, msg.output || '', msg.id)
+        addToolLogEntry(msg.name, '✓', false)
       } else {
         addToolResult(msg.name, false, msg.error || 'Unknown error', msg.id)
+        addToolLogEntry(msg.name, '✕', true)
       }
       break
 
@@ -176,6 +192,14 @@ function handleMessage(msg) {
       updatePlansAndTodos()
       break
 
+    case 'file_tree':
+      if (msg.path) {
+        updateTreeChildren(msg.path, msg.children || [])
+      } else {
+        renderFileTree(msg.tree || msg.children || [])
+      }
+      break
+
     case 'balance_update':
       if (msg.webBalance) {
         balanceDisplay.textContent = `余额：${msg.webBalance}`
@@ -200,7 +224,7 @@ function handleMessage(msg) {
         msg.totalCacheMiss,
       )
       if (state.contextWindow > 0) {
-        contextSize.textContent = `ctx: ${formatTokenCount(msg.currentTokens || 0)}/${formatTokenCount(state.contextWindow)}`
+        updateContextDisplay(msg.currentTokens, state.contextWindow)
       }
       break
 

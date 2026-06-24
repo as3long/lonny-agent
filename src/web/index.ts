@@ -10,7 +10,57 @@ import { fetchDeepSeekBalance, isDeepSeekOfficial } from '../api/balance.js'
 import type { Config } from '../config/index.js'
 import { fmtErr } from '../tools/errors.js'
 import { listPlans, type PlanEntry } from '../tui/components/index.js'
+import { PLAN_DIR } from '../tools/edit/write_plan.js'
 import { startSessionBridge, type WsMessage } from './session-bridge.js'
+
+// ── File Tree Builder ──
+interface FileTreeNode {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+  children?: FileTreeNode[]
+}
+
+const EXCLUDED_DIRS = new Set(['node_modules', '.git', 'dist', '.next', 'build', 'coverage', '.vscode', '.idea', '__pycache__', 'target', 'public'])
+const INCLUDED_HIDDEN = new Set(['.lonny']) // Include these hidden dirs
+
+function buildFileTree(dirPath: string, basePath: string = '', depth: number = 0): FileTreeNode[] {
+  if (depth > 5) return [] // Max 5 levels deep by default
+  const entries: FileTreeNode[] = []
+  try {
+    const names = fs.readdirSync(dirPath)
+    for (const name of names) {
+      // Skip most hidden files/dirs, but include whitelisted ones
+      if (name.startsWith('.') && !INCLUDED_HIDDEN.has(name)) continue
+      const fullPath = path.join(dirPath, name)
+      const relPath = basePath ? `${basePath}/${name}` : name
+      let stat: fs.Stats
+      try {
+        stat = fs.statSync(fullPath)
+      } catch {
+        continue
+      }
+      if (stat.isDirectory()) {
+        if (EXCLUDED_DIRS.has(name)) continue
+        entries.push({
+          name,
+          path: relPath,
+          type: 'directory',
+          children: buildFileTree(fullPath, relPath, depth + 1),
+        })
+      } else if (stat.isFile()) {
+        entries.push({ name, path: relPath, type: 'file' })
+      }
+    }
+  } catch {
+    // Ignore
+  }
+  entries.sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'directory' ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
+  return entries
+}
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
 
@@ -151,17 +201,30 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
     sessionWithOutput = (await Session.load(config, output)) || new Session(config, output)
 
     // Helper: read todos from a specific plan file (or first plan if no name given)
+    interface PlanTodoItem {
+      text: string
+      done: boolean
+    }
+
+    interface PlanMeta {
+      name: string
+      mtime: number
+      status: string
+      total: number
+      done: number
+    }
+
     function loadPlanTodos(
       plans: PlanEntry[],
       planName?: string,
     ): {
       name: string
-      todos: { text: string; done: boolean }[]
+      todos: PlanTodoItem[]
     } {
       if (plans.length === 0) return { name: '', todos: [] }
       const plan = planName ? plans.find(p => p.name === planName) : plans[0]
       if (!plan) return { name: planName || '', todos: [] }
-      const todos: { text: string; done: boolean }[] = []
+      const todos: PlanTodoItem[] = []
       try {
         const content = fs.readFileSync(plan.fullPath, 'utf-8')
         const lines = content.split('\n')
@@ -178,6 +241,34 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
       return { name: plan.name, todos }
     }
 
+    // Helper: compute plan metadata from file content
+    function loadPlanMeta(plan: PlanEntry): PlanMeta {
+      let total = 0
+      let done = 0
+      let status = 'active'
+      try {
+        const content = fs.readFileSync(plan.fullPath, 'utf-8')
+        const lines = content.split('\n')
+        for (const raw of lines) {
+          const line = raw.trim()
+          const m = line.match(/^- \[([ x])\]\s+(.+)/)
+          if (m) {
+            total++
+            if (m[1] === 'x') done++
+          }
+        }
+        // Detect archived/completed from content markers
+        if (content.includes('<!-- archived -->') || content.includes('# Archived')) {
+          status = 'archived'
+        } else if (done === total && total > 0) {
+          status = 'completed'
+        }
+      } catch {
+        // Ignore
+      }
+      return { name: plan.name, mtime: plan.mtime, status, total, done }
+    }
+
     // Helper: send plan & todo data to client
     function sendPlanData(): void {
       try {
@@ -186,10 +277,7 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
         ws.send(
           JSON.stringify({
             type: 'plan_data',
-            plans: planEntries.map(p => ({
-              name: p.name,
-              mtime: p.mtime,
-            })),
+            plans: planEntries.map(p => loadPlanMeta(p)),
             currentPlanName: name,
             todos,
           }),
@@ -304,6 +392,7 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
           }
 
           // Send to session
+          console.log('[server] Received message, calling session.chat():', { text: text.substring(0, 50) })
           try {
             await sessionWithOutput.chat(text)
             // Refresh balance after turn if 5+ min since last fetch
@@ -311,6 +400,7 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
             ws.send(JSON.stringify({ type: 'done', reason: 'stop' }))
           } catch (err) {
             const errMsg = fmtErr(err)
+            console.error('[server] session.chat() error:', errMsg)
             ws.send(JSON.stringify({ type: 'error', message: errMsg }))
             ws.send(JSON.stringify({ type: 'done', reason: 'error' }))
           }
@@ -323,11 +413,88 @@ export async function startWebUi(config: Config, port: number): Promise<void> {
           ws.send(
             JSON.stringify({
               type: 'plan_data',
-              plans: planEntries.map(p => ({ name: p.name, mtime: p.mtime })),
+              plans: planEntries.map(p => loadPlanMeta(p)),
               currentPlanName: name,
               todos,
             }),
           )
+        } else if (msg.type === 'get_file_tree') {
+          const treePath = String(msg.path || '')
+          if (treePath) {
+            const fullPath = path.resolve(config.cwd, treePath)
+            if (fullPath.startsWith(config.cwd) && fs.existsSync(fullPath)) {
+              const children = buildFileTree(fullPath, treePath)
+              ws.send(JSON.stringify({ type: 'file_tree', path: treePath, children }))
+            }
+          } else {
+            const tree = buildFileTree(config.cwd)
+            ws.send(JSON.stringify({ type: 'file_tree', tree }))
+          }
+        } else if (msg.type === 'load_file') {
+          const filePath = String(msg.path || '')
+          const fullPath = path.resolve(config.cwd, filePath)
+          if (fullPath.startsWith(config.cwd) && fs.existsSync(fullPath)) {
+            try {
+              const content = fs.readFileSync(fullPath, 'utf-8')
+              ws.send(JSON.stringify({
+                type: 'file_content',
+                path: filePath,
+                content,
+              }))
+            } catch {
+              ws.send(JSON.stringify({ type: 'error', message: `Failed to read file: ${filePath}` }))
+            }
+          } else {
+            ws.send(JSON.stringify({ type: 'error', message: `File not found: ${filePath}` }))
+          }
+        } else if (msg.type === 'create_plan') {
+          const name = String(msg.name || '').trim()
+          if (name) {
+            const planDir = path.resolve(config.cwd, PLAN_DIR)
+            const planFile = path.join(planDir, `${name}.md`)
+            try {
+              if (!fs.existsSync(planDir)) fs.mkdirSync(planDir, { recursive: true })
+              if (!fs.existsSync(planFile)) {
+                fs.writeFileSync(planFile, `# ${name}\n\n`)
+              }
+              sendPlanData()
+              ws.send(JSON.stringify({ type: 'plan_written', display: name }))
+            } catch {
+              ws.send(JSON.stringify({ type: 'error', message: `Failed to create plan: ${name}` }))
+            }
+          }
+        } else if (msg.type === 'archive_plan') {
+          const planName = String(msg.planName || '').trim()
+          if (planName) {
+            const planDir = path.resolve(config.cwd, PLAN_DIR)
+            const planFile = path.join(planDir, `${planName}.md`)
+            try {
+              if (fs.existsSync(planFile)) {
+                let content = fs.readFileSync(planFile, 'utf-8')
+                if (!content.includes('<!-- archived -->')) {
+                  content = '<!-- archived -->\n' + content
+                }
+                fs.writeFileSync(planFile, content)
+              }
+              sendPlanData()
+            } catch {
+              ws.send(JSON.stringify({ type: 'error', message: `Failed to archive plan: ${planName}` }))
+            }
+          }
+        } else if (msg.type === 'delete_plan') {
+          const planName = String(msg.planName || '').trim()
+          if (planName) {
+            const planDir = path.resolve(config.cwd, PLAN_DIR)
+            const planFile = path.join(planDir, `${planName}.md`)
+            try {
+              if (fs.existsSync(planFile)) {
+                fs.unlinkSync(planFile)
+              }
+              sendPlanData()
+            } catch {
+              ws.send(JSON.stringify({ type: 'error', message: `Failed to delete plan: ${planName}` }))
+            }
+          }
         } else if (msg.type === 'tool_confirm_response') {
           if (pendingConfirm) {
             pendingConfirm(msg.approved === true)

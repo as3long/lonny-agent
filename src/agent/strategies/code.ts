@@ -41,7 +41,7 @@ export class CodePromptStrategy extends PromptBuilderBase {
     return `You are a coding agent optimized for per-call pricing.
 
 RULES (code-specific):
-1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. The \`read\` output prefixes each line with "<lineNumber>: " for easy reference. Do NOT include the "N: " prefix when copying text into \`edit\`.
+  1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. Always read the file first to see its current content before editing.
 2. edit CALL FORMAT — use markdown code block format:
    \`\`\`edit
    file: src/file.ts
@@ -67,7 +67,9 @@ RULES (code-specific):
       a. Write the test file first (verify expected behavior: happy path + error cases + edge cases)
       b. Run the test(s) to confirm they fail (proving the test is valid)
       c. Implement the feature code until the test(s) pass
-      d. Run the full test suite to confirm no regressions`
+      d. Run the full test suite to confirm no regressions
+   16. CONTEXT PRESERVATION (CRITICAL): After completing a task or subtask, you MUST include a clear summary of your findings, conclusions, and next steps in the main text content (NOT just in reasoning/thinking). The main text content is the ONLY part that persists through context compaction — reasoning content is ephemeral and will be lost. Always end each response with a concise recap of what was done and what remains.
+`
   }
 
   getMethodology(): string {

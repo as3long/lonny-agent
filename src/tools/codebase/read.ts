@@ -8,20 +8,18 @@ import type { Tool, ToolResult } from '../types.js'
 const MAX_FILE_SIZE = 1_000_000 // 1MB
 const DEFAULT_MAX_LINES = 500 // Default pagination limit
 
-/**
- * Format content with line numbers.
- * Handles trailing newline correctly.
- * Exported for testing and reuse.
- */
-export function formatWithLineNumbers(content: string, startLine = 1): string {
-  const lines = content.split('\n')
-  // Drop trailing empty element produced by a final \n so the displayed
-  // line count matches the actual line count of the file.
-  const hasTrailingNewline = lines.length > 0 && lines[lines.length - 1] === ''
-  const body = hasTrailingNewline ? lines.slice(0, -1) : lines
-  const pad = String(startLine + body.length - 1).length
-  return body.map((l, i) => `${String(startLine + i).padStart(pad, ' ')}: ${l}`).join('\n')
-}
+  /**
+   * Return content as-is (no line number prefix).
+   * Handles trailing newline correctly.
+   */
+  export function formatWithLineNumbers(content: string, _startLine = 1): string {
+    const lines = content.split('\n')
+    // Drop trailing empty element produced by a final \n so the displayed
+    // line count matches the actual line count of the file.
+    const hasTrailingNewline = lines.length > 0 && lines[lines.length - 1] === ''
+    const body = hasTrailingNewline ? lines.slice(0, -1) : lines
+    return body.join('\n')
+  }
 
 export function createReadTool(applier: FileReadTracker, cwd: string): Tool {
   return {
@@ -30,7 +28,7 @@ export function createReadTool(applier: FileReadTracker, cwd: string): Tool {
       category: 'Codebase',
       group: 'Read',
       description:
-        'Read the contents of one or more files. Always read a file before editing it. Each line is prefixed with "<lineNumber>: " for accurate line references; the prefix is a display aid only — do NOT include it in batch_edit patch content. Supports pagination via startLine and maxLines for large files.',
+        'Read the contents of one or more files. Always read a file before editing it. Supports pagination via startLine and maxLines for large files.',
       parameters: {
         paths: { type: 'array', description: 'File paths to read', required: true },
         startLine: { type: 'number', description: 'Start line number (1-based)', required: false },
@@ -86,7 +84,9 @@ export function createReadTool(applier: FileReadTracker, cwd: string): Tool {
             const displayStart = startLine
             const displayEnd = endLine
             const truncated =
-              endLine < totalLines ? ` (lines ${displayStart}-${displayEnd} of ${totalLines})` : ''
+              startLine > 1 || endLine < totalLines
+                ? ` (lines ${displayStart}-${displayEnd} of ${totalLines})`
+                : ''
 
             applier.markRead(resolved)
             return `=== ${filePath} ===${truncated}\n${formatWithLineNumbers(content, startLine)}`

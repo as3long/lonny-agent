@@ -19,12 +19,23 @@ export function compressToolResult(tc: ToolCall, result: ToolResult): string {
     const lines = output.split('\n')
     const fileHeaders: string[] = []
     let totalLines = 0
+    let inHeader = false
     for (const line of lines) {
       if (line.startsWith('===')) {
         const fp = line.slice(4, line.includes(' ===') ? line.indexOf(' ===') : undefined)
         fileHeaders.push(fp ? fp.trim() : line)
-      } else if (line.match(/^\d+:/)) {
+        inHeader = true
+        // Check for pagination info: (lines X-Y of Z)
+        const pageMatch = line.match(/\(lines (\d+)-(\d+) of \d+\)/)
+        if (pageMatch) {
+          totalLines += parseInt(pageMatch[2]!, 10) - parseInt(pageMatch[1]!, 10) + 1
+        }
+      } else if (line.trim() && inHeader) {
+        // Count non-empty content lines
         totalLines++
+      } else if (!line.startsWith('===')) {
+        // Non-header, non-content (e.g. error line)
+        if (line.trim()) totalLines++
       }
     }
     if (fileHeaders.length === 0) {

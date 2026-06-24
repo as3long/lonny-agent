@@ -31,7 +31,25 @@ export function formatTokenCount(n) {
 
 export function renderMarkdown(text) {
   if (typeof marked !== 'undefined' && marked.parse) {
+    // Configure marked with highlight.js once
+    if (typeof hljs !== 'undefined' && !marked._highlightConfigured) {
+      marked.setOptions({
+        highlight: function(code, lang) {
+          if (lang && hljs.getLanguage(lang)) {
+            return hljs.highlight(code, { language: lang }).value
+          }
+          return hljs.highlightAuto(code).value
+        }
+      })
+      marked._highlightConfigured = true
+    }
     return marked.parse(text, { breaks: true, gfm: true })
   }
   return `<pre>${escapeHtml(text)}</pre>`
+}
+
+
+export function truncate(str, maxLen) {
+  if (!str || str.length <= maxLen) return str;
+  return str.slice(0, maxLen) + "...";
 }

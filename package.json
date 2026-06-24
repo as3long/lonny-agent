@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
+    "@biomejs/biome": "^2.4.15",
     "@vue-tui/runtime": "^0.1.0",
     "adm-zip": "^0.5.17",
     "commander": "^12.0.0",
@@ -50,7 +51,6 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.15",
     "@types/node": "^22.19.19",
     "@types/ws": "^8.18.1",
     "esbuild": "^0.28.1",

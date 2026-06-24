@@ -116,6 +116,7 @@ export function startSessionBridge(
 
   const unsubUserMessage = bus.on(EventChannels.USER_MESSAGE, data => {
     const d = data as { prompt: string }
+    console.log('[bridge] USER_MESSAGE event received, forwarding to client:', { text: d.prompt?.substring(0, 50) })
     send({ type: 'user_message', text: d.prompt })
   })
 

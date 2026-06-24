@@ -1,8 +1,7 @@
-/* ©¤©¤ Input Handling, Event Listeners, Slash Hints ©¤©¤ */
+/* ï¿½ï¿½ï¿½ï¿½ Input Handling, Event Listeners, Slash Hints ï¿½ï¿½ï¿½ï¿½ */
 
 import { addErrorMessage } from './messages.js'
-import { switchTab } from './sidebar.js'
-import { chatInput, sendBtn, sidebarTabs, slashHint, state, stopBtn } from './state.js'
+import { chatInput, sendBtn, slashHint, state, stopBtn } from './state.js'
 import { sendWsMsg } from './ws.js'
 
 function sendMessage() {
@@ -92,12 +91,6 @@ export function initInput() {
     }
   })
 
-  // Sidebar tab switching
-  sidebarTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      switchTab(tab.dataset.tab)
-    })
-  })
 
   // Heartbeat
   setInterval(() => {
