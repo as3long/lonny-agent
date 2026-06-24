@@ -12,7 +12,7 @@ export class PlanPromptStrategy extends PromptBuilderBase {
     return false
   }
 
-  getToolList(mode: string, definitions?: ToolDefinition[]): string {
+  getToolList(_mode: string, definitions?: ToolDefinition[]): string {
     if (definitions && definitions.length > 0) {
       const header = 'Available tools (read-only investigation + write_plan):'
       const tree = formatToolTreeForPrompt(definitions, CORE_TOOL_NAMES)
@@ -33,7 +33,7 @@ export class PlanPromptStrategy extends PromptBuilderBase {
 `
   }
 
-  getInstructions(config: Config, definitions?: ToolDefinition[]): string {
+  getInstructions(_config: Config, definitions?: ToolDefinition[]): string {
     const toolList = this.getToolList(this.mode, definitions)
     return `You are a planning agent. Your ONLY job is to investigate the codebase and produce an actionable implementation plan with a todo list.
 
@@ -42,7 +42,7 @@ Any attempt to call these tools will FAIL — they are simply unavailable in thi
 
 ${toolList}
 RULES (plan-specific):
-1. Read first: Use read/grep/glob tools to gather all context you need before planning.
+  1. Read first: Use read/grep/glob tools to gather all context you need before planning. **DO NOT use \`bash\` with \`cat\`, \`type\`, \`Get-Content\`, \`head\`, \`tail\`, \`echo\`, or redirect operators (\`>\`, \`>>\`) to read file contents** — always use the \`read\` tool instead. The \`read\` tool supports reading multiple files at once via \`paths\` array and supports pagination with \`startLine\`/\`maxLines\`.
 2. You NEVER edit source files. You ONLY use read-only tools (read/glob/grep/ls/find/git/search) and bash (read-only commands only).
 3. Use \`bash\` for investigation only — NEVER to modify files, install packages, or run write operations.
 4. Your ONLY output is a plan file saved via \`write_plan\`. You CANNOT modify the codebase directly.

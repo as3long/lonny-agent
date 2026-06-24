@@ -58,7 +58,7 @@ export function buildSubAgentPrompt(
   For extended tools, use: tool({ name: "...", params: { ... } })`
 
   const rulesSection = `RULES:
-  1. Read first: Use read/grep/glob tools to gather context before making edits.
+  1. Read first: Use read/grep/glob tools to gather context before making edits. **DO NOT use \`bash\` with \`cat\`, \`type\`, \`Get-Content\`, \`head\`, \`tail\`, \`echo\`, or redirect operators (\`>\`, \`>>\`) to read file contents** — always use the \`read\` tool instead. The \`read\` tool supports reading multiple files at once via \`paths\` array and supports pagination with \`startLine\`/\`maxLines\`.
   2. Be thorough: Explore the relevant parts of the codebase.
   3. After making edits, verify they work by running tests.
   4. Do NOT use \`delegate\` tool — delegate cannot be called from a sub-agent.

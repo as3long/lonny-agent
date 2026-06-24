@@ -4,10 +4,15 @@ import type { FileReadTracker } from '../../diff/apply.js'
 import { fmtErr } from '../errors.js'
 import type { ToolResult } from '../types.js'
 import { generateDiff, generateDiffWithContext } from './diff-render.js'
-import { findAllLinesSmart, findAllLinesTolerant, normalizeLine } from './matcher.js'
+import { fixFileIndentation } from './indent-fix.js'
+import {
+  findAllLinesFuzzy,
+  findAllLinesSmart,
+  findAllLinesTolerant,
+  normalizeLine,
+} from './matcher.js'
 import { buildDiag, extractEditsFromJSON, parseMarkdownEdit, summarizeRawInput } from './parser.js'
 import type { Edit, SingleEdit } from './types.js'
-import { fixFileIndentation } from './indent-fix.js'
 
 /** Shorthand for an error result. */
 function fail(msg: string): ToolResult {
@@ -41,7 +46,9 @@ export async function executeEditTool(
     }
     edits = parseMarkdownEdit(contentStr)
     if (edits.length === 0) {
-      return fail(`Failed to parse edit format. Raw input: ${summarizeRawInput(rawInput)}\nUse: \`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\``)
+      return fail(
+        `Failed to parse edit format. Raw input: ${summarizeRawInput(rawInput)}\nUse: \`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\``,
+      )
     }
   } else {
     // Legacy JSON format (backward compatibility)
@@ -52,13 +59,19 @@ export async function executeEditTool(
     // Check if input specifically had empty edits array (for better error message)
     const inputEdits = (input as Record<string, unknown>).edits
     if ('edits' in input && Array.isArray(inputEdits) && inputEdits.length === 0) {
-      return fail(`edit FAILED — no edits to apply. The edits array exists but is empty. Raw input: ${summarizeRawInput(rawInput)}`)
+      return fail(
+        `edit FAILED — no edits to apply. The edits array exists but is empty. Raw input: ${summarizeRawInput(rawInput)}`,
+      )
     }
     // Check if input has edits key but it's not an array
     if ('edits' in input && !Array.isArray((input as Record<string, unknown>).edits)) {
-      return fail(`edit requires "edits" array. Use markdown format: \`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`\nRaw input: ${summarizeRawInput(rawInput)}`)
+      return fail(
+        `edit requires "edits" array. Use markdown format: \`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`\nRaw input: ${summarizeRawInput(rawInput)}`,
+      )
     }
-      return fail(`No valid edits found (empty or invalid format). The edit array must contain objects with file_path, old_string, and new_string. Use markdown code block format: \`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`\nRaw input: ${summarizeRawInput(rawInput)}`)
+    return fail(
+      `No valid edits found (empty or invalid format). The edit array must contain objects with file_path, old_string, and new_string. Use markdown code block format: \`\`\`edit\\nfile: path\\nold: |\\ntext\\nnew: |\\ntext\\n\`\`\`\nRaw input: ${summarizeRawInput(rawInput)}`,
+    )
   }
 
   // Validate each edit object
@@ -82,7 +95,9 @@ export async function executeEditTool(
     }
   }
   if (editErrors.length > 0) {
-      return fail(`edit FAILED — ${editErrors.length} of ${edits.length} edit(s) have missing fields.\n${editErrors.join('\n')}\n\nReceived: ${summarizeRawInput(rawInput)}\n\nEach edit object must be a COMPLETE find-replace pair with BOTH old_string AND new_string.`)
+    return fail(
+      `edit FAILED — ${editErrors.length} of ${edits.length} edit(s) have missing fields.\n${editErrors.join('\n')}\n\nReceived: ${summarizeRawInput(rawInput)}\n\nEach edit object must be a COMPLETE find-replace pair with BOTH old_string AND new_string.`,
+    )
   }
 
   // ── Path traversal security check (symlink-aware) ─────────────────
@@ -98,7 +113,9 @@ export async function executeEditTool(
     const resolved = path.resolve(cwd, e.file_path)
     const relative = path.relative(resolvedCwd, resolved)
     if (relative.startsWith('..') || path.isAbsolute(relative)) {
-      return fail(`edit FAILED — Path traversal detected: "${e.file_path}" resolves outside the working directory "${resolvedCwd}". All file paths must be within the project directory.`)
+      return fail(
+        `edit FAILED — Path traversal detected: "${e.file_path}" resolves outside the working directory "${resolvedCwd}". All file paths must be within the project directory.`,
+      )
     }
     // Symlink-aware check: resolve real path to detect traversal via symlink
     let realPath: string
@@ -120,7 +137,9 @@ export async function executeEditTool(
     }
     const realRelative = path.relative(realCwd, realPath)
     if (realRelative.startsWith('..') || path.isAbsolute(realRelative)) {
-      return fail(`edit FAILED — Path traversal detected via symlink: "${e.file_path}" resolves outside "${realCwd}".`)
+      return fail(
+        `edit FAILED — Path traversal detected via symlink: "${e.file_path}" resolves outside "${realCwd}".`,
+      )
     }
   }
 
@@ -258,62 +277,69 @@ ${suggestion}`)
             }
             break
           } else {
-            // Not found by any strategy — check if old_string lines are scattered (non-contiguous)
-            const contentLines = content.split('\n')
-            const oldLines = e.old_string.split('\n').filter(l => l.trim())
-            const foundIndices: number[] = []
-            for (const ol of oldLines) {
-              const normOl = normalizeLine(ol.trim())
-              if (!normOl) continue
-              const idx = contentLines.findIndex(
-                (cl, ci) => !foundIndices.includes(ci) && normalizeLine(cl).includes(normOl),
-              )
-              if (idx !== -1) foundIndices.push(idx)
-            }
-            let hint = ''
-            const isScattered =
-              foundIndices.length >= 2 &&
-              foundIndices[foundIndices.length - 1]! - foundIndices[0]! + 1 >
-                foundIndices.length
+            // 4b. Try fuzzy LCS-based matching (tolerates up to 20% mismatched lines)
+            const fuzzy = findAllLinesFuzzy(content, e.old_string)
+            if (fuzzy.length > 0) {
+              matchInfo = {
+                index: fuzzy[0]!.index,
+                length: fuzzy[0]!.length,
+                strategy: 'smart',
+              }
+            } else {
+              // Not found by any strategy — check if old_string lines are scattered (non-contiguous)
+              const contentLines = content.split('\n')
+              const oldLines = e.old_string.split('\n').filter(l => l.trim())
+              const foundIndices: number[] = []
+              for (const ol of oldLines) {
+                const normOl = normalizeLine(ol.trim())
+                if (!normOl) continue
+                const idx = contentLines.findIndex(
+                  (cl, ci) => !foundIndices.includes(ci) && normalizeLine(cl).includes(normOl),
+                )
+                if (idx !== -1) foundIndices.push(idx)
+              }
+              let hint = ''
+              const isScattered =
+                foundIndices.length >= 2 &&
+                foundIndices[foundIndices.length - 1]! - foundIndices[0]! + 1 > foundIndices.length
 
-            if (isScattered) {
-              hint = `\n  ⚠️  ${foundIndices.length} lines of old_string were found in the file, but they are NOT contiguous — you skipped lines between them.
+              if (isScattered) {
+                hint = `\n  ⚠️  ${foundIndices.length} lines of old_string were found in the file, but they are NOT contiguous — you skipped lines between them.
   old_string must be a CONTIGUOUS chunk of the file. Use separate \`\`\`edit blocks for each section (see "Multiple files" example above).
   Matched at lines: ${foundIndices.map(i => i + 1).join(', ')}`
-            } else {
-              const firstLine = (e.old_string.split('\n')[0] || '').trim()
-              if (firstLine) {
-                const normFirst = normalizeLine(firstLine)
-                const similarIdx = contentLines.findIndex(
-                  l =>
-                    l.length > 0 &&
-                    normFirst.length > 0 &&
-                    normalizeLine(l).includes(normFirst),
-                )
-                if (similarIdx !== -1) {
-                  const start = Math.max(0, similarIdx - 1)
-                  const end = Math.min(contentLines.length, similarIdx + 2)
-                  const snippet = contentLines.slice(start, end).join('\n')
-                  hint = `\n  Near line ${similarIdx + 1}:\n  """\n${snippet}\n  """`
+              } else {
+                const firstLine = (e.old_string.split('\n')[0] || '').trim()
+                if (firstLine) {
+                  const normFirst = normalizeLine(firstLine)
+                  const similarIdx = contentLines.findIndex(
+                    l =>
+                      l.length > 0 && normFirst.length > 0 && normalizeLine(l).includes(normFirst),
+                  )
+                  if (similarIdx !== -1) {
+                    const start = Math.max(0, similarIdx - 1)
+                    const end = Math.min(contentLines.length, similarIdx + 2)
+                    const snippet = contentLines.slice(start, end).join('\n')
+                    hint = `\n  Near line ${similarIdx + 1}:\n  """\n${snippet}\n  """`
+                  }
+                }
+                if (!hint && contentLines.length > 0) {
+                  const lines = contentLines.slice(0, Math.min(contentLines.length, 5))
+                  hint = `\n  File content (first ${lines.length} lines):\n  """\n${lines.join('\n')}\n  """`
                 }
               }
-              if (!hint && contentLines.length > 0) {
-                const lines = contentLines.slice(0, Math.min(contentLines.length, 5))
-                hint = `\n  File content (first ${lines.length} lines):\n  """\n${lines.join('\n')}\n  """`
-              }
-            }
-            const diag = buildDiag(e)
-            const readHint = readWarning ? `\n  ${readWarning}` : ''
-            const suggestion = `  → Read the file again with read({ paths: ["${e.file_path}"] }) to get current content, then retry with exact matching text. Include 2-3 lines of surrounding context for uniqueness.${readHint}`
-            results.push(`  FAIL ${relPath}: old_string not found${hint}
+              const diag = buildDiag(e)
+              const readHint = readWarning ? `\n  ${readWarning}` : ''
+              const suggestion = `  → Read the file again with read({ paths: ["${e.file_path}"] }) to get current content, then retry with exact matching text. Include 2-3 lines of surrounding context for uniqueness.${readHint}`
+              results.push(`  FAIL ${relPath}: old_string not found${hint}
   Edit: ${diag}
 ${suggestion}`)
-            if (!anyFailed) {
-              anyFailed = true
-              firstError = `old_string not found in ${relPath}${hint}`
-            }
-            break
-          }
+              if (!anyFailed) {
+                anyFailed = true
+                firstError = `old_string not found in ${relPath}${hint}`
+              }
+              break
+            } // close inner else (fuzzy failure)
+          } // close outer else (smart === 0 / fuzzy success)
         }
       }
 
@@ -366,7 +392,7 @@ ${suggestion}`)
     }
     // Only show FAIL lines in the error (successful edits were rolled back)
     const failLines = results.filter(r => r.startsWith('  FAIL ')).join('\n')
-      return fail(`Edit FAILED — all changes rolled back.\n${failLines}\n\n${firstError}`)
+    return fail(`Edit FAILED — all changes rolled back.\n${failLines}\n\n${firstError}`)
   }
 
   for (const [resolved, content] of modifiedFiles) {
@@ -384,7 +410,9 @@ ${suggestion}`)
         }
       }
     } catch (err) {
-      return fail(`Failed to write ${path.relative(cwd, resolved).replace(/\\/g, '/')}: ${fmtErr(err)}. Input: ${summarizeRawInput(rawInput)}`)
+      return fail(
+        `Failed to write ${path.relative(cwd, resolved).replace(/\\/g, '/')}: ${fmtErr(err)}. Input: ${summarizeRawInput(rawInput)}`,
+      )
     }
     applier.markRead(resolved)
   }

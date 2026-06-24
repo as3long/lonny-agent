@@ -95,3 +95,7 @@ export function setStatus(running) {
   statusIndicator.className = running ? 'status-running' : 'status-idle'
   setInputEnabled(!running)
 }
+
+export function updateState(partial) {
+  Object.assign(state, partial)
+}

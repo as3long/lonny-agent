@@ -112,11 +112,8 @@ ${isWindows ? '  - Use `;` (semicolon) instead of `&&` to chain commands' : ''}
 ${isWindows ? '  - ⚠️  `Select-String` exits with code 1 when no match is found (e.g. `Select-String -Pattern "FAIL"` returns code 1 if no line contains FAIL). This is NORMAL — it does NOT mean the command failed. Append `; $LASTEXITCODE = 0` to suppress this.' : ''}
 ${isWindows ? '  - ⚠️  PowerShell syntax: use `${var}.member` instead of `$var.member`. In PowerShell, `$var:member` is interpreted as a drive-qualified variable (like `$env:Path`). Always wrap the variable name in braces: `${lines}.Length` NOT `$lines.Length`, `${bytes}[0]` NOT `$bytes[0]`.' : ''}
 ${isWindows ? '  - ⚠️  Do NOT use `Remove-Item -Recurse -Force` or `rm -rf` — these are blocked by security. For cleanup, remove specific files with `del <path>` or use the `edit` tool.' : ''}
-${isWindows ? '  - PowerShell code snippet template (use these patterns instead of guessing):' : ''}
-${isWindows ? '    Get-Content file.txt                         # cat' : ''}
-${isWindows ? '    Get-Content file.txt -Head 10                # head -10' : ''}
-${isWindows ? '    (Get-Content file.txt) -join "`n"            # read whole file as single string' : ''}
-${isWindows ? '    Get-ChildItem -Recurse -Filter "*.ts"        # find .' : ''}
+  ${isWindows ? '  - PowerShell code snippet template (use these patterns instead of guessing):' : ''}
+  ${isWindows ? '    Get-ChildItem -Recurse -Filter "*.ts"        # find .' : ''}
 ${isWindows ? '    Get-ChildItem src -Recurse -Include "*.ts","*.js"  # find with multiple patterns' : ''}
 ${isWindows ? '    Select-String -Pattern "TODO" -Path "src/**/*.ts"  # grep -r' : ''}
 ${isWindows ? '    Select-String -Pattern "TODO" -Path "*.ts"   # grep in current dir only' : ''}
@@ -138,7 +135,7 @@ ${isWindows ? '  - ⚠️  Pre-commit hooks (Husky/lint-staged) often fail on Wi
 
   const sharedRules = `
 RULES:
-1. Read first: Use read/grep/glob tools to gather all context you need before making any edits.
+  1. Read first: Use read/grep/glob tools to gather all context you need before making any edits. **DO NOT use \`bash\` with \`cat\`, \`type\`, \`Get-Content\`, \`head\`, \`tail\`, \`echo\`, or redirect operators (\`>\`, \`>>\`) to read file contents** — always use the \`read\` tool instead. The \`read\` tool supports reading multiple files at once via \`paths\` array and supports pagination with \`startLine\`/\`maxLines\`.
 2. Be thorough: Explore the relevant parts of the codebase.
   3. AST tools (\`ast_query\`, \`ast_edit\`) are available via the \`tool()\` gateway. Use \`ast_query\` to inspect code structure (functions, classes, imports) before editing. Use \`ast_edit\` for structure-aware edits that preserve formatting.
 4. **For JavaScript/TypeScript files, prefer AST tools over raw text tools**: Use \`ast_query\` (not \`read\`) to understand file structure — it returns structured function/class/import/export data with exact line numbers. Use \`ast_edit\` (not \`edit\`) to replace entire functions, classes, or variables — it avoids string-matching issues and preserves formatting. Reserve \`edit\` for small surgical changes to function bodies or single-line fixes.

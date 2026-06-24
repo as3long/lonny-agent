@@ -152,3 +152,109 @@ export function findAllLinesSmart(content: string, oldString: string): MatchPos[
 
   return matches
 }
+
+/**
+ * Fuzzy LCS-based fallback matcher.
+ * Tries to find oldString lines in content by allowing up to `maxMismatchRatio`
+ * of lines to be missing or differ. This catches cases where a few lines have
+ * minor differences that even findAllLinesSmart couldn't handle.
+ *
+ * Only activates when old_string has at least 3 non-blank lines, to avoid
+ * false positives on short old_strings.
+ *
+ * Returns the first best match found, or [] if even the fuzzy match fails.
+ */
+export function findAllLinesFuzzy(
+  content: string,
+  oldString: string,
+  maxMismatchRatio: number = 0.2,
+): MatchPos[] {
+  const contentLines = content.split('\n')
+  const oldLines = oldString.split('\n')
+  if (oldLines.length === 0) return []
+
+  // Only activate for multi-line edits (at least 3 non-blank lines)
+  const nonBlankOld = oldLines.filter(l => l.trim())
+  if (nonBlankOld.length < 3) return []
+
+  // Build byte-position index for each content line
+  const contentPositions: number[] = []
+  let pos = 0
+  for (let i = 0; i < contentLines.length; i++) {
+    contentPositions.push(pos)
+    pos += contentLines[i].length + 1 // +1 for \n
+  }
+
+  // Normalize old lines (skip blanks like the main matcher)
+  const normOld: Array<{ line: string; orig: string; idx: number }> = []
+  for (let i = 0; i < oldLines.length; i++) {
+    const trimmed = oldLines[i].trim()
+    if (!trimmed) continue
+    normOld.push({ line: normalizeLine(trimmed), orig: trimmed, idx: i })
+  }
+
+  if (normOld.length < 3) return []
+
+  const maxMismatches = Math.max(1, Math.floor(normOld.length * maxMismatchRatio))
+  const minMatches = normOld.length - maxMismatches
+
+  // Ensure at least 70% match rate
+  const effectiveMin = Math.max(Math.ceil(normOld.length * 0.7), minMatches)
+
+  let bestMatch: { start: number; matches: number } | null = null
+  let bestMatches = -1
+
+  for (let startIdx = 0; startIdx < contentLines.length; startIdx++) {
+    let ci = startIdx
+    let matches = 0
+    let mismatches = 0
+
+    for (const nOld of normOld) {
+      if (ci >= contentLines.length) break
+      if (normalizeLine(contentLines[ci]) === nOld.line) {
+        matches++
+        ci++
+      } else {
+        mismatches++
+        // Try skipping 1-2 content lines
+        let found = false
+        for (let skip = 1; skip <= 2; skip++) {
+          if (ci + skip >= contentLines.length) break
+          if (normalizeLine(contentLines[ci + skip]) === nOld.line) {
+            matches++
+            ci = ci + skip + 1
+            found = true
+            break
+          }
+        }
+        if (!found) {
+          ci++
+        }
+      }
+
+      if (mismatches > maxMismatches) break
+    }
+
+    if (matches > bestMatches) {
+      bestMatches = matches
+      bestMatch = { start: startIdx, matches }
+    }
+
+    if (matches >= effectiveMin) {
+      // Good enough — compute byte position and length
+      const endLine = Math.min(startIdx + normOld.length - 1, contentLines.length - 1)
+      const byteStart = contentPositions[startIdx]
+      const byteEnd = contentPositions[endLine] + contentLines[endLine].length
+      return [{ index: byteStart, length: byteEnd - byteStart }]
+    }
+  }
+
+  if (bestMatch && bestMatches >= effectiveMin) {
+    const endLine = Math.min(bestMatch.start + normOld.length - 1, contentLines.length - 1)
+    const byteStart = contentPositions[bestMatch.start]
+    const byteEnd = contentPositions[endLine] + contentLines[endLine].length
+    return [{ index: byteStart, length: byteEnd - byteStart }]
+  }
+
+  return []
+}

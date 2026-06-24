@@ -1,5 +1,6 @@
 /* ── Message Rendering ── */
 
+import { openPreview } from './preview-modal.js'
 import {
   messagesEl,
   pendingToolCalls,
@@ -8,6 +9,7 @@ import {
   tokenCalls,
   tokenIn,
   tokenOut,
+  updateState,
 } from './state.js'
 import {
   escapeHtml,
@@ -16,7 +18,6 @@ import {
   renderMarkdown,
   scrollToBottom,
 } from './utils.js'
-import { openPreview } from './preview-modal.js'
 
 // ── Tool Icons (inline SVG) ──
 const TOOL_ICONS = {
@@ -25,15 +26,27 @@ const TOOL_ICONS = {
   glob: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 10a4 4 0 0 1 8 0c0 2.5-2 5-4 7-2-2-4-4.5-4-7z"/><circle cx="10" cy="10" r="8"/><line x1="2" y1="2" x2="6" y2="6"/></svg>',
   grep: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
   bash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
-  write_plan: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>',
-  fetch: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
-  delete: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+  write_plan:
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>',
+  fetch:
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+  delete:
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
 }
 function getToolIcon(name) {
   return TOOL_ICONS[name] || TOOL_ICONS.read
 }
 function getToolColor(name) {
-  const map = { read: 'tool-name-read', glob: 'tool-name-glob', grep: 'tool-name-grep', edit: 'tool-name-edit', bash: 'tool-name-bash', write_plan: 'tool-name-write', fetch: 'tool-name-fetch', delete: 'tool-name-delete' }
+  const map = {
+    read: 'tool-name-read',
+    glob: 'tool-name-glob',
+    grep: 'tool-name-grep',
+    edit: 'tool-name-edit',
+    bash: 'tool-name-bash',
+    write_plan: 'tool-name-write',
+    fetch: 'tool-name-fetch',
+    delete: 'tool-name-delete',
+  }
   return map[name] || ''
 }
 
@@ -65,7 +78,10 @@ export function addSystemMessage(text) {
 }
 
 export function addUserMessage(text) {
-  console.log('[msg] addUserMessage called:', { textLen: text?.length, messagesElExists: !!messagesEl })
+  console.log('[msg] addUserMessage called:', {
+    textLen: text?.length,
+    messagesElExists: !!messagesEl,
+  })
   try {
     const msgDiv = document.createElement('div')
     msgDiv.className = 'message user'
@@ -86,8 +102,21 @@ export function addUserMessage(text) {
       // Save reference before wrapWithHover moves body out of msgDiv
       const nextSibling = body.nextSibling
       const hoverWrap = wrapWithHover(body, [
-        { icon: '📋', title: 'Copy', onClick() { navigator.clipboard.writeText(text) } },
-        { icon: '↻', title: 'Resend', onClick() { document.getElementById('chat-input').value = text; document.getElementById('chat-input').focus() } },
+        {
+          icon: '📋',
+          title: 'Copy',
+          onClick() {
+            navigator.clipboard.writeText(text)
+          },
+        },
+        {
+          icon: '↻',
+          title: 'Resend',
+          onClick() {
+            document.getElementById('chat-input').value = text
+            document.getElementById('chat-input').focus()
+          },
+        },
       ])
       msgDiv.insertBefore(hoverWrap, nextSibling)
     }
@@ -148,7 +177,7 @@ export function finalizeAssistantMessage() {
 export function addToolCall(name, input, id) {
   const container = state.streamingMsgEl || messagesEl.querySelector('.message:last-child')
   const div = document.createElement('div')
-  div.className = 'tool-call' + (id ? ' executing' : '')
+  div.className = `tool-call${id ? ' executing' : ''}`
   div.dataset.toolId = id || ''
 
   const icon = getToolIcon(name)
@@ -292,7 +321,12 @@ export function addToolResult(name, success, outputOrError, id) {
       viewBtn.className = 'tool-result-view-btn'
       viewBtn.textContent = '📄 View Full Content'
       viewBtn.addEventListener('click', () => {
-        openPreview(display, name === 'edit' ? `${name} result` : `${name}: ${outputOrError.split('\n')[0].slice(0, 60)}`)
+        openPreview(
+          display,
+          name === 'edit'
+            ? `${name} result`
+            : `${name}: ${outputOrError.split('\n')[0].slice(0, 60)}`,
+        )
       })
       div.appendChild(viewBtn)
     }
@@ -379,15 +413,13 @@ export function renderSessionHistory(messages) {
     } catch (err) {
       errors++
       console.error(
-        '[renderSessionHistory] Error rendering message #' + rendered + ' role=' + msg.role + ':',
+        `[renderSessionHistory] Error rendering message #${rendered} role=${msg.role}:`,
         err,
       )
     }
   }
   if (errors > 0) {
-    console.warn(
-      '[renderSessionHistory] Rendered ' + rendered + ' messages with ' + errors + ' errors',
-    )
+    console.warn(`[renderSessionHistory] Rendered ${rendered} messages with ${errors} errors`)
   }
 }
 

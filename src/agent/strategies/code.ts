@@ -12,7 +12,7 @@ export class CodePromptStrategy extends PromptBuilderBase {
     return true
   }
 
-  getToolList(mode: string, definitions?: ToolDefinition[]): string {
+  getToolList(_mode: string, definitions?: ToolDefinition[]): string {
     if (definitions && definitions.length > 0) {
       const header = 'Available tools:'
       const tree = formatToolTreeForPrompt(definitions, CORE_TOOL_NAMES)
@@ -37,11 +37,11 @@ export class CodePromptStrategy extends PromptBuilderBase {
 `
   }
 
-  getInstructions(config: Config, definitions?: ToolDefinition[]): string {
+  getInstructions(_config: Config, _definitions?: ToolDefinition[]): string {
     return `You are a coding agent optimized for per-call pricing.
 
 RULES (code-specific):
-  1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. Always read the file first to see its current content before editing.
+  1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. **DO NOT use \`bash\` with \`cat\`, \`type\`, \`Get-Content\`, \`head\`, \`tail\`, \`echo\`, or redirect operators (\`>\`, \`>>\`) to read file contents** — always use the \`read\` tool instead. The \`read\` tool supports reading multiple files at once via \`paths\` array and supports pagination with \`startLine\`/\`maxLines\`. Always read the file first to see its current content before editing.
 2. edit CALL FORMAT — use markdown code block format:
    \`\`\`edit
    file: src/file.ts

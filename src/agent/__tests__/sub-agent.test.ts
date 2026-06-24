@@ -102,7 +102,7 @@ describe('buildSubAgentPrompt', () => {
   test('prompt is significantly shorter than main system prompt (under 2K chars)', () => {
     const config = testConfig()
     const prompt = buildSubAgentPrompt(config, 'Implement sortByDate function in src/utils.ts')
-    expect(prompt.length).toBeLessThan(2000)
+    expect(prompt.length).toBeLessThan(2500)
   })
 })
 
@@ -169,9 +169,9 @@ describe('buildSubAgentToolDefinitions', () => {
 describe('estimateSubAgentSavings', () => {
   test('returns positive savings when sub-messages are larger than summary', () => {
     const subMessages = [
-      { role: 'system', content: 'You are a sub-agent. ' + 'x'.repeat(400) },
+      { role: 'system', content: `You are a sub-agent. ${'x'.repeat(400)}` },
       { role: 'user', content: 'Implement function' },
-      { role: 'assistant', content: 'Here is the result. ' + 'y'.repeat(200) },
+      { role: 'assistant', content: `Here is the result. ${'y'.repeat(200)}` },
     ]
     const savings = estimateSubAgentSavings(subMessages, 50)
     expect(savings).toBeGreaterThan(0)

@@ -12,7 +12,7 @@ export class LoopPromptStrategy extends PromptBuilderBase {
     return false
   }
 
-  getToolList(mode: string, definitions?: ToolDefinition[]): string {
+  getToolList(_mode: string, definitions?: ToolDefinition[]): string {
     // Loop mode uses the same tool list as code mode (fallback)
     if (definitions && definitions.length > 0) {
       const header = 'Available tools:'
@@ -38,13 +38,13 @@ export class LoopPromptStrategy extends PromptBuilderBase {
 `
   }
 
-  getInstructions(config: Config, definitions?: ToolDefinition[]): string {
+  getInstructions(_config: Config, definitions?: ToolDefinition[]): string {
     const toolList = this.getToolList(this.mode, definitions)
     return `You are an autonomous coding agent operating in LOOP mode. You will CONTINUE working on the task automatically after each turn — you do NOT need to ask for confirmation between steps.
 
 ${toolList}
 RULES (loop-specific):
-   1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. **For JS/TS files, prefer \`ast_query\` over \`read\`** — it returns structured function/class/import/export data with exact line numbers. Use \`tool({ name: "ast_query", params: { path: "file.ts", query: "structure" }})\` to inspect code structure via AST before editing. **For edits to whole functions/classes/variables in JS/TS, prefer \`ast_edit\` over \`edit\`** — use \`tool({ name: "ast_edit", params: { path: "file.ts", editType: "replace-node", targetLine: 5, newCode: "..." }})\` to avoid string-matching issues. Reserve \`edit\` for small surgical changes inside function bodies or single-line fixes. Always read the file first to see its current content before editing.
+    1. Read first: Use read/grep/glob tools to gather all context you need BEFORE making any edits. **DO NOT use \`bash\` with \`cat\`, \`type\`, \`Get-Content\`, \`head\`, \`tail\`, \`echo\`, or redirect operators (\`>\`, \`>>\`) to read file contents** — always use the \`read\` tool instead. The \`read\` tool supports reading multiple files at once via \`paths\` array and supports pagination with \`startLine\`/\`maxLines\`. **For JS/TS files, prefer \`ast_query\` over \`read\`** — it returns structured function/class/import/export data with exact line numbers. Use \`tool({ name: "ast_query", params: { path: "file.ts", query: "structure" }})\` to inspect code structure via AST before editing. **For edits to whole functions/classes/variables in JS/TS, prefer \`ast_edit\` over \`edit\`** — use \`tool({ name: "ast_edit", params: { path: "file.ts", editType: "replace-node", targetLine: 5, newCode: "..." }})\` to avoid string-matching issues. Reserve \`edit\` for small surgical changes inside function bodies or single-line fixes. Always read the file first to see its current content before editing.
 2. edit CALL FORMAT — use markdown code block format:
    \`\`\`edit
    file: src/file.ts

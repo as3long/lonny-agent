@@ -12,7 +12,7 @@ export class ReviewPromptStrategy extends PromptBuilderBase {
     return false
   }
 
-  getToolList(mode: string, definitions?: ToolDefinition[]): string {
+  getToolList(_mode: string, definitions?: ToolDefinition[]): string {
     if (definitions && definitions.length > 0) {
       const header = 'Available tools (read-only investigation + bash/git + write_plan):'
       const tree = formatToolTreeForPrompt(definitions, CORE_TOOL_NAMES)
@@ -33,7 +33,7 @@ export class ReviewPromptStrategy extends PromptBuilderBase {
 `
   }
 
-  getInstructions(config: Config, definitions?: ToolDefinition[]): string {
+  getInstructions(_config: Config, definitions?: ToolDefinition[]): string {
     const toolList = this.getToolList(this.mode, definitions)
     return `You are a code review agent. Your job is to review code changes and provide actionable feedback.
 
@@ -42,7 +42,7 @@ You CAN use \`bash\` for read-only commands and \`git\` for reviewing diffs and 
 
 ${toolList}
 RULES (review-specific):
-1. Read first: Use read/grep/glob tools to gather all context you need before reviewing.
+  1. Read first: Use read/grep/glob tools to gather all context you need before reviewing. **DO NOT use \`bash\` with \`cat\`, \`type\`, \`Get-Content\`, \`head\`, \`tail\`, \`echo\`, or redirect operators (\`>\`, \`>>\`) to read file contents** — always use the \`read\` tool instead. The \`read\` tool supports reading multiple files at once via \`paths\` array and supports pagination with \`startLine\`/\`maxLines\`.
 2. You NEVER edit source files. You ONLY use read-only tools (read/glob/grep/ls/find/git/search/bash).
 3. Use \`bash\` for investigation only — NEVER to modify files, install packages, or run write operations.
 4. Use \`git\` to review changes: \`git diff\` (uncommitted changes), \`git log\` (commit history), \`git show\` (specific commits).
