@@ -1,6 +1,7 @@
 /* ── WebSocket Connection & Message Handler ── */
 
 import { closeConfirmDialog, showConfirmDialog } from './confirm.js'
+import { renderFileTree, updateTreeChildren } from './file-tree.js'
 import {
   addErrorMessage,
   addSystemMessage,
@@ -15,14 +16,14 @@ import {
   showThinking,
   startAssistantMessage,
 } from './messages.js'
+import { openPreview } from './preview-modal.js'
 import { addToolLogEntry, updatePlansAndTodos } from './sidebar.js'
-import { renderFileTree, updateTreeChildren } from './file-tree.js'
 import {
   balanceDisplay,
   balanceSep,
   connectionOverlay,
-  ctxLabel,
   ctxBarFill,
+  ctxLabel,
   cwdDisplay,
   MAX_RECONNECT_ATTEMPTS,
   messagesEl,
@@ -44,7 +45,7 @@ import { setWs } from './ws.js'
 function updateContextDisplay(currentTokens, contextWindow) {
   if (!contextWindow) return
   const label = `ctx: ${formatTokenCount(currentTokens || 0)}/${formatTokenCount(contextWindow)}`
-  const pct = Math.min((currentTokens || 0) / contextWindow * 100, 100)
+  const pct = Math.min(((currentTokens || 0) / contextWindow) * 100, 100)
   ctxLabel.textContent = label
   ctxBarFill.style.width = `${pct}%`
   ctxBarFill.className = 'ctx-bar-fill' + (pct > 95 ? ' danger' : pct > 80 ? ' warning' : '')
@@ -240,6 +241,10 @@ function handleMessage(msg) {
       break
 
     case 'pong':
+      break
+
+    case 'file_content':
+      openPreview(msg.content, msg.path)
       break
 
     default:
