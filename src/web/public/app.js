@@ -1,16 +1,12 @@
 /* ── Entry Point ── */
 
-import { initInput } from './input.js'
-import { connect } from './websocket.js'
-import { initTheme, toggleTheme } from './theme.js'
-import {
-  fullscreenBtn,
-  resizeHandleLeft,
-  resizeHandleRight,
-  themeToggle,
-} from './state.js'
-import { initPlanFilters, initNewPlan, initClearLog } from './sidebar.js'
 import { initFileTree } from './file-tree.js'
+import { initInput } from './input.js'
+import { initClearLog, initNewPlan, initPlanFilters } from './sidebar.js'
+import { fullscreenBtn, resizeHandleLeft, resizeHandleRight, themeToggle } from './state.js'
+import { initTheme, toggleTheme } from './theme.js'
+import { initTTS } from './tts.js'
+import { connect } from './websocket.js'
 
 // ── Resize Handle Drag Logic ──
 
@@ -19,7 +15,7 @@ function initResizeHandle(handle, cssVar, min, max) {
   let startX = 0
   let startSize = 0
 
-  handle.addEventListener('mousedown', (e) => {
+  handle.addEventListener('mousedown', e => {
     e.preventDefault()
     isDragging = true
     startX = e.clientX
@@ -50,12 +46,13 @@ function initResizeHandle(handle, cssVar, min, max) {
 // ── Initialize ──
 
 initTheme()
+initTTS()
 connect()
 initInput()
-  initPlanFilters()
-  initNewPlan()
-  initClearLog()
-  initFileTree()
+initPlanFilters()
+initNewPlan()
+initClearLog()
+initFileTree()
 
 // ── Sidebars: Resize ──
 initResizeHandle(resizeHandleLeft, '--sidebar-left-width', 180, 320)

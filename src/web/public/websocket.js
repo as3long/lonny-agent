@@ -38,6 +38,7 @@ import {
   tokenIn,
   tokenOut,
 } from './state.js'
+import { flushSpeaking } from './tts.js'
 import { formatTokenCount, getWsUrl, scrollToBottom, truncate } from './utils.js'
 import { setWs } from './ws.js'
 
@@ -146,6 +147,9 @@ function handleMessage(msg) {
       finalizeAssistantMessage()
       if (msg.reason === 'error') {
         addErrorMessage('An error occurred during processing.')
+      } else {
+        // Agent finished — now read the final messages aloud (no mid-run interruptions).
+        flushSpeaking()
       }
       break
 

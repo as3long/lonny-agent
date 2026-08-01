@@ -11,6 +11,7 @@ import {
   tokenOut,
   updateState,
 } from './state.js'
+import { queueForSpeaking } from './tts.js'
 import {
   escapeHtml,
   formatTimestamp,
@@ -169,6 +170,9 @@ export function finalizeAssistantMessage() {
   const body = state.streamingMsgEl.querySelector('.message-body')
   body.innerHTML = renderMarkdown(state.streamingText)
   body.classList.remove('streaming')
+  // Defer speech until the agent finishes (done event) so long runs
+  // don't interrupt the audio on every intermediate message.
+  queueForSpeaking(state.streamingText)
   state.streamingMsgEl = null
   state.streamingText = ''
   scrollToBottom()

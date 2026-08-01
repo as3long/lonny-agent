@@ -1,8 +1,8 @@
 /* ── File Tree Component ── */
 
+import { onPlanClick } from './sidebar.js'
 import { fileRevealBtn, fileTree, state } from './state.js'
 import { sendWsMsg } from './ws.js'
-import { onPlanClick } from './sidebar.js'
 
 // ── Icons ──
 const ICON_FOLDER = '📁'
@@ -36,9 +36,7 @@ function buildTreeNode(item, depth) {
   const isExpanded = state.fileTreeExpanded.has(item.path)
   const isActive = item.path === state.fileTreeActive
   const isDotLonny = item.name === '.lonny' || item.path.startsWith('.lonny/')
-  const icon = isDir
-    ? (isExpanded ? ICON_FOLDER_OPEN : ICON_FOLDER)
-    : getFileIcon(item.name)
+  const icon = isDir ? (isExpanded ? ICON_FOLDER_OPEN : ICON_FOLDER) : getFileIcon(item.name)
 
   const li = document.createElement('li')
   li.className = `tree-item${isDir ? ' tree-dir' : ' tree-file'}${isActive ? ' active' : ''}${isDotLonny ? ' dot-lonny' : ''}`
@@ -51,7 +49,7 @@ function buildTreeNode(item, depth) {
 
   if (isDir) {
     // Toggle expand on click
-    label.addEventListener('click', (e) => {
+    label.addEventListener('click', e => {
       e.stopPropagation()
       if (isExpanded) {
         state.fileTreeExpanded.delete(item.path)
@@ -81,7 +79,7 @@ function buildTreeNode(item, depth) {
     }
   } else {
     // File: click to load
-    label.addEventListener('click', (e) => {
+    label.addEventListener('click', e => {
       e.stopPropagation()
       selectFile(item)
     })
@@ -220,7 +218,7 @@ export function renderFileTree(treeData) {
 // ── Update existing tree with children for a path (lazy load callback) ──
 export function updateTreeChildren(parentPath, children) {
   // Update state data
-  const update = (items) => {
+  const update = items => {
     for (const item of items) {
       if (item.path === parentPath) {
         item.children = children
