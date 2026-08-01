@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
 import type { LLMMessage } from '../llm.js'
-import { getContinuationMessage, isTaskCompleteMessage } from '../session-utils.js'
+import {
+  compressToolResult,
+  getContinuationMessage,
+  isTaskCompleteMessage,
+} from '../session-utils.js'
 
 function msg(role: LLMMessage['role'], overrides?: Partial<LLMMessage>): LLMMessage {
   return { role, content: '', ...overrides }
@@ -86,5 +90,44 @@ describe('isTaskCompleteMessage', () => {
   test('is case insensitive', () => {
     expect(isTaskCompleteMessage('TASK COMPLETE')).toBe(true)
     expect(isTaskCompleteMessage('Task Complete')).toBe(true)
+  })
+})
+
+describe('compressToolResult', () => {
+  test('read: keeps small outputs as-is', () => {
+    const output = '=== a.ts === (lines 1-5 of 5)\nline1\nline2\nline3'
+    expect(compressToolResult(toolCall('read'), { success: true, output })).toBe(output)
+  })
+
+  test('read: keeps content preview for large outputs', () => {
+    const body = Array.from({ length: 100 }, (_, i) => `line ${i} ${'x'.repeat(50)}`).join('\n')
+    const output = `=== big.ts === (lines 1-100 of 100)\n${body}`
+    const result = compressToolResult(toolCall('read'), { success: true, output })
+    expect(result).toContain('=== big.ts ===')
+    expect(result).toContain('line 0 ')
+    expect(result).toContain('line 79 ')
+    expect(result).not.toContain('line 99 ')
+    expect(result).toContain('[read summary: 1 file(s), 200 content lines total]')
+  })
+
+  test('read: keeps a preview for each file in multi-file output', () => {
+    const body = Array.from({ length: 100 }, (_, i) => `a${i} ${'x'.repeat(50)}`).join('\n')
+    const output = `=== a.ts === (lines 1-100 of 100)\n${body}\n\n=== b.ts === (lines 1-100 of 100)\n${body}`
+    const result = compressToolResult(toolCall('read'), { success: true, output })
+    expect(result).toContain('=== a.ts ===')
+    expect(result).toContain('=== b.ts ===')
+    expect(result).toContain('[read summary: 2 file(s), 400 content lines total]')
+  })
+
+  test('read: error results return an ERROR prefix', () => {
+    const result = compressToolResult(toolCall('read'), { success: false, error: 'boom' })
+    expect(result).toBe('ERROR: boom')
+  })
+
+  test('read: output without headers falls back to capped text', () => {
+    const output = 'x'.repeat(600)
+    const result = compressToolResult(toolCall('read'), { success: true, output })
+    expect(result).toContain('[read result]')
+    expect(result).toContain('[truncated: 600 total chars]')
   })
 })

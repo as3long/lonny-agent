@@ -44,8 +44,34 @@ export function compressToolResult(tc: ToolCall, result: ToolResult): string {
         ? output
         : `[read result] ${output.slice(0, 300)}…\n[truncated: ${output.length} total chars]`
     }
-    // Compress: just file paths + line counts
-    return `[read result] ${fileHeaders.length} file(s): ${fileHeaders.join(', ')} (${totalLines} total lines shown)`
+    // Small outputs: keep as-is, no compression needed.
+    if (output.length <= 4000) {
+      return output
+    }
+    // Large outputs: keep each file header plus the first maxPreviewLines
+    // content lines so the model retains file context across session
+    // restore / compaction (paths + line counts alone lose all content).
+    const maxPreviewLines = 80
+    const blocks: string[] = []
+    let current: string[] = []
+    for (const line of lines) {
+      if (line.startsWith('===') && current.length > 0) {
+        blocks.push(current.join('\n'))
+        current = []
+      }
+      current.push(line)
+    }
+    if (current.length > 0) blocks.push(current.join('\n'))
+    const preview = blocks
+      .map(block => {
+        const blockLines = block.split('\n')
+        if (blockLines.length <= maxPreviewLines + 1) return block
+        // Keep the header plus the first maxPreviewLines content lines.
+        const head = blockLines.slice(0, maxPreviewLines + 1)
+        return `${head.join('\n')}\n… [truncated: ${blockLines.length} lines in this file]`
+      })
+      .join('\n\n')
+    return `${preview}\n\n[read summary: ${fileHeaders.length} file(s), ${totalLines} content lines total]`
   }
 
   if (tc.name === 'bash') {
