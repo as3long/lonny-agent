@@ -40,7 +40,7 @@ import {
 } from './state.js'
 import { flushSpeaking } from './tts.js'
 import { formatTokenCount, getWsUrl, scrollToBottom, truncate } from './utils.js'
-import { setWs } from './ws.js'
+import { sendWsMsg, setWs } from './ws.js'
 
 // ── Context Display Helper ──
 function updateContextDisplay(currentTokens, contextWindow) {
@@ -273,6 +273,11 @@ export function connect() {
     connectionOverlay.classList.add('hidden')
     state.reconnectAttempts = 0
     addSystemMessage('Connected to Lonny')
+    // Request the file tree once the socket is actually open. initFileTree()
+    // fires synchronously after connect() — before onopen — so its request
+    // would be dropped by sendWsMsg (socket still CONNECTING). Requesting
+    // here also re-populates the tree after a reconnect.
+    sendWsMsg({ type: 'get_file_tree', path: '' })
   }
 
   ws.onmessage = event => {

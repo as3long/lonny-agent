@@ -202,7 +202,7 @@ export function renderFileTree(treeData) {
       ul.appendChild(buildTreeNode(child, 0))
     }
     fileTree.appendChild(ul)
-  } else if (Array.isArray(treeData)) {
+  } else if (Array.isArray(treeData) && treeData.length > 0) {
     // Flat array mode
     const ul = document.createElement('ul')
     ul.className = 'tree-root'
@@ -258,10 +258,9 @@ export function updateTreeChildren(parentPath, children) {
 
 // ── Initialize ──
 export function initFileTree() {
-  // Request initial file tree
-  sendWsMsg({ type: 'get_file_tree', path: '' })
-
-  // Reveal button
+  // The initial get_file_tree request is sent from the WebSocket onopen
+  // handler — at this point the socket is still CONNECTING and sendWsMsg
+  // would silently drop the message (see websocket.js).
   fileRevealBtn.addEventListener('click', () => {
     // Reveal current plan file
     if (state.currentPlanName) {
