@@ -298,6 +298,9 @@ function emitToolInvocation(tc: ToolCall, out: SessionOutput | undefined): void 
 export async function runChat(session: Session, userPrompt: string): Promise<void> {
   const bus = getGlobalEventBus()
   const out = session.output
+  // Wait for the system prompt to finish building so the first request uses
+  // the real prefix (an empty system prompt would break provider caching).
+  await session.systemPromptReady
   bus.emit(EventChannels.USER_MESSAGE, { prompt: userPrompt })
   // Don't display auto-continuation messages as [USER] — they're not real user input
   if (!out?.suppressToolOutput && !userPrompt.startsWith('[auto-continuation]')) {

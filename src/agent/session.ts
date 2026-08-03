@@ -102,11 +102,20 @@ export class Session {
     }
 
     this.messages = [{ role: 'system', content: '' }]
-    this.initSystemPrompt(config)
+    this.systemPromptReady = this.initSystemPrompt(config)
   }
 
-  private initSystemPrompt(config: Config): void {
-    buildSystemPrompt(config, this.registry.getDefinitions()).then(prompt => {
+  /**
+   * Resolves once the system prompt has been built.
+   * The first LLM call MUST await this — otherwise the request goes out with
+   * an empty system prompt, and the later rebuild changes the entire message
+   * prefix, destroying the provider's prefix cache (DeepSeek KV cache /
+   * context caching) for every subsequent request in this session.
+   */
+  systemPromptReady: Promise<void> = Promise.resolve()
+
+  private initSystemPrompt(config: Config): Promise<void> {
+    return buildSystemPrompt(config, this.registry.getDefinitions()).then(prompt => {
       if (this.messages.length <= 1) {
         this.messages = [{ role: 'system', content: prompt }]
       }

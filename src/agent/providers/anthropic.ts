@@ -75,10 +75,41 @@ export class AnthropicProvider implements LLMProvider {
       return { role: 'user' as const, content: '' }
     })
 
+    // Anthropic prompt caching (cache_control, ephemeral 5-min TTL):
+    // 1. Cache the SYSTEM prompt — it's identical on every request in a
+    //    session (we already keep it byte-stable across turns), so the
+    //    provider cache-reads it instead of re-processing it.
+    // 2. Add a second breakpoint at the LAST plain user message so the
+    //    whole conversation prefix is cache-read on subsequent requests
+    //    within the TTL. Tool-result user messages are skipped — their
+    //    breakpoint would move every tool-loop iteration, forcing cache
+    //    writes instead of reads.
+    const systemBlock: { type: 'text'; text: string; cache_control: { type: 'ephemeral' } }[] =
+      systemMsg?.content
+        ? [{ type: 'text', text: systemMsg.content, cache_control: { type: 'ephemeral' } }]
+        : []
+    for (let i = anthropicMessages.length - 1; i >= 0; i--) {
+      const m = anthropicMessages[i]
+      if (m.role === 'user' && typeof m.content === 'string') {
+        // Cast needed: the installed SDK's TextBlockParam predates cache_control.
+        anthropicMessages[i] = {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: m.content || '',
+              cache_control: { type: 'ephemeral' },
+            },
+          ],
+        } as unknown as MessageParam
+        break
+      }
+    }
+
     const stream = this.client.messages.stream(
       {
         model: this.model,
-        system: systemMsg?.content || '',
+        system: systemBlock,
         messages: anthropicMessages,
         tools: anthropicTools.length > 0 ? anthropicTools : undefined,
         max_tokens: 8192,
@@ -94,11 +125,31 @@ export class AnthropicProvider implements LLMProvider {
 
     let inputTokens = 0
     let outputTokens = 0
+    let cacheReadTokens = 0
+    let cacheCreationTokens = 0
+
+    /** Build the usage object; maps Anthropic cache tokens to DeepSeek-style fields. */
+    const buildUsage = () => ({
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      prompt_cache_hit_tokens: cacheReadTokens,
+      prompt_cache_miss_tokens:
+        cacheCreationTokens > 0 ? cacheCreationTokens : Math.max(0, inputTokens - cacheReadTokens),
+    })
 
     for await (const event of stream) {
       if (event.type === 'message_start') {
         if (event.message.usage) {
-          inputTokens = event.message.usage.input_tokens ?? 0
+          // The installed SDK's Usage type predates cache fields — read them
+          // through a structural cast so cache stats still surface in the UI.
+          const usage = event.message.usage as unknown as {
+            input_tokens?: number
+            cache_read_input_tokens?: number
+            cache_creation_input_tokens?: number
+          }
+          inputTokens = usage.input_tokens ?? 0
+          cacheReadTokens = usage.cache_read_input_tokens ?? 0
+          cacheCreationTokens = usage.cache_creation_input_tokens ?? 0
         }
       } else if (event.type === 'content_block_delta') {
         if (event.delta.type === 'text_delta') {
@@ -141,7 +192,7 @@ export class AnthropicProvider implements LLMProvider {
         yield {
           type: 'complete',
           finish_reason: 'end_turn',
-          usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+          usage: buildUsage(),
         }
       } else if (event.type === 'message_delta') {
         if (event.usage) {
@@ -170,7 +221,7 @@ export class AnthropicProvider implements LLMProvider {
           yield {
             type: 'complete',
             finish_reason: event.delta.stop_reason,
-            usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+            usage: buildUsage(),
           }
         }
       }

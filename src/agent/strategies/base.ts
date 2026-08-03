@@ -17,7 +17,15 @@ export abstract class PromptBuilderBase implements PromptStrategy {
 
   /**
    * Template method: builds the complete system prompt.
-   * The skeleton is: modeInstructions + envSection + [sharedRules] + methodology + project + memory + skills
+   * The skeleton is: modeInstructions + envSection + [sharedRules] + methodology + project + skills + memory + plan
+   *
+   * Section ORDER matters for provider-side prefix caching (DeepSeek KV cache /
+   * context caching): the provider caches the longest common prefix of input
+   * tokens, and any change in the middle invalidates everything after it.
+   * Stable sections come FIRST (instructions, env, rules, methodology, project,
+   * skills); volatile sections that change mid-session — auto-memory entries
+   * (appended by session-memory.ts) and plan checkboxes — come LAST so a change
+   * only re-computes the tail, keeping the long prefix cacheable.
    */
   build(config: Config, context: BuildContext, definitions?: ToolDefinition[]): string {
     const instructions = this.getInstructions(config, definitions)
@@ -31,10 +39,10 @@ export abstract class PromptBuilderBase implements PromptStrategy {
 
     result += methodology
     result += context.projectSection
-    result += context.memorySection
     result += context.skillsSection
+    result += context.memorySection
 
-    // Plan section (from .lonny/*.md with ## Todo List) — injected at the end
+    // Plan section (from .lonny/*.md with ## Todo List) — always appended LAST
     // for maximum prompt cache stability (changes infrequently)
     if (context.planSection) {
       result += `\n${context.planSection}`

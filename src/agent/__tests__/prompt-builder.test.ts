@@ -137,6 +137,26 @@ describe('CodePromptStrategy', () => {
     const sharedIdx = result.indexOf('RULES:\n1. Shared rule')
     expect(sharedIdx).toBeGreaterThan(envIdx)
   })
+
+  it('build() orders volatile sections last for provider prefix caching', () => {
+    // Provider-side KV caches (DeepSeek context caching) cache the longest
+    // common prefix of input tokens — a change in the middle invalidates
+    // everything after it. Stable sections must precede volatile ones
+    // (skills/project before auto-memory; plan always last).
+    const planCtx = { ...mockContext, planSection: '\n## Todo List\n\n- [ ] task\n' }
+    const result = strategy.build(minimalConfig, planCtx)
+
+    const projectIdx = result.indexOf('## Project Context')
+    const skillsIdx = result.indexOf('## Skills')
+    const memoryIdx = result.indexOf('## Long-term Memory')
+    const planIdx = result.indexOf('## Todo List')
+    for (const idx of [projectIdx, skillsIdx, memoryIdx, planIdx]) {
+      expect(idx).toBeGreaterThan(-1)
+    }
+    expect(skillsIdx).toBeGreaterThan(projectIdx)
+    expect(memoryIdx).toBeGreaterThan(skillsIdx)
+    expect(planIdx).toBeGreaterThan(memoryIdx)
+  })
 })
 
 describe('PlanPromptStrategy', () => {
@@ -376,7 +396,7 @@ describe('build() integration with tool definitions', () => {
     }
   })
 
-  it('build() output order follows template: instructions → env → [sharedRules] → methodology → project → memory → skills', () => {
+  it('build() output order follows template: instructions → env → [sharedRules] → methodology → project → skills → memory (volatile sections last for prefix caching)', () => {
     const codeStrategy = new CodePromptStrategy()
     const codeResult = codeStrategy.build(minimalConfig, mockContext)
     const order = [
@@ -385,8 +405,8 @@ describe('build() integration with tool definitions', () => {
       codeResult.indexOf('1. Shared rule'),
       codeResult.indexOf('## Development Methodology'),
       codeResult.indexOf('## Project Context'),
-      codeResult.indexOf('## Long-term Memory'),
       codeResult.indexOf('## Skills'),
+      codeResult.indexOf('## Long-term Memory'),
     ]
     // All indices should be in ascending order
     for (let i = 1; i < order.length; i++) {
